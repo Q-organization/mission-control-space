@@ -91,6 +91,7 @@ export class SpaceGame {
 
   // Upgrading animation state (orbiting satellites/robots)
   private isUpgrading: boolean = false;
+  private upgradeTargetPlanetId: string | null = null; // null = orbit ship, string = orbit planet
   private upgradeSatellites: {
     angle: number;
     distance: number;
@@ -1171,9 +1172,20 @@ export class SpaceGame {
   }
 
   // Upgrading animation with orbiting satellites/robots
-  public startUpgradeAnimation() {
+  // planetId: null = orbit ship, string = orbit that planet
+  public startUpgradeAnimation(planetId: string | null = null) {
     if (this.isUpgrading) return;
     this.isUpgrading = true;
+    this.upgradeTargetPlanetId = planetId;
+
+    // Get target size for appropriate orbit distance
+    let baseDistance = 50;
+    if (planetId) {
+      const planet = this.state.planets.find(p => p.id === planetId);
+      if (planet) {
+        baseDistance = planet.radius + 30;
+      }
+    }
 
     // Create 4-6 satellites/robots with random properties
     const count = 4 + Math.floor(Math.random() * 3);
@@ -1183,7 +1195,7 @@ export class SpaceGame {
     for (let i = 0; i < count; i++) {
       this.upgradeSatellites.push({
         angle: (i / count) * Math.PI * 2 + Math.random() * 0.5,
-        distance: 50 + Math.random() * 30,
+        distance: baseDistance + Math.random() * 30,
         speed: 0.02 + Math.random() * 0.02,
         size: 4 + Math.random() * 4,
         color: colors[Math.floor(Math.random() * colors.length)],
@@ -1196,11 +1208,24 @@ export class SpaceGame {
 
   public stopUpgradeAnimation() {
     this.isUpgrading = false;
+    this.upgradeTargetPlanetId = null;
     this.upgradeSatellites = [];
+  }
+
+  private getUpgradeTargetPosition(): { x: number; y: number } {
+    if (this.upgradeTargetPlanetId) {
+      const planet = this.state.planets.find(p => p.id === this.upgradeTargetPlanetId);
+      if (planet) {
+        return { x: planet.x, y: planet.y };
+      }
+    }
+    return { x: this.state.ship.x, y: this.state.ship.y };
   }
 
   private updateUpgradeSatellites() {
     if (!this.isUpgrading) return;
+
+    const target = this.getUpgradeTargetPosition();
 
     for (const sat of this.upgradeSatellites) {
       // Orbit around
@@ -1210,9 +1235,8 @@ export class SpaceGame {
 
       // Emit tiny sparkle particles occasionally
       if (Math.random() < 0.05) {
-        const { ship } = this.state;
-        const x = ship.x + Math.cos(sat.angle) * (sat.distance + Math.sin(sat.wobble) * 10);
-        const y = ship.y + Math.sin(sat.angle) * (sat.distance + Math.sin(sat.wobble) * 10);
+        const x = target.x + Math.cos(sat.angle) * (sat.distance + Math.sin(sat.wobble) * 10);
+        const y = target.y + Math.sin(sat.angle) * (sat.distance + Math.sin(sat.wobble) * 10);
 
         this.state.particles.push({
           x,
@@ -1232,14 +1256,15 @@ export class SpaceGame {
     if (!this.isUpgrading || this.upgradeSatellites.length === 0) return;
 
     const { ctx, state } = this;
-    const { camera, ship } = state;
-    const shipX = ship.x - camera.x;
-    const shipY = ship.y - camera.y;
+    const { camera } = state;
+    const target = this.getUpgradeTargetPosition();
+    const targetX = target.x - camera.x;
+    const targetY = target.y - camera.y;
 
     for (const sat of this.upgradeSatellites) {
       const wobbleOffset = Math.sin(sat.wobble) * 10;
-      const x = shipX + Math.cos(sat.angle) * (sat.distance + wobbleOffset);
-      const y = shipY + Math.sin(sat.angle) * (sat.distance + wobbleOffset);
+      const x = targetX + Math.cos(sat.angle) * (sat.distance + wobbleOffset);
+      const y = targetY + Math.sin(sat.angle) * (sat.distance + wobbleOffset);
 
       ctx.save();
       ctx.translate(x, y);

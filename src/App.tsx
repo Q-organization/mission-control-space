@@ -523,12 +523,13 @@ function App() {
 
     const userId = state.currentUser || 'default';
     const userColor = USERS.find(u => u.id === userId)?.color || '#ffa500';
+    const planetId = `user-planet-${userId}`;
 
     // Close modal immediately
     setShowTerraform(false);
     setIsUpgrading(true);
     setUpgradeMessage('Creating your planet...');
-    gameRef.current?.startUpgradeAnimation();
+    gameRef.current?.startUpgradeAnimation(planetId);
 
     try {
       const config = planetPrompts.basePlanet;
@@ -602,13 +603,14 @@ function App() {
     const userId = state.currentUser || 'default';
     const currentPlanet = getUserPlanet(userId);
     const promptText = terraformPrompt; // Save before clearing
+    const planetId = `user-planet-${userId}`;
 
     // Close modal immediately
     setShowTerraform(false);
     setTerraformPrompt('');
     setIsUpgrading(true);
     setUpgradeMessage('Terraforming planet...');
-    gameRef.current?.startUpgradeAnimation();
+    gameRef.current?.startUpgradeAnimation(planetId);
 
     try {
       // Get current planet image
