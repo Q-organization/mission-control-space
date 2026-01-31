@@ -1,4 +1,4 @@
-import { Vector2, Planet, Star, Particle, Ship, GameState, RewardType } from './types';
+import { Vector2, Planet, Star, Particle, Ship, GameState, RewardType, OtherPlayer, ShipEffects as TypedShipEffects } from './types';
 import { soundManager } from './SoundManager';
 
 interface CustomPlanetData {
@@ -149,6 +149,16 @@ export class SpaceGame {
   // For seamless world wrapping
   private prevShipX: number = 0;
   private prevShipY: number = 0;
+
+  // Zone title display
+  private currentZoneId: string | null = null;
+  private zoneTitleOpacity: number = 0;
+  private zoneTitleText: string = '';
+  private zoneTitleColor: string = '#ffffff';
+
+  // Multiplayer: other players' ships
+  private otherPlayers: OtherPlayer[] = [];
+  private otherPlayerImages: Map<string, HTMLImageElement> = new Map();
 
   constructor(canvas: HTMLCanvasElement, onDock: (planet: Planet) => void, customPlanets: CustomPlanetData[] = [], shipImageUrl?: string, goals?: GoalsData, upgradeCount: number = 0, userPlanets?: Record<string, UserPlanetData>, currentUser: string = 'quentin') {
     this.canvas = canvas;
@@ -892,6 +902,8 @@ export class SpaceGame {
     this.updateCamera();
     this.updateParticles();
     this.updateUpgradeSatellites();
+    this.updateOtherPlayersParticles();
+    this.updateZoneTitle();
 
     // Check nearby and docking
     this.state.dockingPlanet = null;
@@ -1287,6 +1299,40 @@ export class SpaceGame {
     });
   }
 
+  private updateZoneTitle() {
+    const { ship } = this.state;
+
+    // Find current zone (closest zone center)
+    let closestZone: Zone | null = null;
+    let closestDist = Infinity;
+
+    for (const zone of ZONES) {
+      const dx = ship.x - zone.centerX;
+      const dy = ship.y - zone.centerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestZone = zone;
+      }
+    }
+
+    if (closestZone && closestZone.id !== this.currentZoneId) {
+      // Entered a new zone - show title
+      this.currentZoneId = closestZone.id;
+      this.zoneTitleText = closestZone.name;
+      this.zoneTitleColor = closestZone.color;
+      this.zoneTitleOpacity = 1.0;
+    }
+
+    // Fade out the title over time
+    if (this.zoneTitleOpacity > 0) {
+      this.zoneTitleOpacity -= 0.008; // Fade over ~2 seconds
+      if (this.zoneTitleOpacity < 0) {
+        this.zoneTitleOpacity = 0;
+      }
+    }
+  }
+
   // Upgrading animation with orbiting satellites/robots
   // planetId: null = orbit ship, string = orbit that planet
   public startUpgradeAnimation(planetId: string | null = null) {
@@ -1338,6 +1384,17 @@ export class SpaceGame {
       }
     }
     return { x: this.state.ship.x, y: this.state.ship.y };
+  }
+
+  /**
+   * Emit thrust particles for other thrusting players.
+   */
+  private updateOtherPlayersParticles() {
+    for (const player of this.otherPlayers) {
+      if (player.thrusting && Math.random() < 0.3) {
+        this.emitOtherPlayerThrust(player);
+      }
+    }
   }
 
   private updateUpgradeSatellites() {
@@ -1601,7 +1658,10 @@ export class SpaceGame {
       ctx.globalAlpha = 1;
     }
 
-    // Draw ship
+    // Draw other players' ships (behind local ship)
+    this.renderOtherPlayers();
+
+    // Draw local ship
     this.drawShip();
 
     // Draw upgrade satellites/robots orbiting the ship
@@ -1614,6 +1674,26 @@ export class SpaceGame {
 
     // Draw minimap
     this.drawMinimap();
+
+    // Draw zone title when entering a new zone
+    if (this.zoneTitleOpacity > 0) {
+      ctx.save();
+      ctx.globalAlpha = this.zoneTitleOpacity;
+      ctx.font = 'bold 32px Space Grotesk';
+      ctx.textAlign = 'center';
+
+      // Draw text shadow/glow
+      ctx.shadowColor = this.zoneTitleColor;
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = this.zoneTitleColor;
+      ctx.fillText(this.zoneTitleText, canvas.width / 2, 80);
+
+      // Draw text again for more brightness
+      ctx.shadowBlur = 10;
+      ctx.fillText(this.zoneTitleText, canvas.width / 2, 80);
+
+      ctx.restore();
+    }
 
     // Draw controls hint
     ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
@@ -2291,5 +2371,211 @@ export class SpaceGame {
     ctx.font = '9px Space Grotesk';
     ctx.textAlign = 'center';
     ctx.fillText('MAP', mapX + mapSize / 2, mapY + mapSize + 12);
+
+    // Draw other players on minimap
+    for (const player of this.otherPlayers) {
+      ctx.beginPath();
+      ctx.arc(mapX + player.x * scale, mapY + player.y * scale, 3, 0, Math.PI * 2);
+      ctx.fillStyle = player.color;
+      ctx.fill();
+    }
+  }
+
+  // =============================================
+  // MULTIPLAYER METHODS
+  // =============================================
+
+  /**
+   * Update the list of other players in the game.
+   * Called from the React layer when position broadcasts are received.
+   */
+  public setOtherPlayers(players: OtherPlayer[]) {
+    this.otherPlayers = players;
+
+    // Preload ship images for new players
+    for (const player of players) {
+      if (player.shipImage && !this.otherPlayerImages.has(player.id)) {
+        this.loadOtherPlayerImage(player.id, player.shipImage);
+      }
+    }
+  }
+
+  /**
+   * Get the current ship state for broadcasting to other players.
+   */
+  public getShipState(): { x: number; y: number; vx: number; vy: number; rotation: number; thrusting: boolean } {
+    const { ship } = this.state;
+    return {
+      x: ship.x,
+      y: ship.y,
+      vx: ship.vx,
+      vy: ship.vy,
+      rotation: ship.rotation,
+      thrusting: ship.thrusting,
+    };
+  }
+
+  /**
+   * Load a ship image for another player.
+   */
+  private loadOtherPlayerImage(playerId: string, imageUrl: string) {
+    if (!imageUrl || imageUrl === '/ship-base.png') {
+      // Use the same base ship image
+      this.otherPlayerImages.set(playerId, this.shipImage!);
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = imageUrl;
+    img.onload = () => {
+      this.otherPlayerImages.set(playerId, img);
+    };
+    img.onerror = () => {
+      // Fallback to base ship
+      if (this.shipImage) {
+        this.otherPlayerImages.set(playerId, this.shipImage);
+      }
+    };
+  }
+
+  /**
+   * Render all other players' ships.
+   */
+  private renderOtherPlayers() {
+    for (const player of this.otherPlayers) {
+      // Draw at all wrapped positions for seamless world wrapping
+      const positions = this.getWrappedPositions(player.x, player.y, 80);
+      for (const pos of positions) {
+        this.drawOtherPlayerAt(player, pos.x, pos.y);
+      }
+    }
+  }
+
+  /**
+   * Draw another player's ship at a specific screen position.
+   */
+  private drawOtherPlayerAt(player: OtherPlayer, x: number, y: number) {
+    const { ctx } = this;
+    const shipImage = this.otherPlayerImages.get(player.id) || this.shipImage;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(player.rotation + Math.PI / 2);
+
+    // Ship size (use their size bonus if available)
+    const effectSizeMultiplier = 1 + ((player.shipEffects?.sizeBonus || 0) / 100);
+    const scale = 0.9 * effectSizeMultiplier;
+    const shipSize = 60 * scale;
+
+    // Glow effect using player's color
+    const glowColor = player.shipEffects?.glowColor || player.color;
+    const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, shipSize * 0.9);
+    glowGradient.addColorStop(0, glowColor + '88');
+    glowGradient.addColorStop(0.4, glowColor + '44');
+    glowGradient.addColorStop(0.7, glowColor + '11');
+    glowGradient.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(0, 0, shipSize * 0.9, 0, Math.PI * 2);
+    ctx.fillStyle = glowGradient;
+    ctx.fill();
+
+    // Engine glow when thrusting
+    if (player.thrusting) {
+      const engineGradient = ctx.createRadialGradient(0, shipSize * 0.4, 0, 0, shipSize * 0.4, shipSize * 0.8);
+      engineGradient.addColorStop(0, player.color + 'ee');
+      engineGradient.addColorStop(0.5, player.color + '88');
+      engineGradient.addColorStop(1, 'transparent');
+      ctx.beginPath();
+      ctx.arc(0, shipSize * 0.4, shipSize * 0.8, 0, Math.PI * 2);
+      ctx.fillStyle = engineGradient;
+      ctx.fill();
+    }
+
+    // Draw ship image
+    if (shipImage) {
+      ctx.drawImage(
+        shipImage,
+        -shipSize / 2,
+        -shipSize / 2,
+        shipSize,
+        shipSize
+      );
+
+      // Color tint overlay to identify player
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = 0.15;
+      ctx.fillStyle = player.color;
+      ctx.beginPath();
+      ctx.arc(0, 0, shipSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      // Fallback procedural ship with player color
+      ctx.beginPath();
+      ctx.moveTo(0, -22 * scale);
+      ctx.lineTo(12 * scale, 8 * scale);
+      ctx.lineTo(8 * scale, 5 * scale);
+      ctx.lineTo(6 * scale, 18 * scale);
+      ctx.lineTo(-6 * scale, 18 * scale);
+      ctx.lineTo(-8 * scale, 5 * scale);
+      ctx.lineTo(-12 * scale, 8 * scale);
+      ctx.closePath();
+      ctx.fillStyle = player.color;
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff40';
+      ctx.stroke();
+    }
+
+    ctx.restore();
+
+    // Draw player name above ship (always readable)
+    ctx.save();
+    ctx.fillStyle = player.color;
+    ctx.font = 'bold 11px Space Grotesk';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#000';
+    ctx.shadowBlur = 3;
+    ctx.fillText(player.displayName, x, y - shipSize / 2 - 10);
+    ctx.restore();
+  }
+
+  /**
+   * Emit thrust particles for another player (simpler version).
+   */
+  private emitOtherPlayerThrust(player: OtherPlayer) {
+    const backAngle = player.rotation + Math.PI;
+    const trailType = player.shipEffects?.trailType || 'default';
+
+    // Choose colors based on trail type
+    let colors: string[];
+    switch (trailType) {
+      case 'fire':
+        colors = ['#ff4400', '#ff6600', '#ff8800'];
+        break;
+      case 'ice':
+        colors = ['#88ddff', '#aaeeff', '#ccffff'];
+        break;
+      case 'rainbow':
+        colors = ['#ff0000', '#ff8800', '#ffff00', '#00ff00', '#0088ff', '#8800ff'];
+        break;
+      default:
+        colors = [player.color, player.color + 'cc', player.color + '88'];
+    }
+
+    const spread = (Math.random() - 0.5) * 0.6;
+    const speed = Math.random() * 3 + 2;
+
+    this.state.particles.push({
+      x: player.x + Math.cos(backAngle) * 18,
+      y: player.y + Math.sin(backAngle) * 18,
+      vx: Math.cos(backAngle + spread) * speed + player.vx * 0.3,
+      vy: Math.sin(backAngle + spread) * speed + player.vy * 0.3,
+      life: 25 + Math.random() * 15,
+      maxLife: 40,
+      size: Math.random() * 5 + 3,
+      color: colors[Math.floor(Math.random() * colors.length)],
+    });
   }
 }

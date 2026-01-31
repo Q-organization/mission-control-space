@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import { SpaceGame } from './SpaceGame';
-import { Planet, RewardType } from './types';
+import { Planet, RewardType, OtherPlayer, PointTransaction as PointTx, ShipEffects as TypedShipEffects } from './types';
 import { soundManager } from './SoundManager';
+import { useTeam } from './hooks/useTeam';
+import { useMultiplayerSync } from './hooks/useMultiplayerSync';
+import { usePlayerPositions } from './hooks/usePlayerPositions';
+import { getLocalPlayerId, getShareUrl as buildShareUrl } from './lib/supabase';
 
 const FAL_API_KEY = 'c2df5aba-75d9-4626-95bb-aa366317d09e:8f90bb335a773f0ce3f261354107daa6';
 const STORAGE_KEY = 'mission-control-space-state';
@@ -418,6 +422,140 @@ function App() {
   // Prompt configs (loaded from JSON)
   const [shipPrompts, setShipPrompts] = useState<ShipPrompts>(DEFAULT_SHIP_PROMPTS);
   const [planetPrompts, setPlanetPrompts] = useState<PlanetPrompts>(DEFAULT_PLANET_PROMPTS);
+
+  // Multiplayer state
+  const [showTeamModal, setShowTeamModal] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [newTeamName, setNewTeamName] = useState('Mission Control Team');
+  const [shareToast, setShareToast] = useState<string | null>(null);
+  const [pointToast, setPointToast] = useState<PointTx | null>(null);
+  const positionBroadcastRef = useRef<number>(0);
+
+  // Get local player ID (persisted in localStorage)
+  const localPlayerId = useRef(getLocalPlayerId());
+
+  // Team hook - handles team creation/joining
+  const {
+    team,
+    isLoading: isTeamLoading,
+    error: teamError,
+    createTeam,
+    joinTeam,
+    getShareUrl,
+    leaveTeam,
+  } = useTeam({
+    onTeamJoined: (t) => {
+      console.log('Joined team:', t.name);
+    },
+    onError: (err) => {
+      console.error('Team error:', err);
+    },
+  });
+
+  // Current user info for multiplayer
+  const currentUserInfo = USERS.find(u => u.id === state.currentUser);
+  const currentShipInfo = userShips[state.currentUser || ''] || {
+    baseImage: '/ship-base.png',
+    upgrades: [],
+    currentImage: '/ship-base.png',
+    effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, ownedGlows: [], ownedTrails: [] },
+  };
+
+  // Multiplayer sync hook - handles team state sync
+  const {
+    players: teamPlayers,
+    teamPoints: syncedTeamPoints,
+    completedPlanets: syncedCompletedPlanets,
+    recentTransactions,
+    isConnected,
+    updateTeamPoints: updateRemoteTeamPoints,
+    completePlanet: completeRemotePlanet,
+    updatePlayerData,
+    syncLocalState,
+  } = useMultiplayerSync({
+    teamId: team?.id || null,
+    playerId: localPlayerId.current,
+    username: state.currentUser || 'anonymous',
+    displayName: currentUserInfo?.name || 'Anonymous',
+    color: currentUserInfo?.color || '#ffa500',
+    onTeamUpdate: (t) => {
+      // Sync team state to local
+      if (t.teamPoints !== teamPoints) {
+        setTeamPoints(t.teamPoints);
+      }
+    },
+    onPlayerJoined: (player) => {
+      console.log('Player joined:', player.displayName);
+    },
+    onPlayerLeft: (playerId) => {
+      console.log('Player left:', playerId);
+    },
+    onPointsEarned: (tx) => {
+      // Show toast for points earned by other players
+      setPointToast(tx);
+      setTimeout(() => setPointToast(null), 4000);
+    },
+  });
+
+  // Player positions hook - handles real-time ship positions
+  const { otherPlayers, broadcastPosition } = usePlayerPositions({
+    teamId: team?.id || null,
+    playerId: teamPlayers.find(p => p.username === state.currentUser)?.id || null,
+    players: teamPlayers.map(p => ({
+      id: p.id,
+      username: p.username,
+      displayName: p.displayName,
+      color: p.color,
+      shipImage: p.shipImage,
+      shipEffects: p.shipEffects,
+    })),
+    localShip: gameRef.current?.getShipState() || { x: 5000, y: 5200, vx: 0, vy: 0, rotation: -1.5708, thrusting: false },
+  });
+
+  // Update game with other players
+  useEffect(() => {
+    if (gameRef.current && otherPlayers.length > 0) {
+      gameRef.current.setOtherPlayers(otherPlayers);
+    }
+  }, [otherPlayers]);
+
+  // Broadcast position regularly when game is running
+  useEffect(() => {
+    if (!team || !gameRef.current) return;
+
+    const broadcastLoop = () => {
+      if (gameRef.current) {
+        broadcastPosition();
+      }
+      positionBroadcastRef.current = requestAnimationFrame(broadcastLoop);
+    };
+
+    positionBroadcastRef.current = requestAnimationFrame(broadcastLoop);
+
+    return () => {
+      if (positionBroadcastRef.current) {
+        cancelAnimationFrame(positionBroadcastRef.current);
+      }
+    };
+  }, [team, broadcastPosition]);
+
+  // Sync local state to team when team is joined
+  useEffect(() => {
+    if (team && state.completedPlanets.length > 0) {
+      syncLocalState(state.completedPlanets, customPlanets, goals);
+    }
+  }, [team?.id]);
+
+  // Copy share URL to clipboard
+  const copyShareUrl = () => {
+    const url = getShareUrl();
+    if (url) {
+      navigator.clipboard.writeText(url).then(() => {
+        setShareToast('Link copied!');
+        setTimeout(() => setShareToast(null), 2000);
+      });
+    }
+  };
 
   // Load prompts from JSON files on mount
   useEffect(() => {
@@ -836,7 +974,12 @@ function App() {
 
     gameRef.current?.completePlanet(planet.id);
 
-  }, [state.completedPlanets, state.currentUser]);
+    // Sync to multiplayer (if connected)
+    if (team) {
+      completeRemotePlanet(planet.id, pointsEarned);
+    }
+
+  }, [state.completedPlanets, state.currentUser, team, completeRemotePlanet]);
 
   // Keep the ref updated with latest handleDock
   useEffect(() => {
@@ -1312,7 +1455,73 @@ function App() {
         <span style={{ color: currentUser?.color, marginLeft: 8 }}>
           ({currentUser?.name})
         </span>
+
+        {/* Multiplayer indicator */}
+        {team && (
+          <div style={styles.multiplayerIndicator}>
+            <span style={{ color: isConnected ? '#4ade80' : '#888' }}>
+              {isConnected ? '●' : '○'}
+            </span>
+            <span style={{ marginLeft: 4, fontSize: '0.75rem', color: '#aaa' }}>
+              {teamPlayers.filter(p => p.isOnline).length} online
+            </span>
+          </div>
+        )}
       </div>
+
+      {/* Multiplayer buttons */}
+      <div style={styles.multiplayerButtons}>
+        {team ? (
+          <button
+            style={styles.shareButton}
+            onClick={copyShareUrl}
+            title="Copy invite link"
+          >
+            🔗 Share Team
+          </button>
+        ) : (
+          <button
+            style={styles.shareButton}
+            onClick={() => setShowTeamModal(true)}
+          >
+            👥 Multiplayer
+          </button>
+        )}
+      </div>
+
+      {/* Share toast */}
+      {shareToast && (
+        <div style={styles.toast}>
+          {shareToast}
+        </div>
+      )}
+
+      {/* Points earned toast */}
+      {pointToast && (
+        <div style={styles.pointToast}>
+          <span style={{ color: '#4ade80' }}>+{pointToast.points}</span>
+          <span style={{ marginLeft: 6, color: '#aaa' }}>
+            {pointToast.playerName || 'Someone'} earned points
+            {pointToast.taskName && ` for: ${pointToast.taskName}`}
+          </span>
+        </div>
+      )}
+
+      {/* Online players sidebar */}
+      {team && teamPlayers.filter(p => p.isOnline && p.username !== state.currentUser).length > 0 && (
+        <div style={styles.onlinePlayers}>
+          <div style={styles.onlinePlayersTitle}>Online</div>
+          {teamPlayers
+            .filter(p => p.isOnline && p.username !== state.currentUser)
+            .map(p => (
+              <div key={p.id} style={styles.onlinePlayer}>
+                <span style={{ ...styles.onlinePlayerDot, background: p.color }} />
+                <span>{p.displayName}</span>
+              </div>
+            ))
+          }
+        </div>
+      )}
 
       {/* Stats */}
       <div style={styles.stats}>
@@ -2007,6 +2216,126 @@ function App() {
         </div>
       )}
 
+      {/* Team Modal */}
+      {showTeamModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowTeamModal(false)}>
+          <div style={{ ...styles.modal, maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>👥 Multiplayer</h2>
+
+            {team ? (
+              // Already in a team
+              <div>
+                <p style={{ color: '#4ade80', marginBottom: '1rem' }}>
+                  Connected to: {team.name}
+                </p>
+                <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                  {teamPlayers.filter(p => p.isOnline).length} players online
+                </p>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Invite Link</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      type="text"
+                      style={{ ...styles.input, flex: 1, fontSize: '0.75rem' }}
+                      value={getShareUrl() || ''}
+                      readOnly
+                    />
+                    <button style={styles.saveButton} onClick={copyShareUrl}>
+                      Copy
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  style={{ ...styles.cancelButton, width: '100%', marginTop: '1rem' }}
+                  onClick={() => {
+                    leaveTeam();
+                    setShowTeamModal(false);
+                  }}
+                >
+                  Leave Team
+                </button>
+              </div>
+            ) : (
+              // No team - show join/create options
+              <div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Join with Invite Code</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      type="text"
+                      style={{ ...styles.input, flex: 1 }}
+                      value={joinCode}
+                      onChange={e => setJoinCode(e.target.value)}
+                      placeholder="Enter invite code..."
+                    />
+                    <button
+                      style={{
+                        ...styles.saveButton,
+                        opacity: joinCode ? 1 : 0.5,
+                      }}
+                      onClick={async () => {
+                        if (joinCode) {
+                          await joinTeam(joinCode);
+                          setJoinCode('');
+                          setShowTeamModal(false);
+                        }
+                      }}
+                      disabled={!joinCode || isTeamLoading}
+                    >
+                      Join
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', color: '#666', margin: '1.5rem 0', fontSize: '0.85rem' }}>
+                  — or —
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Create New Team</label>
+                  <input
+                    type="text"
+                    style={styles.input}
+                    value={newTeamName}
+                    onChange={e => setNewTeamName(e.target.value)}
+                    placeholder="Team name..."
+                  />
+                  <button
+                    style={{
+                      ...styles.saveButton,
+                      width: '100%',
+                      marginTop: '0.5rem',
+                    }}
+                    onClick={async () => {
+                      await createTeam(newTeamName);
+                      setShowTeamModal(false);
+                    }}
+                    disabled={isTeamLoading}
+                  >
+                    {isTeamLoading ? 'Creating...' : 'Create Team'}
+                  </button>
+                </div>
+
+                {teamError && (
+                  <p style={{ color: '#ff4444', fontSize: '0.85rem', marginTop: '1rem' }}>
+                    {teamError}
+                  </p>
+                )}
+              </div>
+            )}
+
+            <button
+              style={{ ...styles.cancelButton, width: '100%', marginTop: '1rem' }}
+              onClick={() => setShowTeamModal(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Admin Settings Modal (Quentin only) */}
       {showSettings && (
         <div style={styles.modalOverlay} onClick={() => !editingGoal && setShowSettings(false)}>
@@ -2475,6 +2804,47 @@ const styles: Record<string, React.CSSProperties> = {
   },
   historyDate: {
     color: '#666', fontSize: '0.7rem',
+  },
+  // Multiplayer styles
+  multiplayerIndicator: {
+    display: 'flex', alignItems: 'center', gap: '0.25rem',
+    marginLeft: '1rem', padding: '0.25rem 0.5rem',
+    background: 'rgba(0,0,0,0.3)', borderRadius: 12,
+    fontSize: '0.75rem',
+  },
+  multiplayerButtons: {
+    position: 'absolute', top: 20, right: 180, display: 'flex', gap: '0.5rem',
+  },
+  shareButton: {
+    background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: 8, padding: '0.4rem 0.75rem', color: '#fff', fontSize: '0.8rem',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem',
+  },
+  toast: {
+    position: 'absolute', top: 70, right: 180, background: 'rgba(74, 222, 128, 0.9)',
+    color: '#000', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.85rem',
+    fontWeight: 600, animation: 'fadeIn 0.3s ease',
+  },
+  pointToast: {
+    position: 'absolute', top: 70, left: '50%', transform: 'translateX(-50%)',
+    background: 'rgba(0,0,0,0.9)', border: '1px solid #4ade80',
+    color: '#fff', padding: '0.5rem 1rem', borderRadius: 8, fontSize: '0.85rem',
+    display: 'flex', alignItems: 'center', animation: 'fadeIn 0.3s ease',
+  },
+  onlinePlayers: {
+    position: 'absolute', left: 20, top: 70, background: 'rgba(0,0,0,0.7)',
+    borderRadius: 8, padding: '0.5rem', minWidth: 120, border: '1px solid rgba(255,255,255,0.1)',
+  },
+  onlinePlayersTitle: {
+    color: '#888', fontSize: '0.7rem', textTransform: 'uppercase', marginBottom: '0.5rem',
+    letterSpacing: '0.1em',
+  },
+  onlinePlayer: {
+    display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0',
+    color: '#fff', fontSize: '0.8rem',
+  },
+  onlinePlayerDot: {
+    width: 8, height: 8, borderRadius: '50%',
   },
 };
 

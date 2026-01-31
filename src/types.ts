@@ -79,3 +79,48 @@ export interface GameState {
   robotImage: string;
   completedCount: number;
 }
+
+// Multiplayer types
+export interface OtherPlayer {
+  id: string;
+  username: string;
+  displayName: string;
+  color: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  thrusting: boolean;
+  shipImage: string;
+  shipEffects: ShipEffects;
+}
+
+export interface ShipEffects {
+  glowColor: string | null;
+  trailType: 'default' | 'fire' | 'ice' | 'rainbow';
+  sizeBonus: number;
+  speedBonus: number;
+  ownedGlows: string[];
+  ownedTrails: string[];
+}
+
+export interface MultiplayerTeam {
+  id: string;
+  name: string;
+  inviteCode: string;
+  teamPoints: number;
+  completedPlanets: string[];
+}
+
+export interface PointTransaction {
+  id: string;
+  teamId: string;
+  playerId: string | null;
+  playerName?: string;
+  source: 'planet' | 'notion' | 'manual';
+  notionTaskId?: string | null;
+  taskName?: string | null;
+  points: number;
+  createdAt: string;
+}
