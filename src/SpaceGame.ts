@@ -49,13 +49,15 @@ const userPlanetSizeLevels: Map<string, number> = new Map();
 
 const USER_IDS = ['quentin', 'armel', 'alex', 'melia', 'hugue'];
 
-// Expanded world to fit player zones + central hub
-const WORLD_SIZE = 8000;
-const ZONE_SIZE = 2500; // Each player zone radius
+// Expanded world to fit all zones
+const WORLD_SIZE = 10000;
+const ZONE_SIZE = 2000; // Zone radius
 const CENTER_X = WORLD_SIZE / 2;
 const CENTER_Y = WORLD_SIZE / 2;
 
-// Zone positions: center + 5 player zones around it
+// Zone types for organizing goals
+type ZoneType = 'central' | 'business' | 'product' | 'player';
+
 interface Zone {
   id: string;
   name: string;
@@ -63,17 +65,28 @@ interface Zone {
   centerY: number;
   color: string;
   ownerId: string | null; // null = shared zone
+  zoneType: ZoneType;
 }
 
+// Layout: Center = Achievements/Upgrades, Bottom-left = Business, Bottom-right = Product
+// Players arranged in arc around top: Right, Top-Right, Top, Top-Left, Left
+const HUB_DISTANCE = 2800; // Distance from center to Business/Product hubs
+const PLAYER_DISTANCE = 3000; // Distance from center to player zones
+
 const ZONES: Zone[] = [
-  // Central shared zone
-  { id: 'central', name: 'Mission Control', centerX: CENTER_X, centerY: CENTER_Y, color: '#ffffff', ownerId: null },
-  // Player zones arranged around the center
-  { id: 'zone-quentin', name: "Quentin's Sector", centerX: CENTER_X, centerY: CENTER_Y - 2800, color: '#ffa500', ownerId: 'quentin' },
-  { id: 'zone-armel', name: "Armel's Sector", centerX: CENTER_X + 2400, centerY: CENTER_Y - 1400, color: '#4ade80', ownerId: 'armel' },
-  { id: 'zone-alex', name: "Alex's Sector", centerX: CENTER_X + 2400, centerY: CENTER_Y + 1400, color: '#5490ff', ownerId: 'alex' },
-  { id: 'zone-melia', name: "Melia's Sector", centerX: CENTER_X - 2400, centerY: CENTER_Y + 1400, color: '#ff6b9d', ownerId: 'melia' },
-  { id: 'zone-hugue', name: "Hugue's Sector", centerX: CENTER_X - 2400, centerY: CENTER_Y - 1400, color: '#8b5cf6', ownerId: 'hugue' },
+  // Central zone - Achievements & Upgrades
+  { id: 'central', name: 'Mission Control', centerX: CENTER_X, centerY: CENTER_Y, color: '#ffd700', ownerId: null, zoneType: 'central' },
+
+  // Goal hubs - Business (bottom-left) and Product (bottom-right)
+  { id: 'hub-business', name: 'Business Hub', centerX: CENTER_X - HUB_DISTANCE * 0.7, centerY: CENTER_Y + HUB_DISTANCE * 0.7, color: '#4ade80', ownerId: null, zoneType: 'business' },
+  { id: 'hub-product', name: 'Product Hub', centerX: CENTER_X + HUB_DISTANCE * 0.7, centerY: CENTER_Y + HUB_DISTANCE * 0.7, color: '#5490ff', ownerId: null, zoneType: 'product' },
+
+  // Player zones in arc around top half (Right → Top-Right → Top → Top-Left → Left)
+  { id: 'zone-quentin', name: "Quentin's Sector", centerX: CENTER_X + PLAYER_DISTANCE, centerY: CENTER_Y, color: '#ffa500', ownerId: 'quentin', zoneType: 'player' }, // Right
+  { id: 'zone-alex', name: "Alex's Sector", centerX: CENTER_X + PLAYER_DISTANCE * 0.7, centerY: CENTER_Y - PLAYER_DISTANCE * 0.7, color: '#00bfff', ownerId: 'alex', zoneType: 'player' }, // Top-Right
+  { id: 'zone-armel', name: "Armel's Sector", centerX: CENTER_X, centerY: CENTER_Y - PLAYER_DISTANCE, color: '#98fb98', ownerId: 'armel', zoneType: 'player' }, // Top
+  { id: 'zone-melia', name: "Melia's Sector", centerX: CENTER_X - PLAYER_DISTANCE * 0.7, centerY: CENTER_Y - PLAYER_DISTANCE * 0.7, color: '#ff6b9d', ownerId: 'melia', zoneType: 'player' }, // Top-Left
+  { id: 'zone-hugue', name: "Hugue's Sector", centerX: CENTER_X - PLAYER_DISTANCE, centerY: CENTER_Y, color: '#8b5cf6', ownerId: 'hugue', zoneType: 'player' }, // Left
 ];
 const SHIP_ACCELERATION = 0.18;
 const SHIP_ROTATION_SPEED = 0.06;
@@ -269,23 +282,28 @@ export class SpaceGame {
 
     const sizeRadius = { small: 35, medium: 50, big: 70 };
 
-    // All shared goals are placed in the central zone
-    // Place business planets in a winding path on the left side of central zone
-    const businessStartX = CENTER_X - 500;
-    const businessStartY = CENTER_Y + 800;
+    // Get hub centers from ZONES
+    const businessHub = ZONES.find(z => z.id === 'hub-business')!;
+    const productHub = ZONES.find(z => z.id === 'hub-product')!;
+
+    // Place BUSINESS planets in the Business Hub (bottom-left)
+    // Arrange in a spiral pattern within the hub
     businessMilestones.forEach((m, i) => {
-      const zigzag = (i % 2 === 0) ? -120 : 120;
+      const angle = (i / businessMilestones.length) * Math.PI * 1.8 - Math.PI * 0.5;
+      const distance = 300 + i * 120;
       const style = planetStyles[i % planetStyles.length];
+      // Override style to use green tones for business
+      const businessStyle = { baseColor: '#4ade80', accent: '#22c55e', type: 'business' };
       planets.push({
         ...m,
-        x: businessStartX + zigzag + Math.sin(i * 0.5) * 80,
-        y: businessStartY - i * 280,
+        x: businessHub.centerX + Math.cos(angle) * distance,
+        y: businessHub.centerY + Math.sin(angle) * distance * 0.6,
         radius: sizeRadius[m.size],
-        color: style.baseColor,
-        glowColor: style.baseColor.replace(')', ', 0.4)').replace('rgb', 'rgba'),
+        color: businessStyle.baseColor,
+        glowColor: 'rgba(74, 222, 128, 0.4)',
         completed: false,
         type: 'business',
-        style: style,
+        style: businessStyle,
         hasRing: i === 3 || i === 7,
         hasMoon: i === 4 || i === 9,
         description: m.description,
@@ -295,22 +313,23 @@ export class SpaceGame {
       });
     });
 
-    // Place product planets in a path on the right side of central zone
-    const productStartX = CENTER_X + 500;
-    const productStartY = CENTER_Y + 800;
+    // Place PRODUCT planets in the Product Hub (bottom-right)
+    // Arrange in a spiral pattern within the hub
     productMilestones.forEach((m, i) => {
-      const zigzag = (i % 2 === 0) ? 120 : -120;
-      const style = planetStyles[(i + 3) % planetStyles.length];
+      const angle = (i / productMilestones.length) * Math.PI * 1.5 + Math.PI * 0.75;
+      const distance = 300 + i * 140;
+      // Use blue tones for product
+      const productStyle = { baseColor: '#5490ff', accent: '#3b82f6', type: 'product' };
       planets.push({
         ...m,
-        x: productStartX + zigzag + Math.cos(i * 0.7) * 60,
-        y: productStartY - i * 320,
+        x: productHub.centerX + Math.cos(angle) * distance,
+        y: productHub.centerY + Math.sin(angle) * distance * 0.6,
         radius: sizeRadius[m.size],
-        color: style.baseColor,
-        glowColor: style.baseColor.replace(')', ', 0.4)').replace('rgb', 'rgba'),
+        color: productStyle.baseColor,
+        glowColor: 'rgba(84, 144, 255, 0.4)',
         completed: false,
         type: 'product',
-        style: style,
+        style: productStyle,
         hasRing: i === 2 || i === 5,
         hasMoon: i === 1,
         description: m.description,
@@ -320,14 +339,14 @@ export class SpaceGame {
       });
     });
 
-    // Place achievements as special golden planets scattered around the central zone
+    // Place ACHIEVEMENTS as golden planets orbiting the central zone
     achievements.forEach((m, i) => {
-      const angle = (i / achievements.length) * Math.PI * 0.8 - Math.PI * 0.4;
-      const distance = 600 + i * 150;
+      const angle = (i / achievements.length) * Math.PI * 2 - Math.PI / 2;
+      const distance = 500 + i * 100;
       planets.push({
         ...m,
         x: CENTER_X + Math.cos(angle) * distance,
-        y: CENTER_Y - 400 + Math.sin(angle) * distance * 0.5,
+        y: CENTER_Y + Math.sin(angle) * distance * 0.5,
         radius: sizeRadius[m.size],
         color: '#ffd700',
         glowColor: 'rgba(255, 215, 0, 0.5)',
