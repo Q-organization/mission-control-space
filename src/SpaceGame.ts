@@ -31,6 +31,7 @@ interface GoalsData {
 interface UserPlanetData {
   imageUrl: string;
   terraformCount: number;
+  sizeLevel?: number;
 }
 
 interface ShipEffects {
@@ -42,8 +43,9 @@ interface ShipEffects {
   ownedTrails: string[];
 }
 
-// Store terraform counts for scaling
+// Store terraform counts and size levels for scaling
 const userPlanetTerraformCounts: Map<string, number> = new Map();
+const userPlanetSizeLevels: Map<string, number> = new Map();
 
 const USER_IDS = ['quentin', 'armel', 'alex', 'melia', 'hugue'];
 
@@ -545,7 +547,7 @@ export class SpaceGame {
     this.shipEffects = effects;
   }
 
-  public updateUserPlanetImage(userId: string, imageUrl: string, terraformCount?: number) {
+  public updateUserPlanetImage(userId: string, imageUrl: string, terraformCount?: number, sizeLevel?: number) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = imageUrl;
@@ -553,19 +555,38 @@ export class SpaceGame {
       this.userPlanetImages.set(userId, img);
     };
 
-    // Update terraform count and planet size
+    // Update terraform count and size level
     if (terraformCount !== undefined) {
       userPlanetTerraformCounts.set(userId, terraformCount);
+    }
+    if (sizeLevel !== undefined) {
+      userPlanetSizeLevels.set(userId, sizeLevel);
+    }
 
-      // Update the planet's radius in state
-      const planet = this.state.planets.find(p => p.id === `user-planet-${userId}`);
-      if (planet) {
-        planet.radius = 50 + terraformCount * 3;
-        // Add ring after 3 terraforms
-        (planet as any).hasRing = terraformCount >= 3;
-        // Add moon after 5 terraforms
-        (planet as any).hasMoon = terraformCount >= 5;
-      }
+    // Update the planet's radius in state
+    const planet = this.state.planets.find(p => p.id === `user-planet-${userId}`);
+    if (planet) {
+      const tc = terraformCount ?? userPlanetTerraformCounts.get(userId) ?? 0;
+      const sl = sizeLevel ?? userPlanetSizeLevels.get(userId) ?? 0;
+      const baseRadius = 50 + tc * 3;
+      const sizeMultiplier = 1 + (sl * 0.2);
+      planet.radius = baseRadius * sizeMultiplier;
+      // Add ring after 3 terraforms
+      (planet as any).hasRing = tc >= 3;
+      // Add moon after 5 terraforms
+      (planet as any).hasMoon = tc >= 5;
+    }
+  }
+
+  public updateUserPlanetSize(userId: string, sizeLevel: number) {
+    userPlanetSizeLevels.set(userId, sizeLevel);
+
+    const planet = this.state.planets.find(p => p.id === `user-planet-${userId}`);
+    if (planet) {
+      const tc = userPlanetTerraformCounts.get(userId) ?? 0;
+      const baseRadius = 50 + tc * 3;
+      const sizeMultiplier = 1 + (sizeLevel * 0.2);
+      planet.radius = baseRadius * sizeMultiplier;
     }
   }
 
@@ -594,19 +615,23 @@ export class SpaceGame {
       const planetData = userPlanets?.[userId];
       const pos = planetPositions[i];
       const terraformCount = planetData?.terraformCount || 0;
+      const sizeLevel = planetData?.sizeLevel || 0;
 
-      // Store terraform count for scaling during render
+      // Store terraform count and size level for scaling during render
       userPlanetTerraformCounts.set(userId, terraformCount);
+      userPlanetSizeLevels.set(userId, sizeLevel);
 
-      // Base radius grows with each terraform (5% per terraform)
+      // Base radius grows with terraform count and size level (20% per size level)
       const baseRadius = 50 + terraformCount * 3;
+      const sizeMultiplier = 1 + (sizeLevel * 0.2); // 20% per level
+      const finalRadius = baseRadius * sizeMultiplier;
 
       const planet: Planet = {
         id: `user-planet-${userId}`,
         name: `${userId.charAt(0).toUpperCase() + userId.slice(1)}'s World`,
         x: pos.x,
         y: pos.y,
-        radius: baseRadius,
+        radius: finalRadius,
         color: colors.base,
         glowColor: colors.base + '60',
         completed: false,

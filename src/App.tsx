@@ -79,10 +79,14 @@ const POINTS_PER_SIZE = { small: 50, medium: 100, big: 200 };
 const VISUAL_UPGRADE_COST = 75;
 
 // Programmatic ship effects (no AI needed - instant purchase)
-const SIZE_EFFECT = { id: 'size', name: 'Size +10%', icon: '📈', cost: 50, type: 'size' as const };
+// Size upgrades: 5 levels with increasing costs (ship)
+const SIZE_COSTS = [40, 60, 90, 130, 180]; // Cost per level
 
 // Speed upgrades: 5 levels with increasing costs
 const SPEED_COSTS = [30, 50, 80, 120, 180]; // Cost per level
+
+// Planet size upgrades: 5 levels with increasing costs
+const PLANET_SIZE_COSTS = [50, 80, 120, 170, 230]; // Cost per level
 
 const GLOW_EFFECTS = [
   { id: 'glow_orange', name: 'Orange', icon: '🟠', cost: 30, value: '#ff8800' },
@@ -147,6 +151,7 @@ interface UserPlanet {
   imageUrl: string;
   terraformCount: number;
   history: { imageUrl: string; description: string; timestamp: number }[];
+  sizeLevel: number; // 0-5 levels
 }
 
 const loadUserPlanets = (): Record<string, UserPlanet> => {
@@ -578,10 +583,11 @@ function App() {
             imageUrl: newImageUrl,
             terraformCount: 0,
             history: [],
+            sizeLevel: 0,
           }
         }));
 
-        gameRef.current?.updateUserPlanetImage(userId, newImageUrl, 0);
+        gameRef.current?.updateUserPlanetImage(userId, newImageUrl, 0, 0);
       }
 
       setIsUpgrading(false);
@@ -672,11 +678,12 @@ function App() {
               description: promptText,
               timestamp: Date.now(),
             }],
+            sizeLevel: currentPlanet.sizeLevel,
           }
         }));
 
         // Update in game (with new size)
-        gameRef.current?.updateUserPlanetImage(userId, newImageUrl, currentPlanet.terraformCount + 1);
+        gameRef.current?.updateUserPlanetImage(userId, newImageUrl, currentPlanet.terraformCount + 1, currentPlanet.sizeLevel);
       }
 
       setIsUpgrading(false);
@@ -714,11 +721,36 @@ function App() {
 
   // Get a user's planet
   const getUserPlanet = (userId: string): UserPlanet => {
-    return userPlanets[userId] || {
-      imageUrl: DEFAULT_PLANET_IMAGE,
-      terraformCount: 0,
-      history: [],
+    const planet = userPlanets[userId];
+    return {
+      imageUrl: planet?.imageUrl || DEFAULT_PLANET_IMAGE,
+      terraformCount: planet?.terraformCount || 0,
+      history: planet?.history || [],
+      sizeLevel: planet?.sizeLevel || 0,
     };
+  };
+
+  // Buy planet size upgrade (max 5 levels)
+  const buyPlanetSizeUpgrade = () => {
+    const userId = state.currentUser || '';
+    const currentPlanet = getUserPlanet(userId);
+    const currentLevel = currentPlanet.sizeLevel;
+
+    if (currentLevel >= 5) return;
+    const cost = PLANET_SIZE_COSTS[currentLevel];
+    if (teamPoints < cost) return;
+
+    const newLevel = currentLevel + 1;
+    setTeamPoints(prev => prev - cost);
+    setUserPlanets(prev => ({
+      ...prev,
+      [userId]: {
+        ...currentPlanet,
+        sizeLevel: newLevel,
+      }
+    }));
+    gameRef.current?.updateUserPlanetSize(userId, newLevel);
+    soundManager.playUIClick();
   };
 
   // Fire confetti based on size
@@ -909,17 +941,20 @@ function App() {
     }
   };
 
-  // Buy size upgrade
+  // Buy size upgrade (max 5 levels)
   const buySizeUpgrade = () => {
-    if (teamPoints < SIZE_EFFECT.cost) return;
-
-    const userId = state.currentUser || 'default';
     const currentShip = getCurrentUserShip();
     const currentEffects = getEffectsWithDefaults(currentShip.effects);
+    const currentLevel = Math.floor(currentEffects.sizeBonus / 10); // Convert old percentage to level
 
-    const newEffects = { ...currentEffects, sizeBonus: currentEffects.sizeBonus + 10 };
+    if (currentLevel >= 5) return;
+    const cost = SIZE_COSTS[currentLevel];
+    if (teamPoints < cost) return;
 
-    setTeamPoints(prev => prev - SIZE_EFFECT.cost);
+    const userId = state.currentUser || 'default';
+    const newEffects = { ...currentEffects, sizeBonus: (currentLevel + 1) * 10 }; // Store as percentage for compatibility
+
+    setTeamPoints(prev => prev - cost);
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playUIClick();
   };
@@ -1341,26 +1376,48 @@ function App() {
             <div style={styles.shopSection}>
               <h3 style={styles.shopSectionTitle}>⚡ Instant Effects</h3>
 
-              {/* Size Upgrade */}
-              <div style={styles.effectLane}>
-                <div style={styles.effectLaneLabel}>
-                  <span style={styles.effectLaneIcon}>📈</span>
-                  <span>Size</span>
-                </div>
-                <div style={styles.effectLaneContent}>
-                  <span style={styles.effectLaneValue}>+{getEffectsWithDefaults(getCurrentUserShip().effects).sizeBonus}%</span>
-                  <button
-                    style={{
-                      ...styles.effectBuyButton,
-                      opacity: teamPoints >= SIZE_EFFECT.cost ? 1 : 0.5,
-                    }}
-                    onClick={buySizeUpgrade}
-                    disabled={teamPoints < SIZE_EFFECT.cost}
-                  >
-                    +10% ({SIZE_EFFECT.cost} 💎)
-                  </button>
-                </div>
-              </div>
+              {/* Size Upgrade with dots */}
+              {(() => {
+                const currentLevel = Math.floor(getEffectsWithDefaults(getCurrentUserShip().effects).sizeBonus / 10);
+                const nextCost = currentLevel < 5 ? SIZE_COSTS[currentLevel] : null;
+                const canBuy = nextCost !== null && teamPoints >= nextCost;
+                return (
+                  <div style={styles.effectLane}>
+                    <div style={styles.effectLaneLabel}>
+                      <span style={styles.effectLaneIcon}>📈</span>
+                      <span>Size</span>
+                    </div>
+                    <div style={styles.effectLaneContent}>
+                      <div style={styles.speedDots}>
+                        {[0, 1, 2, 3, 4].map(i => (
+                          <div
+                            key={i}
+                            style={{
+                              ...styles.speedDot,
+                              background: i < currentLevel ? '#ffa500' : 'rgba(255,255,255,0.15)',
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <span style={styles.effectLaneValue}>+{currentLevel * 10}%</span>
+                      {nextCost !== null ? (
+                        <button
+                          style={{
+                            ...styles.effectBuyButton,
+                            opacity: canBuy ? 1 : 0.5,
+                          }}
+                          onClick={buySizeUpgrade}
+                          disabled={!canBuy}
+                        >
+                          +10% ({nextCost} 💎)
+                        </button>
+                      ) : (
+                        <span style={styles.effectMaxed}>MAX</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Speed Upgrade with dots */}
               {(() => {
@@ -1733,13 +1790,56 @@ function App() {
               </div>
             ) : (
               <>
+                {/* Planet Size Upgrade */}
+                {(() => {
+                  const currentLevel = getUserPlanet(state.currentUser || '').sizeLevel;
+                  const nextCost = currentLevel < 5 ? PLANET_SIZE_COSTS[currentLevel] : null;
+                  const canBuy = nextCost !== null && teamPoints >= nextCost;
+                  return (
+                    <div style={{ ...styles.effectLane, marginBottom: '1rem' }}>
+                      <div style={styles.effectLaneLabel}>
+                        <span style={styles.effectLaneIcon}>🌍</span>
+                        <span>Size</span>
+                      </div>
+                      <div style={styles.effectLaneContent}>
+                        <div style={styles.speedDots}>
+                          {[0, 1, 2, 3, 4].map(i => (
+                            <div
+                              key={i}
+                              style={{
+                                ...styles.speedDot,
+                                background: i < currentLevel ? currentUser?.color || '#ffa500' : 'rgba(255,255,255,0.15)',
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <span style={styles.effectLaneValue}>+{currentLevel * 20}%</span>
+                        {nextCost !== null ? (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              opacity: canBuy ? 1 : 0.5,
+                            }}
+                            onClick={buyPlanetSizeUpgrade}
+                            disabled={!canBuy}
+                          >
+                            +20% ({nextCost} 💎)
+                          </button>
+                        ) : (
+                          <span style={styles.effectMaxed}>MAX</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Terraform history */}
                 {getUserPlanet(state.currentUser || '').history.length > 0 && (
                   <div style={{ marginBottom: '1rem' }}>
                     <h4 style={{ color: '#888', fontSize: '0.8rem', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
                       Terraform History
                     </h4>
-                    <div style={{ maxHeight: 150, overflowY: 'auto' }}>
+                    <div style={{ maxHeight: 100, overflowY: 'auto' }}>
                       {getUserPlanet(state.currentUser || '').history.map((entry, i) => (
                         <div key={i} style={styles.historyItem}>
                           <img src={entry.imageUrl} alt="" style={styles.historyThumb} />
@@ -1762,8 +1862,8 @@ function App() {
                   </div>
                 )}
 
-                <p style={{ color: '#888', fontSize: '0.85rem', marginBottom: '1rem', textAlign: 'center' }}>
-                  Cost: 50 points per terraform
+                <p style={{ color: '#888', fontSize: '0.8rem', marginBottom: '0.75rem', textAlign: 'center' }}>
+                  Terraform: 50 💎
                 </p>
 
                 <div style={styles.formGroup}>
