@@ -97,16 +97,9 @@ const SHIP_FRICTION = 0.992;
 const DOCKING_DISTANCE = 50;
 const PLANET_INFO_DISTANCE = 200;
 
-// Smooth multiplayer: Big buffer + Catmull-Rom spline + Dead reckoning
-const SNAPSHOT_BUFFER_SIZE = 30;       // Keep plenty of history for spline interpolation
-const RENDER_DELAY = 400;              // Fixed 400ms delay - guarantees smooth visuals
-const BLEND_CORRECTION_TIME = 150;     // Blend corrections over 150ms (no snapping)
-const SHIP_COLLISION_RADIUS = 25;      // Collision radius for ship-to-ship collision
-const COLLISION_RESTITUTION = 0.7;     // Bounce energy retention (0-1)
-
-// Dead reckoning physics (match local ship physics for prediction)
-const DR_FRICTION = 0.992;             // Same as SHIP_FRICTION
-const DR_MAX_SPEED = 7;                // Same as SHIP_MAX_SPEED
+// Smooth multiplayer interpolation
+const SNAPSHOT_BUFFER_SIZE = 30;
+const LERP_FACTOR = 0.15;              // 15% per frame - balance of smooth and responsive
 
 interface BlackHole {
   x: number;
@@ -569,6 +562,18 @@ export class SpaceGame {
     }
   }
 
+  public syncNotionPlanets(notionPlanets: Planet[]) {
+    console.log('[SpaceGame] syncNotionPlanets:', notionPlanets.length, 'planets');
+    // Remove old notion planets
+    this.state.planets = this.state.planets.filter(p => !p.id.startsWith('notion-'));
+
+    // Add new notion planets
+    for (const planet of notionPlanets) {
+      this.state.planets.push(planet);
+      console.log('[SpaceGame] Added:', planet.name, 'at', planet.x, planet.y);
+    }
+  }
+
   private setupInput() {
     window.addEventListener('keydown', (e) => {
       // Don't capture keys when typing in input fields
@@ -845,68 +850,6 @@ export class SpaceGame {
 
         // Sound: collision
         soundManager.playCollision();
-      }
-    }
-
-    // Ship-to-ship collision with other players
-    for (const otherPlayer of this.otherPlayers) {
-      // Use render state for collision (interpolated position + collision offset)
-      const renderState = this.renderStates.get(otherPlayer.id);
-      if (!renderState) continue;
-
-      // Include collision offset in position for collision detection
-      const otherX = renderState.renderX + renderState.collisionOffsetX;
-      const otherY = renderState.renderY + renderState.collisionOffsetY;
-      const otherVx = renderState.renderVx + renderState.collisionVx;
-      const otherVy = renderState.renderVy + renderState.collisionVy;
-
-      // Calculate wrapped distance
-      const { dx, dy, dist } = this.getWrappedDistance(ship.x, ship.y, otherX, otherY);
-      const minDist = SHIP_COLLISION_RADIUS * 2; // Both ships have the same radius
-
-      if (dist < minDist && dist > 0) {
-        // Collision detected
-        const overlap = minDist - dist;
-        const nx = -dx / dist; // Normal pointing away from other ship (toward us)
-        const ny = -dy / dist;
-
-        // Push both ships out of collision (half each)
-        const pushAmount = overlap * 0.5;
-        ship.x += nx * pushAmount;
-        ship.y += ny * pushAmount;
-
-        // Push other ship visually (opposite direction)
-        renderState.collisionOffsetX -= nx * pushAmount;
-        renderState.collisionOffsetY -= ny * pushAmount;
-
-        // Elastic collision response with equal masses
-        const relVx = ship.vx - otherVx;
-        const relVy = ship.vy - otherVy;
-
-        // Relative velocity along collision normal
-        const relVelDotNormal = relVx * nx + relVy * ny;
-
-        // Only respond if ships are moving toward each other
-        if (relVelDotNormal < 0) {
-          // Apply impulse with restitution (split between both ships)
-          const impulse = -(1 + COLLISION_RESTITUTION) * relVelDotNormal * 0.5;
-
-          // Apply to local ship
-          ship.vx += impulse * nx;
-          ship.vy += impulse * ny;
-
-          // Apply opposite impulse to other ship's visual velocity
-          renderState.collisionVx -= impulse * nx;
-          renderState.collisionVy -= impulse * ny;
-
-          // Emit collision particles at collision point
-          const collisionX = (ship.x + otherX) / 2;
-          const collisionY = (ship.y + otherY) / 2;
-          this.emitShipCollisionParticles(collisionX, collisionY, '#ffffff', otherPlayer.color);
-
-          // Play collision sound
-          soundManager.playCollision();
-        }
       }
     }
 
@@ -1477,7 +1420,10 @@ export class SpaceGame {
    */
   private updateOtherPlayersParticles() {
     for (const player of this.otherPlayers) {
-      if (player.thrusting && Math.random() < 0.3) {
+      // Use render state for interpolated thrusting
+      const renderState = this.renderStates.get(player.id);
+      const isThrusting = renderState?.renderThrusting ?? player.thrusting;
+      if (isThrusting && Math.random() < 0.3) {
         this.emitOtherPlayerThrust(player);
       }
     }
@@ -1858,8 +1804,12 @@ export class SpaceGame {
     const { ctx, state } = this;
     const { camera, planets } = state;
 
-    const planetsByType: Record<string, Planet[]> = { business: [], product: [], achievement: [] };
-    planets.forEach(p => planetsByType[p.type].push(p));
+    const planetsByType: Record<string, Planet[]> = { business: [], product: [], achievement: [], notion: [] };
+    planets.forEach(p => {
+      if (planetsByType[p.type]) {
+        planetsByType[p.type].push(p);
+      }
+    });
 
     // Sort by Y position for proper path
     Object.values(planetsByType).forEach(group => {
@@ -2103,10 +2053,11 @@ export class SpaceGame {
     ctx.fillText(planet.name, x, y + planet.radius + 25);
 
     // Type indicator
-    const typeColors = { business: '#4ade80', product: '#5490ff', achievement: '#ffd700' };
-    ctx.fillStyle = typeColors[planet.type] + '80';
+    const typeColors: Record<string, string> = { business: '#4ade80', product: '#5490ff', achievement: '#ffd700', notion: '#94a3b8' };
+    ctx.fillStyle = (typeColors[planet.type] || '#94a3b8') + '80';
     ctx.font = '9px Space Grotesk';
-    ctx.fillText(planet.type.toUpperCase(), x, y + planet.radius + 38);
+    const typeLabel = planet.type === 'notion' ? 'NOTION' : planet.type.toUpperCase();
+    ctx.fillText(typeLabel, x, y + planet.radius + 38);
   }
 
   private drawShip() {
@@ -2309,7 +2260,10 @@ export class SpaceGame {
 
     const boxWidth = 320;
     const hasRealReward = planet.realWorldReward && !planet.completed;
-    const boxHeight = hasRealReward ? 140 : 110;
+    const hasNotionUrl = planet.notionUrl && !planet.completed;
+    let boxHeight = 110;
+    if (hasRealReward) boxHeight += 30;
+    if (hasNotionUrl) boxHeight += 20;
     const boxX = canvas.width / 2 - boxWidth / 2;
     const boxY = canvas.height - boxHeight - 20;
 
@@ -2332,11 +2286,12 @@ export class SpaceGame {
     ctx.fillText(nameText, canvas.width / 2, boxY + 24);
 
     // Type badge + owner info
-    const typeColors: Record<string, string> = { business: '#4ade80', product: '#5490ff', achievement: '#ffd700' };
-    ctx.fillStyle = typeColors[planet.type];
+    const typeColors: Record<string, string> = { business: '#4ade80', product: '#5490ff', achievement: '#ffd700', notion: '#94a3b8' };
+    ctx.fillStyle = typeColors[planet.type] || '#94a3b8';
     ctx.font = '10px Space Grotesk';
+    const typeLabel = planet.type === 'notion' ? 'NOTION TASK' : planet.type.toUpperCase();
     const ownerText = ownerName ? ` • ${ownerName}'s Task` : ' • Shared Task';
-    ctx.fillText(planet.type.toUpperCase() + ownerText, canvas.width / 2, boxY + 40);
+    ctx.fillText(typeLabel + ownerText, canvas.width / 2, boxY + 40);
 
     // Description
     if (planet.description) {
@@ -2367,6 +2322,14 @@ export class SpaceGame {
       ctx.fillStyle = isLocked ? '#884466' : '#ff6b9d';
       ctx.font = 'bold 11px Space Grotesk';
       ctx.fillText(`🎁 Real Reward: ${planet.realWorldReward}`, canvas.width / 2, boxY + 100);
+    }
+
+    // Notion URL hint
+    if (hasNotionUrl) {
+      ctx.fillStyle = isLocked ? '#555' : '#64748b';
+      ctx.font = '10px Space Grotesk';
+      const notionY = hasRealReward ? boxY + 118 : boxY + 98;
+      ctx.fillText('📋 Click to open in Notion', canvas.width / 2, notionY);
     }
 
     // Dock prompt / locked message / completed status
@@ -2515,27 +2478,6 @@ export class SpaceGame {
       renderVy: vy,
       renderThrusting: thrusting,
       lastUpdateTime: Date.now(),
-      // Dead reckoning
-      deadReckonX: x,
-      deadReckonY: y,
-      deadReckonVx: vx,
-      deadReckonVy: vy,
-      deadReckonRotation: rotation,
-      isDeadReckoning: false,
-      // Blend correction
-      blendStartX: x,
-      blendStartY: y,
-      blendStartRotation: rotation,
-      blendTargetX: x,
-      blendTargetY: y,
-      blendTargetRotation: rotation,
-      blendProgress: 1,
-      isBlending: false,
-      // Collision
-      collisionOffsetX: 0,
-      collisionOffsetY: 0,
-      collisionVx: 0,
-      collisionVy: 0,
     };
   }
 
@@ -2642,285 +2584,176 @@ export class SpaceGame {
   }
 
   /**
-   * Catmull-Rom spline interpolation through 4 points.
-   * Creates smooth curves that pass through all control points.
+   * Find two snapshots that bracket the render time (one before, one after).
    */
-  private catmullRomInterpolate(p0: number, p1: number, p2: number, p3: number, t: number): number {
-    const t2 = t * t;
-    const t3 = t2 * t;
-    return 0.5 * (
-      (2 * p1) +
-      (-p0 + p2) * t +
-      (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
-      (-p0 + 3 * p1 - 3 * p2 + p3) * t3
-    );
-  }
+  private findBracketingSnapshots(snapshots: PositionSnapshot[], renderTime: number): {
+    before: PositionSnapshot | null;
+    after: PositionSnapshot | null;
+  } {
+    let before: PositionSnapshot | null = null;
+    let after: PositionSnapshot | null = null;
 
-  /**
-   * Dead reckoning: simulate physics locally when no network data available.
-   */
-  private deadReckon(state: InterpolationState, deltaTime: number) {
-    // Apply friction (same as ship)
-    state.deadReckonVx *= Math.pow(DR_FRICTION, deltaTime * 60);
-    state.deadReckonVy *= Math.pow(DR_FRICTION, deltaTime * 60);
-
-    // Clamp to max speed
-    const speed = Math.sqrt(state.deadReckonVx ** 2 + state.deadReckonVy ** 2);
-    if (speed > DR_MAX_SPEED) {
-      state.deadReckonVx = (state.deadReckonVx / speed) * DR_MAX_SPEED;
-      state.deadReckonVy = (state.deadReckonVy / speed) * DR_MAX_SPEED;
+    for (const snap of snapshots) {
+      if (snap.receivedAt <= renderTime) {
+        before = snap; // Keep updating - want the latest one before renderTime
+      } else if (!after) {
+        after = snap;  // First one after renderTime
+        break;
+      }
     }
 
-    // Update position
-    state.deadReckonX += state.deadReckonVx * deltaTime * 60;
-    state.deadReckonY += state.deadReckonVy * deltaTime * 60;
-
-    // Wrap world bounds
-    const wrapped = this.wrapPosition(state.deadReckonX, state.deadReckonY);
-    state.deadReckonX = wrapped.x;
-    state.deadReckonY = wrapped.y;
+    return { before, after };
   }
 
   /**
-   * Start blending from current render position to a new target.
+   * Calculate target position by interpolating between two known snapshots.
+   * Returns the ideal position based on exact timestamps.
    */
-  private startBlendCorrection(state: InterpolationState, targetX: number, targetY: number, targetRotation: number) {
-    state.blendStartX = state.renderX;
-    state.blendStartY = state.renderY;
-    state.blendStartRotation = state.renderRotation;
-    state.blendTargetX = targetX;
-    state.blendTargetY = targetY;
-    state.blendTargetRotation = targetRotation;
-    state.blendProgress = 0;
-    state.isBlending = true;
+  private calculateInterpolatedTarget(
+    before: PositionSnapshot,
+    after: PositionSnapshot,
+    renderTime: number
+  ): { x: number; y: number; rotation: number; vx: number; vy: number; thrusting: boolean } {
+    // Calculate interpolation factor (0 = before, 1 = after)
+    const duration = after.receivedAt - before.receivedAt;
+    const t = duration > 0 ? (renderTime - before.receivedAt) / duration : 0;
+    const clampedT = Math.max(0, Math.min(1, t));
+
+    // Unwrap positions for smooth world-wrapping
+    const unwrappedAfter = this.unwrapPosition(before.x, before.y, after.x, after.y);
+
+    // Interpolate position
+    let targetX = before.x + (unwrappedAfter.x - before.x) * clampedT;
+    let targetY = before.y + (unwrappedAfter.y - before.y) * clampedT;
+
+    // Wrap back to world bounds
+    const wrapped = this.wrapPosition(targetX, targetY);
+    targetX = wrapped.x;
+    targetY = wrapped.y;
+
+    // Interpolate rotation (handle wraparound)
+    let rotDiff = after.rotation - before.rotation;
+    while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+    while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+    const targetRotation = before.rotation + rotDiff * clampedT;
+
+    // Interpolate velocity
+    const targetVx = before.vx + (after.vx - before.vx) * clampedT;
+    const targetVy = before.vy + (after.vy - before.vy) * clampedT;
+
+    // Use the "after" thrusting state once we're past the midpoint
+    const targetThrusting = clampedT > 0.5 ? after.thrusting : before.thrusting;
+
+    return { x: targetX, y: targetY, rotation: targetRotation, vx: targetVx, vy: targetVy, thrusting: targetThrusting };
+  }
+
+
+  /**
+   * Smoothly blend render state toward a target position.
+   * This prevents snapping and ensures silky smooth movement.
+   */
+  private smoothTowardTarget(
+    renderState: InterpolationState,
+    target: { x: number; y: number; rotation: number; vx: number; vy: number; thrusting: boolean },
+    smoothing: number
+  ) {
+    // Unwrap target position relative to current render position
+    const unwrapped = this.unwrapPosition(renderState.renderX, renderState.renderY, target.x, target.y);
+
+    // Smooth toward target position
+    renderState.renderX += (unwrapped.x - renderState.renderX) * smoothing;
+    renderState.renderY += (unwrapped.y - renderState.renderY) * smoothing;
+
+    // Wrap back to world bounds
+    const wrapped = this.wrapPosition(renderState.renderX, renderState.renderY);
+    renderState.renderX = wrapped.x;
+    renderState.renderY = wrapped.y;
+
+    // Smooth rotation (handle wraparound)
+    let rotDiff = target.rotation - renderState.renderRotation;
+    while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+    while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+    renderState.renderRotation += rotDiff * smoothing;
+
+    // Smooth velocity
+    renderState.renderVx += (target.vx - renderState.renderVx) * smoothing;
+    renderState.renderVy += (target.vy - renderState.renderVy) * smoothing;
+
+    // Use target thrusting state
+    renderState.renderThrusting = target.thrusting;
   }
 
   /**
-   * Main interpolation: Catmull-Rom spline + Dead reckoning + Blend corrections.
-   * Guarantees smooth visuals regardless of network conditions.
+   * Directly set render state to target (used when we have good interpolation data).
+   */
+  private setRenderStateDirectly(
+    renderState: InterpolationState,
+    target: { x: number; y: number; rotation: number; vx: number; vy: number; thrusting: boolean }
+  ) {
+    renderState.renderX = target.x;
+    renderState.renderY = target.y;
+    renderState.renderRotation = target.rotation;
+    renderState.renderVx = target.vx;
+    renderState.renderVy = target.vy;
+    renderState.renderThrusting = target.thrusting;
+  }
+
+  /**
+   * Lerp interpolation with velocity prediction.
+   * Predicts where the ship should be NOW based on last snapshot + velocity.
    */
   private updateOtherPlayersInterpolation() {
     const now = Date.now();
-    const deltaTime = 1 / 60; // Assume 60fps
 
     for (const player of this.otherPlayers) {
       const renderState = this.renderStates.get(player.id);
       if (!renderState) continue;
 
       const snapshots = this.playerSnapshots.get(player.id) || [];
+      const latest = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
 
-      // Calculate effective render delay - ramp up from 0 to RENDER_DELAY as buffer fills
-      // This prevents the "frozen at spawn" issue when player first joins
-      let effectiveDelay = RENDER_DELAY;
-      if (snapshots.length > 0) {
-        const bufferAge = now - snapshots[0].receivedAt; // How old is our oldest snapshot
-        effectiveDelay = Math.min(RENDER_DELAY, bufferAge * 0.8); // Use 80% of buffer age, max RENDER_DELAY
-      }
-      const renderTime = now - effectiveDelay;
+      let targetX: number;
+      let targetY: number;
+      let targetRotation: number;
+      let targetThrusting: boolean;
 
-      // Find snapshots for Catmull-Rom spline (need 4 points ideally)
-      let p0: PositionSnapshot | null = null;
-      let p1: PositionSnapshot | null = null;
-      let p2: PositionSnapshot | null = null;
-      let p3: PositionSnapshot | null = null;
-
-      for (let i = 0; i < snapshots.length; i++) {
-        if (snapshots[i].receivedAt <= renderTime) {
-          p0 = p1;
-          p1 = snapshots[i];
-        } else {
-          if (!p2) p2 = snapshots[i];
-          else if (!p3) p3 = snapshots[i];
-        }
-      }
-
-      let newX: number;
-      let newY: number;
-      let newRotation: number;
-      let newVx: number;
-      let newVy: number;
-      let newThrusting: boolean;
-      let usedSpline = false;
-
-      if (p1 && p2) {
-        // We have data to interpolate - use Catmull-Rom spline
-        const dt = p2.receivedAt - p1.receivedAt;
-        const t = dt > 0 ? Math.max(0, Math.min(1, (renderTime - p1.receivedAt) / dt)) : 0;
-
-        // Unwrap positions for continuous interpolation
-        const unwrappedP2 = this.unwrapPosition(p1.x, p1.y, p2.x, p2.y);
-
-        if (p0 && p3) {
-          // Full 4-point Catmull-Rom spline (smoothest)
-          const unwrappedP0 = this.unwrapPosition(p1.x, p1.y, p0.x, p0.y);
-          const unwrappedP3 = this.unwrapPosition(p1.x, p1.y, p3.x, p3.y);
-
-          newX = this.catmullRomInterpolate(unwrappedP0.x, p1.x, unwrappedP2.x, unwrappedP3.x, t);
-          newY = this.catmullRomInterpolate(unwrappedP0.y, p1.y, unwrappedP2.y, unwrappedP3.y, t);
-        } else {
-          // Fall back to linear interpolation with just 2 points
-          newX = p1.x + (unwrappedP2.x - p1.x) * t;
-          newY = p1.y + (unwrappedP2.y - p1.y) * t;
-        }
-
-        // Wrap result
-        const wrapped = this.wrapPosition(newX, newY);
-        newX = wrapped.x;
-        newY = wrapped.y;
-
-        // Interpolate rotation (handle wraparound)
-        let rotDiff = p2.rotation - p1.rotation;
-        while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-        while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-        newRotation = p1.rotation + rotDiff * t;
-
-        // Interpolate velocity
-        newVx = p1.vx + (p2.vx - p1.vx) * t;
-        newVy = p1.vy + (p2.vy - p1.vy) * t;
-        newThrusting = t < 0.5 ? p1.thrusting : p2.thrusting;
-
-        // Update dead reckoning state
-        renderState.deadReckonX = newX;
-        renderState.deadReckonY = newY;
-        renderState.deadReckonVx = newVx;
-        renderState.deadReckonVy = newVy;
-        renderState.deadReckonRotation = newRotation;
-        renderState.isDeadReckoning = false;
-        usedSpline = true;
-
-      } else if (p1) {
-        // Only have past data - use dead reckoning
-        if (!renderState.isDeadReckoning) {
-          renderState.deadReckonX = p1.x;
-          renderState.deadReckonY = p1.y;
-          renderState.deadReckonVx = p1.vx;
-          renderState.deadReckonVy = p1.vy;
-          renderState.deadReckonRotation = p1.rotation;
-          renderState.isDeadReckoning = true;
-        }
-
-        this.deadReckon(renderState, deltaTime);
-
-        newX = renderState.deadReckonX;
-        newY = renderState.deadReckonY;
-        newRotation = renderState.deadReckonRotation;
-        newVx = renderState.deadReckonVx;
-        newVy = renderState.deadReckonVy;
-        newThrusting = p1.thrusting;
-
-      } else if (snapshots.length >= 2) {
-        // No p1 yet (buffer warming up) but have snapshots - interpolate between first two
-        const s0 = snapshots[0];
-        const s1 = snapshots[1];
-        const dt = s1.receivedAt - s0.receivedAt;
-        const elapsed = now - s0.receivedAt;
-        const t = dt > 0 ? Math.max(0, Math.min(1, elapsed / dt)) : 1;
-
-        const unwrapped = this.unwrapPosition(s0.x, s0.y, s1.x, s1.y);
-        newX = s0.x + (unwrapped.x - s0.x) * t;
-        newY = s0.y + (unwrapped.y - s0.y) * t;
-
-        let rotDiff = s1.rotation - s0.rotation;
-        while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-        while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-        newRotation = s0.rotation + rotDiff * t;
-
-        newVx = s0.vx + (s1.vx - s0.vx) * t;
-        newVy = s0.vy + (s1.vy - s0.vy) * t;
-        newThrusting = s1.thrusting;
-
-        const wrapped = this.wrapPosition(newX, newY);
-        newX = wrapped.x;
-        newY = wrapped.y;
-
-      } else if (snapshots.length === 1) {
-        // Only one snapshot - use it directly
-        const s = snapshots[0];
-        newX = s.x;
-        newY = s.y;
-        newRotation = s.rotation;
-        newVx = s.vx;
-        newVy = s.vy;
-        newThrusting = s.thrusting;
-
+      if (latest) {
+        // Predict where the ship should be NOW based on snapshot + velocity
+        const timeSinceSnapshot = (now - latest.receivedAt) / 1000; // seconds
+        // Cap prediction to 200ms to avoid overshooting
+        const predictionTime = Math.min(timeSinceSnapshot, 0.2);
+        // vx/vy are per-frame at 60fps, so multiply by 60 to get per-second
+        targetX = latest.x + latest.vx * predictionTime * 60;
+        targetY = latest.y + latest.vy * predictionTime * 60;
+        targetRotation = latest.rotation;
+        targetThrusting = latest.thrusting;
       } else {
-        // No snapshots at all - stay at current position
-        newX = renderState.renderX;
-        newY = renderState.renderY;
-        newRotation = renderState.renderRotation;
-        newVx = renderState.renderVx;
-        newVy = renderState.renderVy;
-        newThrusting = renderState.renderThrusting;
+        targetX = player.x;
+        targetY = player.y;
+        targetRotation = player.rotation;
+        targetThrusting = player.thrusting;
       }
 
-      // Check if we need to blend (coming out of dead reckoning)
-      if (usedSpline && renderState.isDeadReckoning) {
-        const errorDist = Math.sqrt(
-          Math.pow(newX - renderState.renderX, 2) +
-          Math.pow(newY - renderState.renderY, 2)
-        );
-        if (errorDist > 5) {
-          this.startBlendCorrection(renderState, newX, newY, newRotation);
-        }
-      }
+      // Unwrap target for world wrapping
+      const unwrapped = this.unwrapPosition(renderState.renderX, renderState.renderY, targetX, targetY);
 
-      // Apply blend if active
-      if (renderState.isBlending) {
-        renderState.blendProgress += deltaTime * 1000 / BLEND_CORRECTION_TIME;
+      // Lerp toward predicted target
+      renderState.renderX += (unwrapped.x - renderState.renderX) * LERP_FACTOR;
+      renderState.renderY += (unwrapped.y - renderState.renderY) * LERP_FACTOR;
 
-        if (renderState.blendProgress >= 1) {
-          renderState.blendProgress = 1;
-          renderState.isBlending = false;
-          renderState.renderX = newX;
-          renderState.renderY = newY;
-          renderState.renderRotation = newRotation;
-        } else {
-          // Ease-out curve for smooth blend
-          const easeT = 1 - Math.pow(1 - renderState.blendProgress, 3);
+      // Wrap back to world bounds
+      const wrapped = this.wrapPosition(renderState.renderX, renderState.renderY);
+      renderState.renderX = wrapped.x;
+      renderState.renderY = wrapped.y;
 
-          const blendX = renderState.blendStartX + (newX - renderState.blendStartX) * easeT;
-          const blendY = renderState.blendStartY + (newY - renderState.blendStartY) * easeT;
+      // Lerp rotation
+      let rotDiff = targetRotation - renderState.renderRotation;
+      while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+      while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+      renderState.renderRotation += rotDiff * LERP_FACTOR;
 
-          let rotDiff = newRotation - renderState.blendStartRotation;
-          while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-          while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-          const blendRot = renderState.blendStartRotation + rotDiff * easeT;
-
-          const wrapped = this.wrapPosition(blendX, blendY);
-          renderState.renderX = wrapped.x;
-          renderState.renderY = wrapped.y;
-          renderState.renderRotation = blendRot;
-        }
-      } else {
-        renderState.renderX = newX;
-        renderState.renderY = newY;
-        renderState.renderRotation = newRotation;
-      }
-
-      renderState.renderVx = newVx;
-      renderState.renderVy = newVy;
-      renderState.renderThrusting = newThrusting;
-
-      // Collision physics
-      const collisionFriction = 0.9;
-      const offsetDecay = 0.88;
-      const maxOffset = 60;
-      const maxCollisionVel = 15;
-
-      renderState.collisionOffsetX += renderState.collisionVx;
-      renderState.collisionOffsetY += renderState.collisionVy;
-      renderState.collisionVx = Math.max(-maxCollisionVel, Math.min(maxCollisionVel, renderState.collisionVx));
-      renderState.collisionVy = Math.max(-maxCollisionVel, Math.min(maxCollisionVel, renderState.collisionVy));
-      renderState.collisionOffsetX = Math.max(-maxOffset, Math.min(maxOffset, renderState.collisionOffsetX));
-      renderState.collisionOffsetY = Math.max(-maxOffset, Math.min(maxOffset, renderState.collisionOffsetY));
-      renderState.collisionVx *= collisionFriction;
-      renderState.collisionVy *= collisionFriction;
-      renderState.collisionOffsetX *= offsetDecay;
-      renderState.collisionOffsetY *= offsetDecay;
-      if (Math.abs(renderState.collisionVx) < 0.05) renderState.collisionVx = 0;
-      if (Math.abs(renderState.collisionVy) < 0.05) renderState.collisionVy = 0;
-      if (Math.abs(renderState.collisionOffsetX) < 0.5) renderState.collisionOffsetX = 0;
-      if (Math.abs(renderState.collisionOffsetY) < 0.5) renderState.collisionOffsetY = 0;
+      // Thrusting - direct
+      renderState.renderThrusting = targetThrusting;
 
       renderState.lastUpdateTime = now;
     }
@@ -2972,20 +2805,17 @@ export class SpaceGame {
    */
   private renderOtherPlayers() {
     for (const player of this.otherPlayers) {
-      // Use render state for smooth interpolated position + collision offset
+      // Use render state for smooth interpolated position
       const renderState = this.renderStates.get(player.id);
-      const baseX = renderState?.renderX ?? player.x;
-      const baseY = renderState?.renderY ?? player.y;
-      const offsetX = renderState?.collisionOffsetX ?? 0;
-      const offsetY = renderState?.collisionOffsetY ?? 0;
-      const renderX = baseX + offsetX;
-      const renderY = baseY + offsetY;
+      const renderX = renderState?.renderX ?? player.x;
+      const renderY = renderState?.renderY ?? player.y;
       const renderRotation = renderState?.renderRotation ?? player.rotation;
+      const renderThrusting = renderState?.renderThrusting ?? player.thrusting;
 
       // Draw at all wrapped positions for seamless world wrapping
       const positions = this.getWrappedPositions(renderX, renderY, 80);
       for (const pos of positions) {
-        this.drawOtherPlayerAt(player, pos.x, pos.y, renderRotation);
+        this.drawOtherPlayerAt(player, pos.x, pos.y, renderRotation, renderThrusting);
       }
     }
   }
@@ -2993,10 +2823,11 @@ export class SpaceGame {
   /**
    * Draw another player's ship at a specific screen position.
    */
-  private drawOtherPlayerAt(player: OtherPlayer, x: number, y: number, rotation?: number) {
+  private drawOtherPlayerAt(player: OtherPlayer, x: number, y: number, rotation?: number, thrusting?: boolean) {
     const { ctx } = this;
     const shipImage = this.otherPlayerImages.get(player.id) || this.baseShipImage;
     const renderRotation = rotation ?? player.rotation;
+    const renderThrusting = thrusting ?? player.thrusting;
 
     ctx.save();
     ctx.translate(x, y);
@@ -3021,7 +2852,7 @@ export class SpaceGame {
     ctx.fill();
 
     // Engine glow when thrusting
-    if (player.thrusting) {
+    if (renderThrusting) {
       const engineGradient = ctx.createRadialGradient(0, shipSize * 0.4, 0, 0, shipSize * 0.4, shipSize * 0.8);
       engineGradient.addColorStop(0, player.color + 'ee');
       engineGradient.addColorStop(0.5, player.color + '88');
@@ -3085,17 +2916,13 @@ export class SpaceGame {
    * Emit thrust particles for another player (simpler version).
    */
   private emitOtherPlayerThrust(player: OtherPlayer) {
-    // Use render state for interpolated position + collision offset
+    // Use render state for interpolated position
     const renderState = this.renderStates.get(player.id);
-    const baseX = renderState?.renderX ?? player.x;
-    const baseY = renderState?.renderY ?? player.y;
-    const offsetX = renderState?.collisionOffsetX ?? 0;
-    const offsetY = renderState?.collisionOffsetY ?? 0;
-    const px = baseX + offsetX;
-    const py = baseY + offsetY;
+    const px = renderState?.renderX ?? player.x;
+    const py = renderState?.renderY ?? player.y;
     const rotation = renderState?.renderRotation ?? player.rotation;
-    const vx = (renderState?.renderVx ?? player.vx) + (renderState?.collisionVx ?? 0);
-    const vy = (renderState?.renderVy ?? player.vy) + (renderState?.collisionVy ?? 0);
+    const vx = renderState?.renderVx ?? player.vx;
+    const vy = renderState?.renderVy ?? player.vy;
 
     const backAngle = rotation + Math.PI;
     const trailType = player.shipEffects?.trailType || 'default';
@@ -3129,27 +2956,5 @@ export class SpaceGame {
       size: Math.random() * 5 + 3,
       color: colors[Math.floor(Math.random() * colors.length)],
     });
-  }
-
-  /**
-   * Emit spark particles for ship-to-ship collision.
-   */
-  private emitShipCollisionParticles(x: number, y: number, color1: string, color2: string) {
-    const colors = [color1, color2, '#ffffff', '#ffff88'];
-
-    for (let i = 0; i < 12; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const speed = Math.random() * 4 + 2;
-      this.state.particles.push({
-        x,
-        y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        life: 20 + Math.random() * 15,
-        maxLife: 35,
-        size: Math.random() * 4 + 2,
-        color: colors[Math.floor(Math.random() * colors.length)],
-      });
-    }
   }
 }

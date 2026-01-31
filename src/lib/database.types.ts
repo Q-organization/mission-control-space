@@ -184,6 +184,53 @@ export interface Database {
           points?: number;
         };
       };
+      notion_planets: {
+        Row: {
+          id: string;
+          team_id: string;
+          notion_task_id: string;
+          name: string;
+          description: string | null;
+          notion_url: string | null;
+          assigned_to: string | null;
+          task_type: string | null;
+          points: number;
+          x: number;
+          y: number;
+          completed: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          team_id: string;
+          notion_task_id: string;
+          name: string;
+          description?: string | null;
+          notion_url?: string | null;
+          assigned_to?: string | null;
+          task_type?: string | null;
+          points?: number;
+          x?: number;
+          y?: number;
+          completed?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          team_id?: string;
+          notion_task_id?: string;
+          name?: string;
+          description?: string | null;
+          notion_url?: string | null;
+          assigned_to?: string | null;
+          task_type?: string | null;
+          points?: number;
+          x?: number;
+          y?: number;
+          completed?: boolean;
+          created_at?: string;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -208,3 +255,7 @@ export type PointTransaction = Database['public']['Tables']['point_transactions'
 export type PointTransactionInsert = Database['public']['Tables']['point_transactions']['Insert'];
 
 export type PointConfig = Database['public']['Tables']['point_config']['Row'];
+
+export type NotionPlanetRow = Database['public']['Tables']['notion_planets']['Row'];
+export type NotionPlanetInsert = Database['public']['Tables']['notion_planets']['Insert'];
+export type NotionPlanetUpdate = Database['public']['Tables']['notion_planets']['Update'];

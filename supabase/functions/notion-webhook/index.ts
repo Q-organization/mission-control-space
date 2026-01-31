@@ -1,5 +1,5 @@
 // Notion Webhook Handler for Mission Control Space
-// Receives webhooks from Notion when tasks are completed and awards points to the team
+// Receives webhooks from Notion when tasks are created/updated and creates planets in the game
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -12,6 +12,7 @@ interface NotionWebhookPayload {
   // Notion task data
   id: string;
   name: string;
+  description?: string;
   type?: string; // bug, feature, epic, etc.
   points?: number; // Custom points property
   assigned_to?: string; // Username of assigned person
@@ -23,6 +24,38 @@ interface PointConfig {
   source: string;
   task_type: string;
   points: number;
+}
+
+// Player zone positions (must match SpaceGame.ts)
+const CENTER_X = 5000;
+const CENTER_Y = 5000;
+const PLAYER_DISTANCE = 3000;
+
+const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
+  'quentin': { x: CENTER_X + PLAYER_DISTANCE, y: CENTER_Y }, // Right
+  'alex': { x: CENTER_X + PLAYER_DISTANCE * 0.7, y: CENTER_Y - PLAYER_DISTANCE * 0.7 }, // Top-Right
+  'armel': { x: CENTER_X, y: CENTER_Y - PLAYER_DISTANCE }, // Top
+  'melia': { x: CENTER_X - PLAYER_DISTANCE * 0.7, y: CENTER_Y - PLAYER_DISTANCE * 0.7 }, // Top-Left
+  'hugue': { x: CENTER_X - PLAYER_DISTANCE, y: CENTER_Y }, // Left
+};
+
+// Default zone for unassigned tasks
+const DEFAULT_ZONE = { x: CENTER_X, y: CENTER_Y + 500 }; // Below center
+
+function getRandomOffset(range: number): number {
+  return (Math.random() - 0.5) * range;
+}
+
+function getPlanetPosition(assignedTo: string | null | undefined): { x: number; y: number } {
+  const baseZone = assignedTo && PLAYER_ZONES[assignedTo.toLowerCase()]
+    ? PLAYER_ZONES[assignedTo.toLowerCase()]
+    : DEFAULT_ZONE;
+
+  // Add random offset within the zone (spread planets around)
+  return {
+    x: baseZone.x + getRandomOffset(800),
+    y: baseZone.y + getRandomOffset(800),
+  };
 }
 
 Deno.serve(async (req) => {
@@ -69,17 +102,17 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Check for duplicate (idempotency)
-    const { data: existingTx } = await supabase
-      .from('point_transactions')
+    // Check for duplicate planet (idempotency)
+    const { data: existingPlanet } = await supabase
+      .from('notion_planets')
       .select('id')
       .eq('notion_task_id', payload.id)
       .single();
 
-    if (existingTx) {
-      console.log('Duplicate webhook for task:', payload.id);
+    if (existingPlanet) {
+      console.log('Planet already exists for task:', payload.id);
       return new Response(
-        JSON.stringify({ message: 'Already processed', task_id: payload.id }),
+        JSON.stringify({ message: 'Planet already exists', task_id: payload.id, planet_id: existingPlanet.id }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -112,9 +145,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Find the team to award points to
-    // For now, we'll award to the first/only team (single team setup)
-    // In a multi-team setup, you'd need to pass team_id in the webhook or match by assigned user
+    // Find the team
     const { data: teams } = await supabase
       .from('teams')
       .select('id, team_points')
@@ -130,60 +161,47 @@ Deno.serve(async (req) => {
 
     const team = teams[0];
 
-    // Find player by username if assigned
-    let playerId: string | null = null;
-    if (payload.assigned_to) {
-      const { data: player } = await supabase
-        .from('players')
-        .select('id')
-        .eq('team_id', team.id)
-        .ilike('username', payload.assigned_to)
-        .single();
+    // Calculate planet position based on assigned user
+    const position = getPlanetPosition(payload.assigned_to);
 
-      if (player) {
-        playerId = player.id;
-      }
-    }
-
-    // Insert point transaction
-    const { error: txError } = await supabase
-      .from('point_transactions')
+    // Create the planet
+    const { data: planet, error: planetError } = await supabase
+      .from('notion_planets')
       .insert({
         team_id: team.id,
-        player_id: playerId,
-        source: 'notion',
         notion_task_id: payload.id,
-        task_name: payload.name,
+        name: payload.name,
+        description: payload.description || null,
+        notion_url: payload.url || null,
+        assigned_to: payload.assigned_to?.toLowerCase() || null,
+        task_type: payload.type || null,
         points: points,
-      });
+        x: Math.round(position.x),
+        y: Math.round(position.y),
+        completed: false,
+      })
+      .select()
+      .single();
 
-    if (txError) {
-      console.error('Failed to insert transaction:', txError);
+    if (planetError) {
+      console.error('Failed to create planet:', planetError);
       return new Response(
-        JSON.stringify({ error: 'Failed to record points' }),
+        JSON.stringify({ error: 'Failed to create planet' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Update team points
-    const { error: updateError } = await supabase
-      .from('teams')
-      .update({ team_points: team.team_points + points })
-      .eq('id', team.id);
-
-    if (updateError) {
-      console.error('Failed to update team points:', updateError);
-      // Transaction was recorded, so we'll return partial success
-    }
-
-    console.log(`Awarded ${points} points to team ${team.id} for task: ${payload.name}`);
+    console.log(`Created planet "${payload.name}" at (${position.x}, ${position.y}) for ${payload.assigned_to || 'unassigned'}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        points_awarded: points,
-        task_id: payload.id,
-        task_name: payload.name,
+        planet_id: planet.id,
+        planet_name: payload.name,
+        assigned_to: payload.assigned_to || null,
+        position: position,
+        points: points,
+        notion_url: payload.url || null,
         team_id: team.id,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

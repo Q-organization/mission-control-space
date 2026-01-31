@@ -28,7 +28,7 @@ export interface Planet {
   color: string;
   glowColor: string;
   completed: boolean;
-  type: 'business' | 'product' | 'achievement';
+  type: 'business' | 'product' | 'achievement' | 'notion';
   size: 'small' | 'medium' | 'big';
   style?: PlanetStyle;
   hasRing?: boolean;
@@ -37,6 +37,25 @@ export interface Planet {
   reward?: RewardType;
   realWorldReward?: string;
   ownerId?: string | null; // null = shared, string = player-owned
+  // Notion-specific fields
+  notionTaskId?: string;
+  notionUrl?: string;
+}
+
+export interface NotionPlanet {
+  id: string;
+  team_id: string;
+  notion_task_id: string;
+  name: string;
+  description: string | null;
+  notion_url: string | null;
+  assigned_to: string | null;
+  task_type: string | null;
+  points: number;
+  x: number;
+  y: number;
+  completed: boolean;
+  created_at: string;
 }
 
 export interface Star {
@@ -147,25 +166,4 @@ export interface InterpolationState {
   renderVy: number;
   renderThrusting: boolean;
   lastUpdateTime: number;
-  // Dead reckoning state (for extrapolation when no data)
-  deadReckonX: number;
-  deadReckonY: number;
-  deadReckonVx: number;
-  deadReckonVy: number;
-  deadReckonRotation: number;
-  isDeadReckoning: boolean;
-  // Blend correction (smooth transition when prediction was wrong)
-  blendStartX: number;
-  blendStartY: number;
-  blendStartRotation: number;
-  blendTargetX: number;
-  blendTargetY: number;
-  blendTargetRotation: number;
-  blendProgress: number;           // 0 = at start, 1 = at target
-  isBlending: boolean;
-  // Collision physics (visual offset that decays back to real position)
-  collisionOffsetX: number;
-  collisionOffsetY: number;
-  collisionVx: number;
-  collisionVy: number;
 }

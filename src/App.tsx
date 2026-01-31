@@ -6,6 +6,7 @@ import { soundManager } from './SoundManager';
 import { useTeam } from './hooks/useTeam';
 import { useMultiplayerSync } from './hooks/useMultiplayerSync';
 import { usePlayerPositions } from './hooks/usePlayerPositions';
+import { useNotionPlanets } from './hooks/useNotionPlanets';
 import { getLocalPlayerId, getShareUrl as buildShareUrl } from './lib/supabase';
 
 const FAL_API_KEY = 'c2df5aba-75d9-4626-95bb-aa366317d09e:8f90bb335a773f0ce3f261354107daa6';
@@ -513,6 +514,22 @@ function App() {
     localShip: gameRef.current?.getShipState() || { x: 5000, y: 5200, vx: 0, vy: 0, rotation: -1.5708, thrusting: false },
   });
 
+  // Notion planets hook - fetches and syncs planets from Notion tasks
+  const {
+    gamePlanets: notionGamePlanets,
+    completePlanet: completeNotionPlanet,
+  } = useNotionPlanets({
+    teamId: team?.id || null,
+  });
+
+  // Sync notion planets to game
+  useEffect(() => {
+    console.log('[App] Syncing notion planets to game:', notionGamePlanets.length, notionGamePlanets);
+    if (gameRef.current) {
+      gameRef.current.syncNotionPlanets(notionGamePlanets);
+    }
+  }, [notionGamePlanets]);
+
   // Set up direct position update callback (bypasses React state for smoother movement)
   useEffect(() => {
     if (gameRef.current) {
@@ -985,6 +1002,34 @@ function App() {
       return;
     }
 
+    // Check if this is a Notion planet
+    if (planet.id.startsWith('notion-')) {
+      if (planet.completed) return;
+
+      // Open Notion URL if available
+      if (planet.notionUrl) {
+        window.open(planet.notionUrl, '_blank');
+      }
+
+      fireConfetti(planet.size);
+      soundManager.playDockingSound();
+
+      // Mark as completed in database
+      completeNotionPlanet(planet.id);
+
+      // Award points
+      const pointsEarned = POINTS_PER_SIZE[planet.size];
+      setTeamPoints(prev => prev + pointsEarned);
+
+      gameRef.current?.completePlanet(planet.id);
+
+      // Sync to multiplayer (if connected)
+      if (team) {
+        completeRemotePlanet(planet.id, pointsEarned);
+      }
+      return;
+    }
+
     if (state.completedPlanets.includes(planet.id)) return;
 
     fireConfetti(planet.size);
@@ -1009,7 +1054,7 @@ function App() {
       completeRemotePlanet(planet.id, pointsEarned);
     }
 
-  }, [state.completedPlanets, state.currentUser, team, completeRemotePlanet]);
+  }, [state.completedPlanets, state.currentUser, team, completeRemotePlanet, completeNotionPlanet]);
 
   // Keep the ref updated with latest handleDock
   useEffect(() => {

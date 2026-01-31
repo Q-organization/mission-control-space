@@ -92,8 +92,8 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
     if (!channelRef.current || !playerId) return;
 
     const now = Date.now();
-    // Throttle broadcasts to ~120fps (8ms) for ultra-smooth movement
-    if (now - lastBroadcastRef.current < 8) return;
+    // Throttle broadcasts to 30Hz (33ms) - plenty for smooth interpolation, less network congestion
+    if (now - lastBroadcastRef.current < 33) return;
     lastBroadcastRef.current = now;
 
     channelRef.current.send({
