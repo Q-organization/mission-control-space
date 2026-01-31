@@ -2847,12 +2847,22 @@ export class SpaceGame {
 
       // Update collision physics (apply velocity, decay offset)
       // This makes other ships visually bounce when collided
-      const collisionFriction = 0.92;
-      const offsetDecay = 0.85;
+      const collisionFriction = 0.9;
+      const offsetDecay = 0.88;
+      const maxOffset = 60; // Cap offset to prevent crazy bouncing
+      const maxCollisionVel = 15;
 
       // Apply collision velocity to offset
       renderState.collisionOffsetX += renderState.collisionVx;
       renderState.collisionOffsetY += renderState.collisionVy;
+
+      // Clamp collision velocity
+      renderState.collisionVx = Math.max(-maxCollisionVel, Math.min(maxCollisionVel, renderState.collisionVx));
+      renderState.collisionVy = Math.max(-maxCollisionVel, Math.min(maxCollisionVel, renderState.collisionVy));
+
+      // Clamp offset to prevent ships flying off screen
+      renderState.collisionOffsetX = Math.max(-maxOffset, Math.min(maxOffset, renderState.collisionOffsetX));
+      renderState.collisionOffsetY = Math.max(-maxOffset, Math.min(maxOffset, renderState.collisionOffsetY));
 
       // Apply friction to collision velocity
       renderState.collisionVx *= collisionFriction;
@@ -2863,10 +2873,10 @@ export class SpaceGame {
       renderState.collisionOffsetY *= offsetDecay;
 
       // Zero out very small values to prevent drift
-      if (Math.abs(renderState.collisionVx) < 0.01) renderState.collisionVx = 0;
-      if (Math.abs(renderState.collisionVy) < 0.01) renderState.collisionVy = 0;
-      if (Math.abs(renderState.collisionOffsetX) < 0.1) renderState.collisionOffsetX = 0;
-      if (Math.abs(renderState.collisionOffsetY) < 0.1) renderState.collisionOffsetY = 0;
+      if (Math.abs(renderState.collisionVx) < 0.05) renderState.collisionVx = 0;
+      if (Math.abs(renderState.collisionVy) < 0.05) renderState.collisionVy = 0;
+      if (Math.abs(renderState.collisionOffsetX) < 0.5) renderState.collisionOffsetX = 0;
+      if (Math.abs(renderState.collisionOffsetY) < 0.5) renderState.collisionOffsetY = 0;
 
       renderState.lastUpdateTime = now;
     }
