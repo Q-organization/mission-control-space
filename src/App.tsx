@@ -7,14 +7,14 @@ import { soundManager } from './SoundManager';
 const FAL_API_KEY = 'c2df5aba-75d9-4626-95bb-aa366317d09e:8f90bb335a773f0ce3f261354107daa6';
 const STORAGE_KEY = 'mission-control-space-state';
 
-// Prompt configs (loaded from JSON files)
+// Prompt configs (loaded from JSON files) - Nano Banana format
 interface PromptConfig {
   prompt: string;
+  api?: string;
   settings: {
-    strength?: number;
-    guidance_scale: number;
-    num_inference_steps: number;
-    image_size: string;
+    num_images?: number;
+    aspect_ratio?: string;
+    output_format?: string;
   };
 }
 
@@ -28,26 +28,30 @@ interface PlanetPrompts {
   customPlanet: PromptConfig;
 }
 
-// Default prompts (fallback if JSON fails to load)
+// Default prompts (fallback if JSON fails to load) - Nano Banana format
 const DEFAULT_SHIP_PROMPTS: ShipPrompts = {
   visualUpgrade: {
-    prompt: "Same spaceship but add ONE obvious visible new feature: {userInput}. Keep the spaceship design intact, add this ONE new element that is clearly noticeable. Epic sci-fi spacecraft, highly detailed, glowing effects, game art style, isolated on black background, PNG.",
-    settings: { strength: 0.75, guidance_scale: 10, num_inference_steps: 35, image_size: "square_hd" }
+    prompt: "Edit this spaceship image: add {userInput}. Keep the spaceship design intact but make this new feature very visible and impressive. Sci-fi spacecraft style, transparent background.",
+    api: "fal-ai/nano-banana/edit",
+    settings: { num_images: 1, aspect_ratio: "1:1", output_format: "png" }
   }
 };
 
 const DEFAULT_PLANET_PROMPTS: PlanetPrompts = {
   basePlanet: {
-    prompt: "A perfectly round spherical barren rocky planet CENTERED in the image. Desert wasteland planet with craters, no life, no vegetation. The planet is a perfect sphere in the exact center filling 80% of the frame. Subtle {userColor} colored glow on the edges. Game art style, pure black background.",
-    settings: { guidance_scale: 10, num_inference_steps: 35, image_size: "square_hd" }
+    prompt: "A perfectly round spherical barren rocky planet. Desert wasteland with craters, no life, no vegetation. Subtle {userColor} colored glow on the edges. Game art style, pure black background.",
+    api: "fal-ai/nano-banana",
+    settings: { num_images: 1, aspect_ratio: "1:1", output_format: "png" }
   },
   terraform: {
-    prompt: "Same planet but add ONE obvious visible new feature: {userInput}. Keep the planet CENTERED and spherical, add this ONE new element that is clearly noticeable. The planet must stay perfectly centered in the image. Game art, black background.",
-    settings: { strength: 0.75, guidance_scale: 10, num_inference_steps: 35, image_size: "square_hd" }
+    prompt: "Edit this planet image: add {userInput}. Keep the planet spherical and centered. Make this new feature clearly visible. Game art style, black background.",
+    api: "fal-ai/nano-banana/edit",
+    settings: { num_images: 1, aspect_ratio: "1:1", output_format: "png" }
   },
   customPlanet: {
-    prompt: "{userInput}, spherical planet floating in space, game art style, dramatic lighting, isolated on black background",
-    settings: { guidance_scale: 3.5, num_inference_steps: 28, image_size: "square_hd" }
+    prompt: "{userInput}, spherical planet floating in space, game art style, dramatic lighting, black background",
+    api: "fal-ai/nano-banana",
+    settings: { num_images: 1, aspect_ratio: "1:1", output_format: "png" }
   }
 };
 const CUSTOM_PLANETS_KEY = 'mission-control-custom-planets';
@@ -518,8 +522,9 @@ function App() {
     try {
       const config = planetPrompts.basePlanet;
       const prompt = config.prompt.replace('{userColor}', userColor);
+      const apiEndpoint = config.api || 'fal-ai/nano-banana';
 
-      const response = await fetch('https://fal.run/fal-ai/flux/dev', {
+      const response = await fetch(`https://fal.run/${apiEndpoint}`, {
         method: 'POST',
         headers: {
           'Authorization': `Key ${FAL_API_KEY}`,
@@ -527,10 +532,9 @@ function App() {
         },
         body: JSON.stringify({
           prompt: prompt,
-          num_images: 1,
-          image_size: config.settings.image_size,
-          num_inference_steps: config.settings.num_inference_steps,
-          guidance_scale: config.settings.guidance_scale
+          num_images: config.settings.num_images || 1,
+          aspect_ratio: config.settings.aspect_ratio || '1:1',
+          output_format: config.settings.output_format || 'png'
         })
       });
 
@@ -595,23 +599,22 @@ function App() {
       const imageBase64 = await getImageAsBase64(currentPlanet.imageUrl);
       const config = planetPrompts.terraform;
       const prompt = config.prompt.replace('{userInput}', promptText);
+      const apiEndpoint = config.api || 'fal-ai/nano-banana/edit';
 
       console.log('Terraforming with prompt:', prompt);
 
-      const response = await fetch('https://fal.run/fal-ai/flux/dev/image-to-image', {
+      const response = await fetch(`https://fal.run/${apiEndpoint}`, {
         method: 'POST',
         headers: {
           'Authorization': `Key ${FAL_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          image_url: imageBase64,
+          image_urls: [imageBase64],
           prompt: prompt,
-          strength: config.settings.strength,
-          num_images: 1,
-          image_size: config.settings.image_size,
-          num_inference_steps: config.settings.num_inference_steps,
-          guidance_scale: config.settings.guidance_scale
+          num_images: config.settings.num_images || 1,
+          aspect_ratio: config.settings.aspect_ratio || '1:1',
+          output_format: config.settings.output_format || 'png'
         })
       });
 
@@ -799,23 +802,22 @@ function App() {
 
       const config = shipPrompts.visualUpgrade;
       const prompt = config.prompt.replace('{userInput}', promptText);
+      const apiEndpoint = config.api || 'fal-ai/nano-banana/edit';
 
       console.log('Generating visual upgrade with prompt:', prompt);
 
-      const response = await fetch('https://fal.run/fal-ai/flux/dev/image-to-image', {
+      const response = await fetch(`https://fal.run/${apiEndpoint}`, {
         method: 'POST',
         headers: {
           'Authorization': `Key ${FAL_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          image_url: imageBase64,
+          image_urls: [imageBase64],
           prompt: prompt,
-          strength: config.settings.strength,
-          num_images: 1,
-          image_size: config.settings.image_size,
-          num_inference_steps: config.settings.num_inference_steps,
-          guidance_scale: config.settings.guidance_scale
+          num_images: config.settings.num_images || 1,
+          aspect_ratio: config.settings.aspect_ratio || '1:1',
+          output_format: config.settings.output_format || 'png'
         })
       });
 
@@ -963,8 +965,9 @@ function App() {
     try {
       const config = planetPrompts.customPlanet;
       const prompt = config.prompt.replace('{userInput}', imagePrompt);
+      const apiEndpoint = config.api || 'fal-ai/nano-banana';
 
-      const response = await fetch('https://fal.run/fal-ai/flux/dev', {
+      const response = await fetch(`https://fal.run/${apiEndpoint}`, {
         method: 'POST',
         headers: {
           'Authorization': `Key ${FAL_API_KEY}`,
@@ -972,10 +975,9 @@ function App() {
         },
         body: JSON.stringify({
           prompt: prompt,
-          image_size: config.settings.image_size,
-          num_images: 1,
-          num_inference_steps: config.settings.num_inference_steps,
-          guidance_scale: config.settings.guidance_scale
+          num_images: config.settings.num_images || 1,
+          aspect_ratio: config.settings.aspect_ratio || '1:1',
+          output_format: config.settings.output_format || 'png'
         })
       });
 
