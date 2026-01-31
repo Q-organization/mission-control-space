@@ -49,6 +49,11 @@ const SOUND_CONFIGS: Record<string, SoundConfig> = {
     src: [`${SOUNDS_PATH}planet-upgrade.ogg`],
     volume: 0.5,
   },
+  upgradeLoading: {
+    src: [`${SOUNDS_PATH}upgrade-loading.ogg`],
+    volume: 0.35,
+    loop: true,
+  },
 
   // Proximity ambient
   shopAmbient: {
@@ -85,6 +90,7 @@ export class SoundManager {
   private thrustId: number | null = null;
   private blackHoleId: number | null = null;
   private shopAmbientId: number | null = null;
+  private loadingId: number | null = null;
   private isThrusting = false;
   private isBoosting = false;
 
@@ -216,6 +222,27 @@ export class SoundManager {
 
   public playPlanetUpgrade() {
     this.play('planetUpgrade');
+  }
+
+  // Loading/processing sound (for upgrade animations)
+  public startLoadingSound() {
+    if (!this.initialized || this.loadingId !== null) return;
+
+    const sound = this.sounds.get('upgradeLoading');
+    if (sound) {
+      this.loadingId = sound.play();
+      sound.fade(0, sound.volume(), 300, this.loadingId);
+    }
+  }
+
+  public stopLoadingSound() {
+    const sound = this.sounds.get('upgradeLoading');
+    if (sound && this.loadingId !== null) {
+      sound.fade(sound.volume(), 0, 300, this.loadingId);
+      const id = this.loadingId;
+      setTimeout(() => sound.stop(id), 300);
+    }
+    this.loadingId = null;
   }
 
   // Shop/station proximity effect

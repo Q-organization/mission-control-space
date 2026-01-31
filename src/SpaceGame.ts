@@ -1214,6 +1214,7 @@ export class SpaceGame {
     if (this.isUpgrading) return;
     this.isUpgrading = true;
     this.upgradeTargetPlanetId = planetId;
+    soundManager.startLoadingSound();
 
     // Get target size for appropriate orbit distance
     let baseDistance = 50;
@@ -1247,6 +1248,7 @@ export class SpaceGame {
     this.isUpgrading = false;
     this.upgradeTargetPlanetId = null;
     this.upgradeSatellites = [];
+    soundManager.stopLoadingSound();
   }
 
   private getUpgradeTargetPosition(): { x: number; y: number } {
