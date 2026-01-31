@@ -1,0 +1,33 @@
+{
+  "basePlanet": {
+    "description": "Creates a new barren planet for a user (first-time setup)",
+    "api": "fal-ai/flux/dev",
+    "prompt": "A perfectly round spherical barren rocky planet CENTERED in the image. Desert wasteland planet with craters, no life, no vegetation. The planet is a perfect sphere in the exact center filling 80% of the frame. Subtle {userColor} colored glow on the edges. Game art style, pure black background.",
+    "settings": {
+      "guidance_scale": 10,
+      "num_inference_steps": 35,
+      "image_size": "square_hd"
+    }
+  },
+  "terraform": {
+    "description": "Modifies an existing planet with user's requested feature",
+    "api": "fal-ai/flux/dev/image-to-image",
+    "prompt": "Same planet but add ONE obvious visible new feature: {userInput}. Keep the planet CENTERED and spherical, add this ONE new element that is clearly noticeable. The planet must stay perfectly centered in the image. Game art, black background.",
+    "settings": {
+      "strength": 0.75,
+      "guidance_scale": 10,
+      "num_inference_steps": 35,
+      "image_size": "square_hd"
+    }
+  },
+  "customPlanet": {
+    "description": "Creates a custom planet from scratch in the Planet Factory",
+    "api": "fal-ai/flux/dev",
+    "prompt": "{userInput}, spherical planet floating in space, game art style, dramatic lighting, isolated on black background",
+    "settings": {
+      "guidance_scale": 3.5,
+      "num_inference_steps": 28,
+      "image_size": "square_hd"
+    }
+  }
+}

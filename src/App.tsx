@@ -6,6 +6,50 @@ import { soundManager } from './SoundManager';
 
 const FAL_API_KEY = 'c2df5aba-75d9-4626-95bb-aa366317d09e:8f90bb335a773f0ce3f261354107daa6';
 const STORAGE_KEY = 'mission-control-space-state';
+
+// Prompt configs (loaded from JSON files)
+interface PromptConfig {
+  prompt: string;
+  settings: {
+    strength?: number;
+    guidance_scale: number;
+    num_inference_steps: number;
+    image_size: string;
+  };
+}
+
+interface ShipPrompts {
+  visualUpgrade: PromptConfig;
+}
+
+interface PlanetPrompts {
+  basePlanet: PromptConfig;
+  terraform: PromptConfig;
+  customPlanet: PromptConfig;
+}
+
+// Default prompts (fallback if JSON fails to load)
+const DEFAULT_SHIP_PROMPTS: ShipPrompts = {
+  visualUpgrade: {
+    prompt: "Same spaceship but add ONE obvious visible new feature: {userInput}. Keep the spaceship design intact, add this ONE new element that is clearly noticeable. Epic sci-fi spacecraft, highly detailed, glowing effects, game art style, isolated on black background, PNG.",
+    settings: { strength: 0.75, guidance_scale: 10, num_inference_steps: 35, image_size: "square_hd" }
+  }
+};
+
+const DEFAULT_PLANET_PROMPTS: PlanetPrompts = {
+  basePlanet: {
+    prompt: "A perfectly round spherical barren rocky planet CENTERED in the image. Desert wasteland planet with craters, no life, no vegetation. The planet is a perfect sphere in the exact center filling 80% of the frame. Subtle {userColor} colored glow on the edges. Game art style, pure black background.",
+    settings: { guidance_scale: 10, num_inference_steps: 35, image_size: "square_hd" }
+  },
+  terraform: {
+    prompt: "Same planet but add ONE obvious visible new feature: {userInput}. Keep the planet CENTERED and spherical, add this ONE new element that is clearly noticeable. The planet must stay perfectly centered in the image. Game art, black background.",
+    settings: { strength: 0.75, guidance_scale: 10, num_inference_steps: 35, image_size: "square_hd" }
+  },
+  customPlanet: {
+    prompt: "{userInput}, spherical planet floating in space, game art style, dramatic lighting, isolated on black background",
+    settings: { guidance_scale: 3.5, num_inference_steps: 28, image_size: "square_hd" }
+  }
+};
 const CUSTOM_PLANETS_KEY = 'mission-control-custom-planets';
 const TEAM_POINTS_KEY = 'mission-control-team-points';
 const USER_SHIPS_KEY = 'mission-control-user-ships';
@@ -352,6 +396,23 @@ function App() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [imagePrompt, setImagePrompt] = useState('');
 
+  // Prompt configs (loaded from JSON)
+  const [shipPrompts, setShipPrompts] = useState<ShipPrompts>(DEFAULT_SHIP_PROMPTS);
+  const [planetPrompts, setPlanetPrompts] = useState<PlanetPrompts>(DEFAULT_PLANET_PROMPTS);
+
+  // Load prompts from JSON files on mount
+  useEffect(() => {
+    fetch('/prompts/ship.json')
+      .then(res => res.json())
+      .then(data => setShipPrompts(data))
+      .catch(err => console.warn('Failed to load ship prompts, using defaults:', err));
+
+    fetch('/prompts/planet.json')
+      .then(res => res.json())
+      .then(data => setPlanetPrompts(data))
+      .catch(err => console.warn('Failed to load planet prompts, using defaults:', err));
+  }, []);
+
   // Save state when it changes
   useEffect(() => {
     saveState(state);
@@ -455,7 +516,8 @@ function App() {
     setUpgradeMessage('Creating your planet...');
 
     try {
-      const prompt = `A perfectly round spherical barren rocky planet CENTERED in the image. Desert wasteland planet with craters, no life, no vegetation. The planet is a perfect sphere in the exact center filling 80% of the frame. Subtle ${userColor} colored glow on the edges. Game art style, pure black background.`;
+      const config = planetPrompts.basePlanet;
+      const prompt = config.prompt.replace('{userColor}', userColor);
 
       const response = await fetch('https://fal.run/fal-ai/flux/dev', {
         method: 'POST',
@@ -466,9 +528,9 @@ function App() {
         body: JSON.stringify({
           prompt: prompt,
           num_images: 1,
-          image_size: 'square_hd',
-          num_inference_steps: 35,
-          guidance_scale: 10
+          image_size: config.settings.image_size,
+          num_inference_steps: config.settings.num_inference_steps,
+          guidance_scale: config.settings.guidance_scale
         })
       });
 
@@ -531,7 +593,8 @@ function App() {
     try {
       // Get current planet image
       const imageBase64 = await getImageAsBase64(currentPlanet.imageUrl);
-      const prompt = `Same planet but add ONE obvious visible new feature: ${promptText}. Keep the planet CENTERED and spherical, add this ONE new element that is clearly noticeable. The planet must stay perfectly centered in the image. Game art, black background.`;
+      const config = planetPrompts.terraform;
+      const prompt = config.prompt.replace('{userInput}', promptText);
 
       console.log('Terraforming with prompt:', prompt);
 
@@ -544,11 +607,11 @@ function App() {
         body: JSON.stringify({
           image_url: imageBase64,
           prompt: prompt,
-          strength: 0.75,
+          strength: config.settings.strength,
           num_images: 1,
-          image_size: 'square_hd',
-          num_inference_steps: 35,
-          guidance_scale: 10
+          image_size: config.settings.image_size,
+          num_inference_steps: config.settings.num_inference_steps,
+          guidance_scale: config.settings.guidance_scale
         })
       });
 
@@ -734,7 +797,8 @@ function App() {
       const currentShip = getCurrentUserShip();
       const imageBase64 = await getImageAsBase64(currentShip.currentImage);
 
-      const prompt = `Same spaceship but add ONE obvious visible new feature: ${promptText}. Keep the spaceship design intact, add this ONE new element that is clearly noticeable. Epic sci-fi spacecraft, highly detailed, glowing effects, game art style, isolated on black background, PNG.`;
+      const config = shipPrompts.visualUpgrade;
+      const prompt = config.prompt.replace('{userInput}', promptText);
 
       console.log('Generating visual upgrade with prompt:', prompt);
 
@@ -747,11 +811,11 @@ function App() {
         body: JSON.stringify({
           image_url: imageBase64,
           prompt: prompt,
-          strength: 0.75,
+          strength: config.settings.strength,
           num_images: 1,
-          image_size: 'square_hd',
-          num_inference_steps: 35,
-          guidance_scale: 10
+          image_size: config.settings.image_size,
+          num_inference_steps: config.settings.num_inference_steps,
+          guidance_scale: config.settings.guidance_scale
         })
       });
 
@@ -897,6 +961,9 @@ function App() {
 
     setIsGeneratingImage(true);
     try {
+      const config = planetPrompts.customPlanet;
+      const prompt = config.prompt.replace('{userInput}', imagePrompt);
+
       const response = await fetch('https://fal.run/fal-ai/flux/dev', {
         method: 'POST',
         headers: {
@@ -904,11 +971,11 @@ function App() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          prompt: `${imagePrompt}, spherical planet floating in space, game art style, dramatic lighting, isolated on black background`,
-          image_size: 'square_hd',
+          prompt: prompt,
+          image_size: config.settings.image_size,
           num_images: 1,
-          num_inference_steps: 28,
-          guidance_scale: 3.5
+          num_inference_steps: config.settings.num_inference_steps,
+          guidance_scale: config.settings.guidance_scale
         })
       });
 

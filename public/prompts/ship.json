@@ -1,0 +1,13 @@
+{
+  "visualUpgrade": {
+    "description": "Modifies the ship image with user's requested feature",
+    "api": "fal-ai/flux/dev/image-to-image",
+    "prompt": "Same spaceship but add ONE obvious visible new feature: {userInput}. Keep the spaceship design intact, add this ONE new element that is clearly noticeable. Epic sci-fi spacecraft, highly detailed, glowing effects, game art style, isolated on black background, PNG.",
+    "settings": {
+      "strength": 0.75,
+      "guidance_scale": 10,
+      "num_inference_steps": 35,
+      "image_size": "square_hd"
+    }
+  }
+}
