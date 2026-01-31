@@ -11,6 +11,7 @@ interface PlayerData {
   isOnline: boolean;
   shipImage: string;
   shipEffects: ShipEffects;
+  shipLevel: number; // 1 + upgrade count
   planetImageUrl: string;
   planetTerraformCount: number;
   planetSizeLevel: number;
@@ -59,6 +60,7 @@ const playerRowToData = (row: any): PlayerData => ({
   isOnline: row.is_online,
   shipImage: row.ship_current_image,
   shipEffects: (row.ship_effects as unknown as ShipEffects) || defaultShipEffects,
+  shipLevel: 1 + (Array.isArray(row.ship_upgrades) ? row.ship_upgrades.length : 0),
   planetImageUrl: row.planet_image_url,
   planetTerraformCount: row.planet_terraform_count,
   planetSizeLevel: row.planet_size_level,

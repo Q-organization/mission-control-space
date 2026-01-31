@@ -10,6 +10,7 @@ interface PlayerInfo {
   color: string;
   shipImage: string;
   shipEffects: ShipEffects;
+  shipLevel: number;
 }
 
 interface UsePlayerPositionsOptions {
@@ -24,13 +25,23 @@ interface UsePlayerPositionsOptions {
     rotation: number;
     thrusting: boolean;
   };
-  // Direct callback to update game positions (bypasses React state for smoothness)
-  onPositionUpdate?: (playerId: string, x: number, y: number, vx: number, vy: number, rotation: number, thrusting: boolean) => void;
 }
+
+// Callback type for direct position updates (bypasses React state)
+type PositionUpdateCallback = (playerId: string, data: {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  thrusting: boolean;
+  timestamp: number;
+}) => void;
 
 interface UsePlayerPositionsReturn {
   otherPlayers: OtherPlayer[];
   broadcastPosition: () => void;
+  setPositionUpdateCallback: (callback: PositionUpdateCallback | null) => void;
 }
 
 interface CachedPosition {
@@ -54,7 +65,7 @@ const defaultShipEffects: ShipEffects = {
 };
 
 export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlayerPositionsReturn {
-  const { teamId, playerId, players, localShip, onPositionUpdate } = options;
+  const { teamId, playerId, players, localShip } = options;
 
   const [otherPlayers, setOtherPlayers] = useState<OtherPlayer[]>([]);
 
@@ -63,24 +74,26 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
   const lastDbUpdateRef = useRef<number>(0);
   const positionCacheRef = useRef<Map<string, CachedPosition>>(new Map());
   const playersRef = useRef<PlayerInfo[]>(players);
-  const onPositionUpdateRef = useRef(onPositionUpdate);
+  // Direct callback for position updates (bypasses React state for lower latency)
+  const positionUpdateCallbackRef = useRef<PositionUpdateCallback | null>(null);
 
-  // Keep refs updated without triggering effects
+  // Set the callback for direct position updates
+  const setPositionUpdateCallback = useCallback((callback: PositionUpdateCallback | null) => {
+    positionUpdateCallbackRef.current = callback;
+  }, []);
+
+  // Keep players ref updated without triggering effects
   useEffect(() => {
     playersRef.current = players;
   }, [players]);
-
-  useEffect(() => {
-    onPositionUpdateRef.current = onPositionUpdate;
-  }, [onPositionUpdate]);
 
   // Broadcast position via realtime (fast, ephemeral)
   const broadcastPosition = useCallback(() => {
     if (!channelRef.current || !playerId) return;
 
     const now = Date.now();
-    // Throttle broadcasts to ~60fps (16ms) for smooth movement
-    if (now - lastBroadcastRef.current < 16) return;
+    // Throttle broadcasts to ~120fps (8ms) for ultra-smooth movement
+    if (now - lastBroadcastRef.current < 8) return;
     lastBroadcastRef.current = now;
 
     channelRef.current.send({
@@ -153,6 +166,7 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
             thrusting: pos.thrusting,
             shipImage: playerInfo.shipImage,
             shipEffects: playerInfo.shipEffects || defaultShipEffects,
+            shipLevel: playerInfo.shipLevel || 1,
           });
           positionCacheRef.current.set(pos.player_id, {
             player_id: pos.player_id,
@@ -221,44 +235,36 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
         receivedAt: now,
       });
 
-      // Send position update directly to game (bypasses React for smoothness)
-      if (onPositionUpdateRef.current) {
-        onPositionUpdateRef.current(data.player_id, data.x, data.y, data.vx, data.vy, data.rotation, data.thrusting);
-      }
+      // Update state
+      setOtherPlayers((prev) => {
+        const playerInfo = playersRef.current.find((p) => p.id === data.player_id);
+        if (!playerInfo) return prev;
 
-      // Update React state less frequently (for UI elements like player list)
-      // Only update if player is new or every 500ms
-      const lastStateUpdate = cached?.receivedAt || 0;
-      if (!cached || now - lastStateUpdate > 500) {
-        setOtherPlayers((prev) => {
-          const playerInfo = playersRef.current.find((p) => p.id === data.player_id);
-          if (!playerInfo) return prev;
+        const existing = prev.findIndex((p) => p.id === data.player_id);
+        const updatedPlayer: OtherPlayer = {
+          id: data.player_id,
+          username: playerInfo.username,
+          displayName: playerInfo.displayName,
+          color: playerInfo.color,
+          x: data.x,
+          y: data.y,
+          vx: data.vx,
+          vy: data.vy,
+          rotation: data.rotation,
+          thrusting: data.thrusting,
+          shipImage: playerInfo.shipImage,
+          shipEffects: playerInfo.shipEffects || defaultShipEffects,
+          shipLevel: playerInfo.shipLevel || 1,
+        };
 
-          const existing = prev.findIndex((p) => p.id === data.player_id);
-          const updatedPlayer: OtherPlayer = {
-            id: data.player_id,
-            username: playerInfo.username,
-            displayName: playerInfo.displayName,
-            color: playerInfo.color,
-            x: data.x,
-            y: data.y,
-            vx: data.vx,
-            vy: data.vy,
-            rotation: data.rotation,
-            thrusting: data.thrusting,
-            shipImage: playerInfo.shipImage,
-            shipEffects: playerInfo.shipEffects || defaultShipEffects,
-          };
-
-          if (existing >= 0) {
-            const newPlayers = [...prev];
-            newPlayers[existing] = updatedPlayer;
-            return newPlayers;
-          } else {
-            return [...prev, updatedPlayer];
-          }
-        });
-      }
+        if (existing >= 0) {
+          const newPlayers = [...prev];
+          newPlayers[existing] = updatedPlayer;
+          return newPlayers;
+        } else {
+          return [...prev, updatedPlayer];
+        }
+      });
     });
 
     channel.subscribe(async (status) => {
@@ -291,6 +297,7 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
             color: playerInfo.color,
             shipImage: playerInfo.shipImage,
             shipEffects: playerInfo.shipEffects || defaultShipEffects,
+            shipLevel: playerInfo.shipLevel || 1,
           };
         }
         return op;

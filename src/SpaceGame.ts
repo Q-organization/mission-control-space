@@ -1,4 +1,4 @@
-import { Vector2, Planet, Star, Particle, Ship, GameState, RewardType, OtherPlayer, ShipEffects as TypedShipEffects } from './types';
+import { Vector2, Planet, Star, Particle, Ship, GameState, RewardType, OtherPlayer, ShipEffects as TypedShipEffects, PositionSnapshot, InterpolationState } from './types';
 import { soundManager } from './SoundManager';
 
 interface CustomPlanetData {
@@ -97,6 +97,13 @@ const SHIP_FRICTION = 0.992;
 const DOCKING_DISTANCE = 50;
 const PLANET_INFO_DISTANCE = 200;
 
+// Snapshot interpolation constants for smooth multiplayer movement
+const SNAPSHOT_BUFFER_SIZE = 10;       // Keep ~800ms of history at 80ms intervals
+const INTERPOLATION_DELAY = 100;       // Render 100ms behind real-time (jitter buffer)
+const MAX_EXTRAPOLATION_TIME = 200;    // Max prediction time before freezing position
+const SHIP_COLLISION_RADIUS = 20;      // Collision radius for ship-to-ship collision
+const COLLISION_RESTITUTION = 0.6;     // Bounce energy retention (0-1)
+
 interface BlackHole {
   x: number;
   y: number;
@@ -160,10 +167,9 @@ export class SpaceGame {
   // Multiplayer: other players' ships
   private otherPlayers: OtherPlayer[] = [];
   private otherPlayerImages: Map<string, HTMLImageElement> = new Map();
-  // Target positions (received from network) - what we interpolate toward
-  private targetPositions: Map<string, { x: number; y: number; rotation: number; vx: number; vy: number; thrusting: boolean }> = new Map();
-  // Interpolated positions for smooth rendering
-  private interpolatedPositions: Map<string, { x: number; y: number; rotation: number; vx: number; vy: number }> = new Map();
+  // Snapshot interpolation for smooth rendering (replaces simple lerp)
+  private playerSnapshots: Map<string, PositionSnapshot[]> = new Map();
+  private renderStates: Map<string, InterpolationState> = new Map();
 
   constructor(canvas: HTMLCanvasElement, onDock: (planet: Planet) => void, customPlanets: CustomPlanetData[] = [], shipImageUrl?: string, goals?: GoalsData, upgradeCount: number = 0, userPlanets?: Record<string, UserPlanetData>, currentUser: string = 'quentin') {
     this.canvas = canvas;
@@ -603,7 +609,7 @@ export class SpaceGame {
     if (planet) {
       planet.completed = true;
       this.state.completedCount++;
-      this.shipLevel = Math.min(10, this.state.completedCount + 1);
+      // Note: shipLevel is only updated via upgradeShip/updateShipImage to match multiplayer sync
     }
   }
 
@@ -835,6 +841,57 @@ export class SpaceGame {
 
         // Sound: collision
         soundManager.playCollision();
+      }
+    }
+
+    // Ship-to-ship collision with other players
+    for (const otherPlayer of this.otherPlayers) {
+      // Use render state for collision (interpolated position)
+      const renderState = this.renderStates.get(otherPlayer.id);
+      const otherX = renderState?.renderX ?? otherPlayer.x;
+      const otherY = renderState?.renderY ?? otherPlayer.y;
+      const otherVx = renderState?.renderVx ?? otherPlayer.vx;
+      const otherVy = renderState?.renderVy ?? otherPlayer.vy;
+
+      // Calculate wrapped distance
+      const { dx, dy, dist } = this.getWrappedDistance(ship.x, ship.y, otherX, otherY);
+      const minDist = SHIP_COLLISION_RADIUS * 2; // Both ships have the same radius
+
+      if (dist < minDist && dist > 0) {
+        // Collision detected - push local ship out
+        const overlap = minDist - dist;
+        const nx = -dx / dist; // Normal pointing away from other ship
+        const ny = -dy / dist;
+
+        // Push our ship out of collision
+        ship.x += nx * overlap;
+        ship.y += ny * overlap;
+
+        // Elastic collision response
+        // Relative velocity
+        const relVx = ship.vx - otherVx;
+        const relVy = ship.vy - otherVy;
+
+        // Relative velocity along collision normal
+        const relVelDotNormal = relVx * nx + relVy * ny;
+
+        // Only respond if ships are moving toward each other
+        if (relVelDotNormal < 0) {
+          // Apply impulse with restitution
+          const impulse = -(1 + COLLISION_RESTITUTION) * relVelDotNormal;
+
+          // Assuming equal mass, only apply to local ship (we can't control the other)
+          ship.vx += impulse * nx;
+          ship.vy += impulse * ny;
+
+          // Emit collision particles at collision point
+          const collisionX = ship.x - nx * SHIP_COLLISION_RADIUS;
+          const collisionY = ship.y - ny * SHIP_COLLISION_RADIUS;
+          this.emitShipCollisionParticles(collisionX, collisionY, '#ffffff', otherPlayer.color);
+
+          // Play collision sound
+          soundManager.playCollision();
+        }
       }
     }
 
@@ -2401,7 +2458,7 @@ export class SpaceGame {
 
   /**
    * Update the list of other players in the game.
-   * Called from the React layer when player info changes (not positions).
+   * Called from the React layer when player metadata changes.
    */
   public setOtherPlayers(players: OtherPlayer[]) {
     this.otherPlayers = players;
@@ -2412,106 +2469,284 @@ export class SpaceGame {
         this.loadOtherPlayerImage(player.id, player.shipImage);
       }
 
-      // Initialize positions if this is a new player
-      if (!this.interpolatedPositions.has(player.id)) {
-        this.interpolatedPositions.set(player.id, {
-          x: player.x,
-          y: player.y,
-          rotation: player.rotation,
-          vx: player.vx,
-          vy: player.vy,
-        });
-        this.targetPositions.set(player.id, {
-          x: player.x,
-          y: player.y,
-          rotation: player.rotation,
-          vx: player.vx,
-          vy: player.vy,
-          thrusting: player.thrusting,
+      // Initialize render state if this is a new player
+      if (!this.renderStates.has(player.id)) {
+        this.renderStates.set(player.id, {
+          snapshots: [],
+          renderX: player.x,
+          renderY: player.y,
+          renderRotation: player.rotation,
+          renderVx: player.vx,
+          renderVy: player.vy,
+          lastUpdateTime: Date.now(),
         });
       }
     }
 
-    // Clean up positions for players who left
-    for (const id of this.interpolatedPositions.keys()) {
+    // Clean up render states and snapshots for players who left
+    for (const id of this.renderStates.keys()) {
       if (!players.find(p => p.id === id)) {
-        this.interpolatedPositions.delete(id);
-        this.targetPositions.delete(id);
+        this.renderStates.delete(id);
+        this.playerSnapshots.delete(id);
       }
     }
   }
 
   /**
-   * Update a single player's target position (called frequently from network).
-   * This doesn't cause React re-renders - just updates the target for interpolation.
+   * Add a position snapshot for a player (called directly from network callback).
+   * This bypasses React state for lower latency.
    */
-  public updatePlayerPosition(playerId: string, x: number, y: number, vx: number, vy: number, rotation: number, thrusting: boolean) {
-    this.targetPositions.set(playerId, { x, y, vx, vy, rotation, thrusting });
+  public onPlayerPositionUpdate(playerId: string, data: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    rotation: number;
+    thrusting: boolean;
+    timestamp: number;
+  }) {
+    const snapshot: PositionSnapshot = {
+      x: data.x,
+      y: data.y,
+      vx: data.vx,
+      vy: data.vy,
+      rotation: data.rotation,
+      thrusting: data.thrusting,
+      timestamp: data.timestamp,
+    };
 
-    // Also update the otherPlayers array for thrusting state (used for particles)
+    // Add to snapshot buffer
+    let snapshots = this.playerSnapshots.get(playerId);
+    if (!snapshots) {
+      snapshots = [];
+      this.playerSnapshots.set(playerId, snapshots);
+    }
+
+    // Insert in chronological order (usually at the end)
+    let inserted = false;
+    for (let i = snapshots.length - 1; i >= 0; i--) {
+      if (snapshots[i].timestamp <= snapshot.timestamp) {
+        snapshots.splice(i + 1, 0, snapshot);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) {
+      snapshots.unshift(snapshot);
+    }
+
+    // Keep buffer size limited
+    while (snapshots.length > SNAPSHOT_BUFFER_SIZE) {
+      snapshots.shift();
+    }
+
+    // Update thrusting state on the player object for particle effects
     const player = this.otherPlayers.find(p => p.id === playerId);
     if (player) {
-      player.thrusting = thrusting;
+      player.thrusting = data.thrusting;
+      player.x = data.x;
+      player.y = data.y;
+      player.vx = data.vx;
+      player.vy = data.vy;
+      player.rotation = data.rotation;
+    }
+
+    // Initialize render state if needed
+    if (!this.renderStates.has(playerId)) {
+      this.renderStates.set(playerId, {
+        snapshots: [],
+        renderX: data.x,
+        renderY: data.y,
+        renderRotation: data.rotation,
+        renderVx: data.vx,
+        renderVy: data.vy,
+        lastUpdateTime: Date.now(),
+      });
     }
   }
 
   /**
-   * Dead reckoning with ultra-smooth interpolation.
-   * Moves ships using physics simulation identical to the local ship,
-   * with very gentle corrections to stay in sync.
+   * Calculate the shortest distance considering world wrapping.
+   */
+  private getWrappedDistance(x1: number, y1: number, x2: number, y2: number): { dx: number; dy: number; dist: number } {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+
+    // Wrap around if shorter path exists
+    if (dx > WORLD_SIZE / 2) dx -= WORLD_SIZE;
+    else if (dx < -WORLD_SIZE / 2) dx += WORLD_SIZE;
+    if (dy > WORLD_SIZE / 2) dy -= WORLD_SIZE;
+    else if (dy < -WORLD_SIZE / 2) dy += WORLD_SIZE;
+
+    return { dx, dy, dist: Math.sqrt(dx * dx + dy * dy) };
+  }
+
+  /**
+   * Unwrap a position to be continuous with a reference position (for interpolation).
+   */
+  private unwrapPosition(refX: number, refY: number, x: number, y: number): { x: number; y: number } {
+    let unwrappedX = x;
+    let unwrappedY = y;
+
+    const dx = x - refX;
+    const dy = y - refY;
+
+    if (dx > WORLD_SIZE / 2) unwrappedX -= WORLD_SIZE;
+    else if (dx < -WORLD_SIZE / 2) unwrappedX += WORLD_SIZE;
+    if (dy > WORLD_SIZE / 2) unwrappedY -= WORLD_SIZE;
+    else if (dy < -WORLD_SIZE / 2) unwrappedY += WORLD_SIZE;
+
+    return { x: unwrappedX, y: unwrappedY };
+  }
+
+  /**
+   * Wrap a position back into world bounds [0, WORLD_SIZE).
+   */
+  private wrapPosition(x: number, y: number): { x: number; y: number } {
+    let wrappedX = x % WORLD_SIZE;
+    let wrappedY = y % WORLD_SIZE;
+    if (wrappedX < 0) wrappedX += WORLD_SIZE;
+    if (wrappedY < 0) wrappedY += WORLD_SIZE;
+    return { x: wrappedX, y: wrappedY };
+  }
+
+  /**
+   * Hermite interpolation for smooth curves using position and velocity.
+   */
+  private hermiteInterpolate(
+    p0: number, v0: number,
+    p1: number, v1: number,
+    t: number, dt: number
+  ): number {
+    // Scale velocities by time interval
+    const sv0 = v0 * dt;
+    const sv1 = v1 * dt;
+
+    // Hermite basis functions
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+
+    return h00 * p0 + h10 * sv0 + h01 * p1 + h11 * sv1;
+  }
+
+  /**
+   * Find two snapshots bracketing the render time for interpolation.
+   */
+  private getSnapshotsForInterpolation(playerId: string, renderTime: number): {
+    before: PositionSnapshot | null;
+    after: PositionSnapshot | null;
+  } {
+    const snapshots = this.playerSnapshots.get(playerId);
+    if (!snapshots || snapshots.length === 0) {
+      return { before: null, after: null };
+    }
+
+    let before: PositionSnapshot | null = null;
+    let after: PositionSnapshot | null = null;
+
+    for (let i = 0; i < snapshots.length; i++) {
+      if (snapshots[i].timestamp <= renderTime) {
+        before = snapshots[i];
+      } else {
+        after = snapshots[i];
+        break;
+      }
+    }
+
+    return { before, after };
+  }
+
+  /**
+   * Smoothly interpolate other players' positions using snapshot interpolation.
+   * Uses Hermite interpolation with jitter buffer for smooth, lag-compensated movement.
    */
   private updateOtherPlayersInterpolation() {
-    // Use same friction as local ship for identical feel
-    const FRICTION = SHIP_FRICTION; // 0.992
-    const POSITION_CORRECTION = 0.02; // Very gentle position correction
-    const VELOCITY_CORRECTION = 0.05; // Very gentle velocity blending
-    const ROTATION_CORRECTION = 0.08; // Smooth rotation
+    const now = Date.now();
+    const renderTime = now - INTERPOLATION_DELAY;
 
-    for (const [playerId, target] of this.targetPositions.entries()) {
-      let interpolated = this.interpolatedPositions.get(playerId);
+    for (const player of this.otherPlayers) {
+      const renderState = this.renderStates.get(player.id);
+      if (!renderState) continue;
 
-      // Initialize if new
-      if (!interpolated) {
-        interpolated = { x: target.x, y: target.y, rotation: target.rotation, vx: target.vx, vy: target.vy };
-        this.interpolatedPositions.set(playerId, interpolated);
-        continue;
-      }
+      const { before, after } = this.getSnapshotsForInterpolation(player.id, renderTime);
 
-      // Calculate distance to target
-      const dx = target.x - interpolated.x;
-      const dy = target.y - interpolated.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (before && after) {
+        // Interpolate between two snapshots
+        const dt = after.timestamp - before.timestamp;
+        if (dt > 0) {
+          const t = Math.max(0, Math.min(1, (renderTime - before.timestamp) / dt));
 
-      // Handle world wrapping or large teleports
-      if (dist > WORLD_SIZE / 2 || dist > 500) {
-        interpolated.x = target.x;
-        interpolated.y = target.y;
-        interpolated.rotation = target.rotation;
-        interpolated.vx = target.vx;
-        interpolated.vy = target.vy;
+          // Unwrap positions to be continuous
+          const unwrappedAfter = this.unwrapPosition(before.x, before.y, after.x, after.y);
+
+          // Hermite interpolation using velocity
+          const interpX = this.hermiteInterpolate(
+            before.x, before.vx,
+            unwrappedAfter.x, after.vx,
+            t, dt / 1000
+          );
+          const interpY = this.hermiteInterpolate(
+            before.y, before.vy,
+            unwrappedAfter.y, after.vy,
+            t, dt / 1000
+          );
+
+          // Wrap back into world bounds
+          const wrapped = this.wrapPosition(interpX, interpY);
+          renderState.renderX = wrapped.x;
+          renderState.renderY = wrapped.y;
+
+          // Interpolate rotation (linear is fine for rotation)
+          let rotDiff = after.rotation - before.rotation;
+          while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+          while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+          renderState.renderRotation = before.rotation + rotDiff * t;
+
+          // Interpolate velocity for particle effects
+          renderState.renderVx = before.vx + (after.vx - before.vx) * t;
+          renderState.renderVy = before.vy + (after.vy - before.vy) * t;
+        }
+      } else if (before) {
+        // Extrapolate from last known position
+        const timeSinceSnapshot = renderTime - before.timestamp;
+
+        if (timeSinceSnapshot < MAX_EXTRAPOLATION_TIME) {
+          // Extrapolate using velocity, with damping
+          const extrapolationTime = timeSinceSnapshot / 1000;
+          const damping = Math.max(0, 1 - timeSinceSnapshot / MAX_EXTRAPOLATION_TIME);
+
+          const extrapolatedX = before.x + before.vx * extrapolationTime * damping;
+          const extrapolatedY = before.y + before.vy * extrapolationTime * damping;
+
+          const wrapped = this.wrapPosition(extrapolatedX, extrapolatedY);
+          renderState.renderX = wrapped.x;
+          renderState.renderY = wrapped.y;
+          renderState.renderRotation = before.rotation;
+          renderState.renderVx = before.vx * damping;
+          renderState.renderVy = before.vy * damping;
+        }
+        // If too old, freeze at last position (already there)
+      } else if (after) {
+        // We're waiting for the jitter buffer to fill - use the first snapshot we have
+        renderState.renderX = after.x;
+        renderState.renderY = after.y;
+        renderState.renderRotation = after.rotation;
+        renderState.renderVx = after.vx;
+        renderState.renderVy = after.vy;
       } else {
-        // Apply friction (identical to local ship physics)
-        interpolated.vx *= FRICTION;
-        interpolated.vy *= FRICTION;
-
-        // Blend velocity toward target velocity (very smooth)
-        interpolated.vx += (target.vx - interpolated.vx) * VELOCITY_CORRECTION;
-        interpolated.vy += (target.vy - interpolated.vy) * VELOCITY_CORRECTION;
-
-        // Apply velocity to position (physics simulation)
-        interpolated.x += interpolated.vx;
-        interpolated.y += interpolated.vy;
-
-        // Very gentle position correction to fix accumulated drift
-        interpolated.x += dx * POSITION_CORRECTION;
-        interpolated.y += dy * POSITION_CORRECTION;
-
-        // Smooth rotation interpolation (handle wrap-around)
-        let rotDiff = target.rotation - interpolated.rotation;
-        while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-        while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-        interpolated.rotation += rotDiff * ROTATION_CORRECTION;
+        // No snapshots yet - fall back to player's last known position
+        renderState.renderX = player.x;
+        renderState.renderY = player.y;
+        renderState.renderRotation = player.rotation;
+        renderState.renderVx = player.vx;
+        renderState.renderVy = player.vy;
       }
+
+      renderState.lastUpdateTime = now;
     }
   }
 
@@ -2561,11 +2796,11 @@ export class SpaceGame {
    */
   private renderOtherPlayers() {
     for (const player of this.otherPlayers) {
-      // Use interpolated position for smooth rendering
-      const interpolated = this.interpolatedPositions.get(player.id);
-      const renderX = interpolated?.x ?? player.x;
-      const renderY = interpolated?.y ?? player.y;
-      const renderRotation = interpolated?.rotation ?? player.rotation;
+      // Use render state for smooth interpolated position
+      const renderState = this.renderStates.get(player.id);
+      const renderX = renderState?.renderX ?? player.x;
+      const renderY = renderState?.renderY ?? player.y;
+      const renderRotation = renderState?.renderRotation ?? player.rotation;
 
       // Draw at all wrapped positions for seamless world wrapping
       const positions = this.getWrappedPositions(renderX, renderY, 80);
@@ -2587,9 +2822,10 @@ export class SpaceGame {
     ctx.translate(x, y);
     ctx.rotate(renderRotation + Math.PI / 2);
 
-    // Ship size (use their size bonus if available)
+    // Ship size (same formula as local player: base + level bonus + effects)
     const effectSizeMultiplier = 1 + ((player.shipEffects?.sizeBonus || 0) / 100);
-    const scale = 0.9 * effectSizeMultiplier;
+    const shipLevel = player.shipLevel || 1;
+    const scale = (0.9 + shipLevel * 0.12) * effectSizeMultiplier;
     const shipSize = 60 * scale;
 
     // Glow effect using player's color
@@ -2669,11 +2905,13 @@ export class SpaceGame {
    * Emit thrust particles for another player (simpler version).
    */
   private emitOtherPlayerThrust(player: OtherPlayer) {
-    // Use interpolated position for particles
-    const interpolated = this.interpolatedPositions.get(player.id);
-    const px = interpolated?.x ?? player.x;
-    const py = interpolated?.y ?? player.y;
-    const rotation = interpolated?.rotation ?? player.rotation;
+    // Use render state for interpolated position
+    const renderState = this.renderStates.get(player.id);
+    const px = renderState?.renderX ?? player.x;
+    const py = renderState?.renderY ?? player.y;
+    const rotation = renderState?.renderRotation ?? player.rotation;
+    const vx = renderState?.renderVx ?? player.vx;
+    const vy = renderState?.renderVy ?? player.vy;
 
     const backAngle = rotation + Math.PI;
     const trailType = player.shipEffects?.trailType || 'default';
@@ -2700,12 +2938,34 @@ export class SpaceGame {
     this.state.particles.push({
       x: px + Math.cos(backAngle) * 18,
       y: py + Math.sin(backAngle) * 18,
-      vx: Math.cos(backAngle + spread) * speed + player.vx * 0.3,
-      vy: Math.sin(backAngle + spread) * speed + player.vy * 0.3,
+      vx: Math.cos(backAngle + spread) * speed + vx * 0.3,
+      vy: Math.sin(backAngle + spread) * speed + vy * 0.3,
       life: 25 + Math.random() * 15,
       maxLife: 40,
       size: Math.random() * 5 + 3,
       color: colors[Math.floor(Math.random() * colors.length)],
     });
+  }
+
+  /**
+   * Emit spark particles for ship-to-ship collision.
+   */
+  private emitShipCollisionParticles(x: number, y: number, color1: string, color2: string) {
+    const colors = [color1, color2, '#ffffff', '#ffff88'];
+
+    for (let i = 0; i < 12; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 4 + 2;
+      this.state.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 20 + Math.random() * 15,
+        maxLife: 35,
+        size: Math.random() * 4 + 2,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
   }
 }

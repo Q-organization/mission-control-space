@@ -498,6 +498,7 @@ function App() {
       color: p.color,
       shipImage: p.shipImage,
       shipEffects: p.shipEffects,
+      shipLevel: p.shipLevel,
     })),
     [teamPlayers]
   );

@@ -94,6 +94,7 @@ export interface OtherPlayer {
   thrusting: boolean;
   shipImage: string;
   shipEffects: ShipEffects;
+  shipLevel: number; // 1 + upgrade count (affects ship size)
 }
 
 export interface ShipEffects {
@@ -123,4 +124,25 @@ export interface PointTransaction {
   taskName?: string | null;
   points: number;
   createdAt: string;
+}
+
+// Snapshot interpolation types for smooth multiplayer movement
+export interface PositionSnapshot {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  thrusting: boolean;
+  timestamp: number;
+}
+
+export interface InterpolationState {
+  snapshots: PositionSnapshot[];
+  renderX: number;
+  renderY: number;
+  renderRotation: number;
+  renderVx: number;
+  renderVy: number;
+  lastUpdateTime: number;
 }
