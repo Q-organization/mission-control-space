@@ -684,6 +684,7 @@ function App() {
 
         // Update in game (with new size)
         gameRef.current?.updateUserPlanetImage(userId, newImageUrl, currentPlanet.terraformCount + 1, currentPlanet.sizeLevel);
+        soundManager.playPlanetUpgrade();
       }
 
       setIsUpgrading(false);
@@ -750,7 +751,7 @@ function App() {
       }
     }));
     gameRef.current?.updateUserPlanetSize(userId, newLevel);
-    soundManager.playUIClick();
+    soundManager.playPlanetUpgrade();
   };
 
   // Fire confetti based on size
@@ -956,7 +957,7 @@ function App() {
 
     setTeamPoints(prev => prev - cost);
     updateUserShipEffects(userId, currentShip, newEffects);
-    soundManager.playUIClick();
+    soundManager.playShipUpgrade();
   };
 
   // Buy speed upgrade (max 5 levels)
@@ -974,7 +975,7 @@ function App() {
 
     setTeamPoints(prev => prev - cost);
     updateUserShipEffects(userId, currentShip, newEffects);
-    soundManager.playUIClick();
+    soundManager.playShipUpgrade();
   };
 
   // Buy or switch glow
@@ -992,6 +993,7 @@ function App() {
       const newGlow = currentEffects.glowColor === glow.value ? null : glow.value;
       const newEffects = { ...currentEffects, glowColor: newGlow };
       updateUserShipEffects(userId, currentShip, newEffects);
+      soundManager.playUIClick();
     } else {
       // Buy it
       if (teamPoints < glow.cost) return;
@@ -1002,8 +1004,8 @@ function App() {
       };
       setTeamPoints(prev => prev - glow.cost);
       updateUserShipEffects(userId, currentShip, newEffects);
+      soundManager.playShipUpgrade();
     }
-    soundManager.playUIClick();
   };
 
   // Buy or switch trail
@@ -1021,6 +1023,7 @@ function App() {
       const newTrail: ShipEffects['trailType'] = currentEffects.trailType === trail.value ? 'default' : trail.value as 'fire' | 'ice' | 'rainbow';
       const newEffects: ShipEffects = { ...currentEffects, trailType: newTrail };
       updateUserShipEffects(userId, currentShip, newEffects);
+      soundManager.playUIClick();
     } else {
       // Buy it
       if (teamPoints < trail.cost) return;
@@ -1031,8 +1034,8 @@ function App() {
       };
       setTeamPoints(prev => prev - trail.cost);
       updateUserShipEffects(userId, currentShip, newEffects);
+      soundManager.playShipUpgrade();
     }
-    soundManager.playUIClick();
   };
 
   // Helper to get effects with defaults

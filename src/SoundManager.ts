@@ -40,6 +40,23 @@ const SOUND_CONFIGS: Record<string, SoundConfig> = {
     volume: 0.4,
   },
 
+  // Upgrades
+  shipUpgrade: {
+    src: [`${SOUNDS_PATH}ship-upgrade.ogg`],
+    volume: 0.5,
+  },
+  planetUpgrade: {
+    src: [`${SOUNDS_PATH}planet-upgrade.ogg`],
+    volume: 0.5,
+  },
+
+  // Proximity ambient
+  shopAmbient: {
+    src: [`${SOUNDS_PATH}shop-ambient.ogg`],
+    volume: 0,
+    loop: true,
+  },
+
   // UI
   click: {
     src: [`${SOUNDS_PATH}click.ogg`],
@@ -67,6 +84,7 @@ export class SoundManager {
   // Track playing instances for looping sounds
   private thrustId: number | null = null;
   private blackHoleId: number | null = null;
+  private shopAmbientId: number | null = null;
   private isThrusting = false;
   private isBoosting = false;
 
@@ -99,6 +117,12 @@ export class SoundManager {
     const blackHoleAmbient = this.sounds.get('blackHoleAmbient');
     if (blackHoleAmbient) {
       this.blackHoleId = blackHoleAmbient.play();
+    }
+
+    // Start shop ambient (at 0 volume initially)
+    const shopAmbient = this.sounds.get('shopAmbient');
+    if (shopAmbient) {
+      this.shopAmbientId = shopAmbient.play();
     }
 
     this.initialized = true;
@@ -183,6 +207,26 @@ export class SoundManager {
   // UI sounds
   public playUIClick() {
     this.play('click');
+  }
+
+  // Upgrade sounds
+  public playShipUpgrade() {
+    this.play('shipUpgrade');
+  }
+
+  public playPlanetUpgrade() {
+    this.play('planetUpgrade');
+  }
+
+  // Shop/station proximity effect
+  public updateShopProximity(proximity: number) {
+    // proximity: 0 = far away, 1 = at station
+    const sound = this.sounds.get('shopAmbient');
+    if (!sound || this.shopAmbientId === null) return;
+
+    // Smooth volume curve
+    const volume = Math.pow(proximity, 1.5) * 0.4;
+    sound.volume(volume, this.shopAmbientId);
   }
 
   // Generic play method

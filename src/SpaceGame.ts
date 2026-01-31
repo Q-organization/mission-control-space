@@ -864,6 +864,18 @@ export class SpaceGame {
           this.startLandingAnimation(closestPlanet);
         }
       }
+
+      // Shop/station proximity sound
+      const isStation = closestPlanet.id === 'shop-station' || closestPlanet.id === 'planet-builder' || closestPlanet.id.startsWith('user-planet-');
+      if (isStation) {
+        const maxDist = closestPlanet.radius + PLANET_INFO_DISTANCE;
+        const proximity = Math.max(0, 1 - (closestDist - closestPlanet.radius) / (maxDist - closestPlanet.radius));
+        soundManager.updateShopProximity(proximity);
+      } else {
+        soundManager.updateShopProximity(0);
+      }
+    } else {
+      soundManager.updateShopProximity(0);
     }
   }
 
