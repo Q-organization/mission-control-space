@@ -80,6 +80,12 @@ export class SpaceGame {
   private customPlanetImages: Map<string, HTMLImageElement> = new Map();
   private userPlanetImages: Map<string, HTMLImageElement> = new Map();
 
+  // Landing animation state
+  private isLanding: boolean = false;
+  private landingProgress: number = 0;
+  private landingPlanet: Planet | null = null;
+  private landingStartPos: { x: number; y: number; rotation: number } | null = null;
+
   constructor(canvas: HTMLCanvasElement, onDock: (planet: Planet) => void, customPlanets: CustomPlanetData[] = [], shipImageUrl?: string, goals?: GoalsData, upgradeCount: number = 0, userPlanets?: Record<string, UserPlanetData>) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
@@ -620,6 +626,15 @@ export class SpaceGame {
   private update() {
     const { ship, planets } = this.state;
 
+    // Handle landing animation (skip normal controls while landing)
+    if (this.isLanding) {
+      this.updateLandingAnimation();
+      // Still update camera and particles
+      this.updateCamera();
+      this.updateParticles();
+      return;
+    }
+
     // Handle rotation
     if (this.keys.has('a') || this.keys.has('arrowleft')) {
       ship.rotation -= SHIP_ROTATION_SPEED;
@@ -776,21 +791,8 @@ export class SpaceGame {
     if (ship.y < margin) { ship.y = margin; ship.vy *= -0.5; }
     if (ship.y > WORLD_SIZE - margin) { ship.y = WORLD_SIZE - margin; ship.vy *= -0.5; }
 
-    // Update camera (smooth follow)
-    const targetCamX = ship.x - this.canvas.width / 2;
-    const targetCamY = ship.y - this.canvas.height / 2;
-    this.state.camera.x += (targetCamX - this.state.camera.x) * 0.06;
-    this.state.camera.y += (targetCamY - this.state.camera.y) * 0.06;
-
-    // Update particles
-    this.state.particles = this.state.particles.filter(p => {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.life--;
-      p.vx *= 0.97;
-      p.vy *= 0.97;
-      return p.life > 0;
-    });
+    this.updateCamera();
+    this.updateParticles();
 
     // Check nearby and docking
     this.state.dockingPlanet = null;
@@ -813,12 +815,116 @@ export class SpaceGame {
       // Check if close enough to dock (and not completed)
       if (!closestPlanet.completed && closestDist < closestPlanet.radius + DOCKING_DISTANCE) {
         this.state.dockingPlanet = closestPlanet;
-        if (this.keys.has(' ')) {
+        if (this.keys.has(' ') && !this.isLanding) {
           this.keys.delete(' ');
-          this.onDock(closestPlanet);
+          this.startLandingAnimation(closestPlanet);
         }
       }
     }
+  }
+
+  private startLandingAnimation(planet: Planet) {
+    this.isLanding = true;
+    this.landingProgress = 0;
+    this.landingPlanet = planet;
+    this.landingStartPos = {
+      x: this.state.ship.x,
+      y: this.state.ship.y,
+      rotation: this.state.ship.rotation,
+    };
+
+    // Stop any thrust sound
+    soundManager.stopThrust();
+  }
+
+  private updateLandingAnimation() {
+    if (!this.isLanding || !this.landingPlanet || !this.landingStartPos) return;
+
+    // Smooth easing curve
+    this.landingProgress += 0.025;
+    const t = this.easeInOutCubic(Math.min(this.landingProgress, 1));
+
+    // Calculate landing position (on the planet surface)
+    const targetX = this.landingPlanet.x;
+    const targetY = this.landingPlanet.y - this.landingPlanet.radius - 20;
+    const targetRotation = -Math.PI / 2; // Point upward
+
+    // Interpolate position
+    this.state.ship.x = this.landingStartPos.x + (targetX - this.landingStartPos.x) * t;
+    this.state.ship.y = this.landingStartPos.y + (targetY - this.landingStartPos.y) * t;
+
+    // Smoothly rotate to upward
+    let rotDiff = targetRotation - this.landingStartPos.rotation;
+    while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+    while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+    this.state.ship.rotation = this.landingStartPos.rotation + rotDiff * t;
+
+    // Stop ship velocity
+    this.state.ship.vx = 0;
+    this.state.ship.vy = 0;
+
+    // Emit landing particles
+    if (this.landingProgress < 0.8 && Math.random() < 0.3) {
+      this.emitLandingParticles();
+    }
+
+    // Animation complete
+    if (this.landingProgress >= 1) {
+      // Small delay before triggering dock
+      setTimeout(() => {
+        if (this.landingPlanet) {
+          soundManager.playDockingSound();
+          this.onDock(this.landingPlanet);
+        }
+        this.isLanding = false;
+        this.landingPlanet = null;
+        this.landingStartPos = null;
+        this.landingProgress = 0;
+      }, 200);
+    }
+  }
+
+  private emitLandingParticles() {
+    const { ship } = this.state;
+    const backAngle = ship.rotation + Math.PI;
+
+    for (let i = 0; i < 3; i++) {
+      const spread = (Math.random() - 0.5) * 0.8;
+      const speed = Math.random() * 2 + 1;
+      this.state.particles.push({
+        x: ship.x + Math.cos(backAngle) * 15,
+        y: ship.y + Math.sin(backAngle) * 15,
+        vx: Math.cos(backAngle + spread) * speed,
+        vy: Math.sin(backAngle + spread) * speed,
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        size: Math.random() * 4 + 2,
+        color: '#ffa500',
+      });
+    }
+  }
+
+  private easeInOutCubic(t: number): number {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  private updateCamera() {
+    const { ship } = this.state;
+    const targetCamX = ship.x - this.canvas.width / 2;
+    const targetCamY = ship.y - this.canvas.height / 2;
+    this.state.camera.x += (targetCamX - this.state.camera.x) * 0.06;
+    this.state.camera.y += (targetCamY - this.state.camera.y) * 0.06;
+  }
+
+  private updateParticles() {
+    this.state.particles = this.state.particles.filter(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+      p.vx *= 0.97;
+      p.vy *= 0.97;
+      return p.life > 0;
+    });
   }
 
   private emitThrustParticles(isBoosting: boolean = false) {
