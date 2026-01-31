@@ -723,6 +723,13 @@ function App() {
         }));
 
         gameRef.current?.updateUserPlanetImage(userId, newImageUrl, 0, 0);
+
+        // Sync planet to backend for multiplayer
+        updatePlayerData({
+          planet_image_url: newImageUrl,
+          planet_terraform_count: 0,
+          planet_size_level: 0,
+        });
       }
 
       setIsUpgrading(false);
@@ -803,11 +810,12 @@ function App() {
         setTeamPoints(prev => prev - 50);
 
         // Update user's planet
+        const newTerraformCount = currentPlanet.terraformCount + 1;
         setUserPlanets(prev => ({
           ...prev,
           [userId]: {
             imageUrl: newImageUrl,
-            terraformCount: currentPlanet.terraformCount + 1,
+            terraformCount: newTerraformCount,
             history: [...currentPlanet.history, {
               imageUrl: newImageUrl,
               description: promptText,
@@ -818,8 +826,14 @@ function App() {
         }));
 
         // Update in game (with new size)
-        gameRef.current?.updateUserPlanetImage(userId, newImageUrl, currentPlanet.terraformCount + 1, currentPlanet.sizeLevel);
+        gameRef.current?.updateUserPlanetImage(userId, newImageUrl, newTerraformCount, currentPlanet.sizeLevel);
         soundManager.playPlanetUpgrade();
+
+        // Sync planet to backend for multiplayer
+        updatePlayerData({
+          planet_image_url: newImageUrl,
+          planet_terraform_count: newTerraformCount,
+        });
       }
 
       setIsUpgrading(false);
@@ -901,6 +915,9 @@ function App() {
     }));
     gameRef.current?.updateUserPlanetSize(userId, newLevel);
     soundManager.playPlanetUpgrade();
+
+    // Sync planet size to backend for multiplayer
+    updatePlayerData({ planet_size_level: newLevel });
   };
 
   // Fire confetti based on size
@@ -1075,6 +1092,12 @@ function App() {
         // Update the ship in the game canvas
         gameRef.current?.updateShipImage(newImageUrl, currentShip.upgrades.length + 1);
 
+        // Sync ship image to backend for multiplayer
+        updatePlayerData({
+          ship_current_image: newImageUrl,
+          ship_upgrades: [...currentShip.upgrades, upgradeId],
+        });
+
         // Add to mascot history
         setMascotHistory(prev => [...prev, {
           imageUrl: newImageUrl,
@@ -1209,6 +1232,9 @@ function App() {
       [userId]: { ...currentShip, effects: newEffects }
     }));
     gameRef.current?.updateShipEffects(newEffects);
+
+    // Sync effects to backend for multiplayer
+    updatePlayerData({ ship_effects: newEffects });
   };
 
   // Select user

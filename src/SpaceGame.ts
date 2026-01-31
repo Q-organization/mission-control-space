@@ -159,6 +159,8 @@ export class SpaceGame {
   // Multiplayer: other players' ships
   private otherPlayers: OtherPlayer[] = [];
   private otherPlayerImages: Map<string, HTMLImageElement> = new Map();
+  // Interpolated positions for smooth rendering
+  private interpolatedPositions: Map<string, { x: number; y: number; rotation: number; vx: number; vy: number }> = new Map();
 
   constructor(canvas: HTMLCanvasElement, onDock: (planet: Planet) => void, customPlanets: CustomPlanetData[] = [], shipImageUrl?: string, goals?: GoalsData, upgradeCount: number = 0, userPlanets?: Record<string, UserPlanetData>, currentUser: string = 'quentin') {
     this.canvas = canvas;
@@ -902,6 +904,7 @@ export class SpaceGame {
     this.updateCamera();
     this.updateParticles();
     this.updateUpgradeSatellites();
+    this.updateOtherPlayersInterpolation();
     this.updateOtherPlayersParticles();
     this.updateZoneTitle();
 
@@ -2392,11 +2395,73 @@ export class SpaceGame {
   public setOtherPlayers(players: OtherPlayer[]) {
     this.otherPlayers = players;
 
-    // Preload ship images for new players
+    // Preload ship images for new players and initialize interpolated positions
     for (const player of players) {
       if (player.shipImage && !this.otherPlayerImages.has(player.id)) {
         this.loadOtherPlayerImage(player.id, player.shipImage);
       }
+
+      // Initialize interpolated position if this is a new player
+      if (!this.interpolatedPositions.has(player.id)) {
+        this.interpolatedPositions.set(player.id, {
+          x: player.x,
+          y: player.y,
+          rotation: player.rotation,
+          vx: player.vx,
+          vy: player.vy,
+        });
+      }
+    }
+
+    // Clean up interpolated positions for players who left
+    for (const id of this.interpolatedPositions.keys()) {
+      if (!players.find(p => p.id === id)) {
+        this.interpolatedPositions.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Smoothly interpolate other players' positions toward their target positions.
+   * This creates smooth movement even with network latency.
+   */
+  private updateOtherPlayersInterpolation() {
+    const LERP_FACTOR = 0.3; // How fast to interpolate (higher = snappier with 60fps updates)
+    const ROTATION_LERP = 0.35;
+
+    for (const player of this.otherPlayers) {
+      const interpolated = this.interpolatedPositions.get(player.id);
+      if (!interpolated) continue;
+
+      // Calculate distance to target
+      const dx = player.x - interpolated.x;
+      const dy = player.y - interpolated.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // Handle world wrapping - if too far, teleport
+      if (dist > WORLD_SIZE / 2) {
+        interpolated.x = player.x;
+        interpolated.y = player.y;
+        interpolated.rotation = player.rotation;
+      } else {
+        // Smooth interpolation using velocity for prediction
+        // Predict where they'll be based on their velocity
+        const predictX = player.x + player.vx * 2;
+        const predictY = player.y + player.vy * 2;
+
+        interpolated.x += (predictX - interpolated.x) * LERP_FACTOR;
+        interpolated.y += (predictY - interpolated.y) * LERP_FACTOR;
+
+        // Interpolate rotation (handle wrap-around)
+        let rotDiff = player.rotation - interpolated.rotation;
+        while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+        while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+        interpolated.rotation += rotDiff * ROTATION_LERP;
+      }
+
+      // Update velocity for particle effects
+      interpolated.vx = player.vx;
+      interpolated.vy = player.vy;
     }
   }
 
@@ -2440,14 +2505,20 @@ export class SpaceGame {
   }
 
   /**
-   * Render all other players' ships.
+   * Render all other players' ships using interpolated positions for smooth movement.
    */
   private renderOtherPlayers() {
     for (const player of this.otherPlayers) {
+      // Use interpolated position for smooth rendering
+      const interpolated = this.interpolatedPositions.get(player.id);
+      const renderX = interpolated?.x ?? player.x;
+      const renderY = interpolated?.y ?? player.y;
+      const renderRotation = interpolated?.rotation ?? player.rotation;
+
       // Draw at all wrapped positions for seamless world wrapping
-      const positions = this.getWrappedPositions(player.x, player.y, 80);
+      const positions = this.getWrappedPositions(renderX, renderY, 80);
       for (const pos of positions) {
-        this.drawOtherPlayerAt(player, pos.x, pos.y);
+        this.drawOtherPlayerAt(player, pos.x, pos.y, renderRotation);
       }
     }
   }
@@ -2455,13 +2526,14 @@ export class SpaceGame {
   /**
    * Draw another player's ship at a specific screen position.
    */
-  private drawOtherPlayerAt(player: OtherPlayer, x: number, y: number) {
+  private drawOtherPlayerAt(player: OtherPlayer, x: number, y: number, rotation?: number) {
     const { ctx } = this;
     const shipImage = this.otherPlayerImages.get(player.id) || this.shipImage;
+    const renderRotation = rotation ?? player.rotation;
 
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(player.rotation + Math.PI / 2);
+    ctx.rotate(renderRotation + Math.PI / 2);
 
     // Ship size (use their size bonus if available)
     const effectSizeMultiplier = 1 + ((player.shipEffects?.sizeBonus || 0) / 100);
@@ -2545,7 +2617,13 @@ export class SpaceGame {
    * Emit thrust particles for another player (simpler version).
    */
   private emitOtherPlayerThrust(player: OtherPlayer) {
-    const backAngle = player.rotation + Math.PI;
+    // Use interpolated position for particles
+    const interpolated = this.interpolatedPositions.get(player.id);
+    const px = interpolated?.x ?? player.x;
+    const py = interpolated?.y ?? player.y;
+    const rotation = interpolated?.rotation ?? player.rotation;
+
+    const backAngle = rotation + Math.PI;
     const trailType = player.shipEffects?.trailType || 'default';
 
     // Choose colors based on trail type
@@ -2568,8 +2646,8 @@ export class SpaceGame {
     const speed = Math.random() * 3 + 2;
 
     this.state.particles.push({
-      x: player.x + Math.cos(backAngle) * 18,
-      y: player.y + Math.sin(backAngle) * 18,
+      x: px + Math.cos(backAngle) * 18,
+      y: py + Math.sin(backAngle) * 18,
       vx: Math.cos(backAngle + spread) * speed + player.vx * 0.3,
       vy: Math.sin(backAngle + spread) * speed + player.vy * 0.3,
       life: 25 + Math.random() * 15,
