@@ -1841,7 +1841,7 @@ export class SpaceGame {
       const hasNotion = this.landedPlanet.notionUrl;
       const isCompleted = this.landedPlanet.completed;
       const isNotionPlanet = this.landedPlanet.id.startsWith('notion-');
-      const isUnassigned = isNotionPlanet && !this.landedPlanet.ownerId;
+      const isUnassigned = isNotionPlanet && (!this.landedPlanet.ownerId || this.landedPlanet.ownerId === '');
       let hint = 'SPACE Take Off';
       if (!isCompleted) {
         if (isUnassigned) {
@@ -2542,7 +2542,7 @@ export class SpaceGame {
     ctx.font = '12px Space Grotesk';
     const typeLabel = planet.type === 'notion' ? 'NOTION TASK' : planet.type.toUpperCase();
     const ownerName = planet.ownerId ? planet.ownerId.charAt(0).toUpperCase() + planet.ownerId.slice(1) : null;
-    const isUnassigned = planet.type === 'notion' && !planet.ownerId;
+    const isUnassigned = planet.type === 'notion' && (!planet.ownerId || planet.ownerId === '');
     const ownerText = ownerName ? ` • ${ownerName}'s Task` : (isUnassigned ? ' • Unassigned' : ' • Shared Task');
     const sizeLabel = ` • ${planet.size.charAt(0).toUpperCase() + planet.size.slice(1)}`;
     ctx.fillText(typeLabel + ownerText + sizeLabel, boxX + boxWidth / 2, boxY + 65);

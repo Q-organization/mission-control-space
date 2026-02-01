@@ -1126,7 +1126,7 @@ function App() {
     // Handle Notion planets
     if (planet.id.startsWith('notion-')) {
       // Check if unassigned - then CLAIM instead of complete
-      if (!planet.ownerId && state.currentUser) {
+      if ((!planet.ownerId || planet.ownerId === '') && state.currentUser) {
         // Claim the mission (moves it to player's zone)
         const success = await claimNotionPlanet(planet.id, state.currentUser);
         if (success) {
