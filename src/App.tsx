@@ -1212,10 +1212,10 @@ function App() {
     };
   }, [handleLand, handleTakeoff, handleColonize, handleOpenNotion, handleTerraform]);
 
-  // Close modals with Space key
+  // Close modals with Space or Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === ' ' && !isUpgrading) {
+      if ((e.key === ' ' || e.key === 'Escape') && !isUpgrading) {
         // Close terraform modal
         if (showTerraform) {
           e.preventDefault();
