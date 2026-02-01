@@ -413,25 +413,6 @@ export class SpaceGame {
     });
 
     // SPECIAL STATIONS - In the central zone, near spawn point
-    // Memory Lane - View ship evolution (left of center)
-    planets.push({
-      id: 'memory-lane',
-      name: 'Memory Lane',
-      x: CENTER_X - 200,
-      y: CENTER_Y + 350,
-      radius: 55,
-      color: '#ff6b9d',
-      glowColor: 'rgba(255, 107, 157, 0.5)',
-      completed: false,
-      type: 'achievement',
-      size: 'medium',
-      style: { baseColor: '#ff6b9d', accent: '#ff4081', type: 'station' },
-      hasRing: true,
-      hasMoon: false,
-      description: 'View your ship evolution gallery',
-      ownerId: null, // Shared station
-    });
-
     // Shop Station - Buy upgrades (right of center)
     planets.push({
       id: 'shop-station',

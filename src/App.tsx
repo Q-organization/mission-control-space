@@ -1401,19 +1401,25 @@ function App() {
     // Clear landed state
     setLandedPlanet(null);
 
-    // Handle Notion planets - delete from database
+    // Handle Notion planets - delete via edge function (bypasses RLS)
     if (planet.id.startsWith('notion-')) {
       const actualId = planet.id.replace('notion-', '');
       try {
-        const { error } = await supabase
-          .from('notion_planets')
-          .delete()
-          .eq('id', actualId);
+        const response = await fetch(
+          'https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/notion-delete',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ planet_id: actualId }),
+          }
+        );
 
-        if (error) {
+        if (!response.ok) {
+          const error = await response.json();
           console.error('Failed to delete planet:', error);
         } else {
-          console.log(`Destroyed planet: ${planet.name}`);
+          const result = await response.json();
+          console.log(`Destroyed planet: ${result.deleted_planet_name}`);
         }
       } catch (err) {
         console.error('Error destroying planet:', err);
