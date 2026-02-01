@@ -138,10 +138,6 @@ export class SpaceGame {
   private isLanded: boolean = false;
   private landedPlanet: Planet | null = null;
 
-  // Takeoff animation state
-  private isTakingOff: boolean = false;
-  private takeoffProgress: number = 0;
-
   // Callbacks for landing interactions
   private onLand: ((planet: Planet) => void) | null = null;
   private onTakeoff: (() => void) | null = null;
@@ -802,14 +798,6 @@ export class SpaceGame {
       return;
     }
 
-    // Handle takeoff animation
-    if (this.isTakingOff) {
-      this.updateTakeoffAnimation();
-      this.updateCamera();
-      this.updateParticles();
-      return;
-    }
-
     // Handle landed state (player is on planet, showing details)
     if (this.isLanded && this.landedPlanet) {
       this.updateLandedState();
@@ -1241,10 +1229,15 @@ export class SpaceGame {
     this.state.ship.vy = 0;
     this.state.ship.rotation = -Math.PI / 2; // Pointing up
 
-    // Handle Space key - takeoff
+    // Handle Space key - close panel and resume normal controls
     if (this.keys.has(' ')) {
       this.keys.delete(' ');
-      this.startTakeoffAnimation();
+      // Just clear landed state - normal controls will resume
+      this.isLanded = false;
+      this.landedPlanet = null;
+      if (this.onTakeoff) {
+        this.onTakeoff();
+      }
       return;
     }
 
@@ -1264,69 +1257,6 @@ export class SpaceGame {
         this.onOpenNotion(planet.notionUrl);
       }
       return;
-    }
-  }
-
-  private startTakeoffAnimation() {
-    if (!this.landedPlanet) return;
-
-    this.isTakingOff = true;
-    this.takeoffProgress = 0;
-
-    // Store the planet for animation
-    (this as any).takeoffPlanet = this.landedPlanet;
-
-    // Clear landed state
-    this.isLanded = false;
-    this.landedPlanet = null;
-
-    // Call takeoff callback
-    if (this.onTakeoff) {
-      this.onTakeoff();
-    }
-
-    // Sound effect
-    soundManager.startThrust(true);
-  }
-
-  private updateTakeoffAnimation() {
-    if (!this.isTakingOff) return;
-
-    const planet = (this as any).takeoffPlanet as Planet | null;
-    if (!planet) {
-      this.isTakingOff = false;
-      return;
-    }
-
-    // ~1.5 second takeoff animation
-    this.takeoffProgress += 0.012;
-    const progress = Math.min(this.takeoffProgress, 1);
-
-    const startY = planet.y - planet.radius - 25;
-    const endY = planet.y - planet.radius - 150; // Lift off to 150 above landing spot
-
-    // Ease out for smooth lift-off
-    const easeProgress = 1 - Math.pow(1 - progress, 3);
-
-    // Position ship
-    this.state.ship.x = planet.x;
-    this.state.ship.y = startY + (endY - startY) * easeProgress;
-    this.state.ship.rotation = -Math.PI / 2; // Pointing up
-
-    // Emit thrust particles during takeoff
-    if (progress < 0.8) {
-      this.emitRetroThrustFlames(1 - progress);
-    }
-
-    // Animation complete
-    if (this.takeoffProgress >= 1) {
-      soundManager.stopThrust();
-      this.isTakingOff = false;
-      this.takeoffProgress = 0;
-      delete (this as any).takeoffPlanet;
-
-      // Give ship a small upward velocity to continue flying
-      this.state.ship.vy = -2;
     }
   }
 
