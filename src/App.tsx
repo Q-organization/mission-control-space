@@ -1083,10 +1083,9 @@ function App() {
 
   // Handle landing on a planet (new system - shows details panel)
   const handleLand = useCallback((planet: Planet) => {
-    // Special planets open modals instead of showing landed panel
+    // Special station planets open modals instead of showing landed panel
     if (planet.id === 'memory-lane') {
       setShowMemoryGallery(true);
-      // Auto-takeoff after modal opens
       return;
     }
     if (planet.id === 'shop-station') {
@@ -1097,19 +1096,10 @@ function App() {
       setShowPlanetCreator(true);
       return;
     }
-    if (planet.id.startsWith('user-planet-')) {
-      const planetOwnerId = planet.id.replace('user-planet-', '');
-      if (planetOwnerId === state.currentUser) {
-        setShowTerraform(true);
-      } else {
-        setViewingPlanetOwner(planetOwnerId);
-      }
-      return;
-    }
 
-    // For regular planets, just set the landed state (details shown in game canvas)
+    // For all other planets (including user planets), show the landed panel
     setLandedPlanet(planet);
-  }, [state.currentUser]);
+  }, []);
 
   // Handle takeoff from a planet
   const handleTakeoff = useCallback(() => {
@@ -1167,6 +1157,22 @@ function App() {
     window.open(url, '_blank');
   }, []);
 
+  // Handle terraforming a user planet
+  const handleTerraform = useCallback((planet: Planet) => {
+    if (!planet.id.startsWith('user-planet-')) return;
+
+    const planetOwnerId = planet.id.replace('user-planet-', '');
+    if (planetOwnerId === state.currentUser) {
+      // Your own planet - can terraform
+      setShowTerraform(true);
+      setLandedPlanet(null); // Close landed panel when opening terraform modal
+    } else {
+      // Someone else's planet - view only
+      setViewingPlanetOwner(planetOwnerId);
+      setLandedPlanet(null);
+    }
+  }, [state.currentUser]);
+
   // Keep landing callbacks ref updated
   useEffect(() => {
     landingCallbacksRef.current = {
@@ -1174,8 +1180,9 @@ function App() {
       onTakeoff: handleTakeoff,
       onColonize: handleColonize,
       onOpenNotion: handleOpenNotion,
+      onTerraform: handleTerraform,
     };
-  }, [handleLand, handleTakeoff, handleColonize, handleOpenNotion]);
+  }, [handleLand, handleTakeoff, handleColonize, handleOpenNotion, handleTerraform]);
 
   // Buy visual upgrade from shop (AI-generated changes to ship appearance)
   const buyVisualUpgrade = async () => {
