@@ -391,11 +391,13 @@ function App() {
     onTakeoff: () => void;
     onColonize: (planet: Planet) => void;
     onOpenNotion: (url: string) => void;
+    onTerraform: (planet: Planet) => void;
   }>({
     onLand: () => {},
     onTakeoff: () => {},
     onColonize: () => {},
     onOpenNotion: () => {},
+    onTerraform: () => {},
   });
   const [state, setState] = useState<SavedState>(loadState);
   const [customPlanets, setCustomPlanets] = useState<CustomPlanet[]>(loadCustomPlanets);
@@ -1543,6 +1545,7 @@ function App() {
       onTakeoff: () => landingCallbacksRef.current.onTakeoff(),
       onColonize: (planet) => landingCallbacksRef.current.onColonize(planet),
       onOpenNotion: (url) => landingCallbacksRef.current.onOpenNotion(url),
+      onTerraform: (planet) => landingCallbacksRef.current.onTerraform(planet),
     });
 
     // Sync notion planets immediately if already loaded

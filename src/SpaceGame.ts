@@ -143,6 +143,7 @@ export class SpaceGame {
   private onTakeoff: (() => void) | null = null;
   private onColonize: ((planet: Planet) => void) | null = null;
   private onOpenNotion: ((url: string) => void) | null = null;
+  private onTerraform: ((planet: Planet) => void) | null = null;
 
   // Upgrading animation state (orbiting satellites/robots)
   private isUpgrading: boolean = false;
@@ -587,11 +588,13 @@ export class SpaceGame {
     onTakeoff?: () => void;
     onColonize?: (planet: Planet) => void;
     onOpenNotion?: (url: string) => void;
+    onTerraform?: (planet: Planet) => void;
   }) {
     this.onLand = callbacks.onLand || null;
     this.onTakeoff = callbacks.onTakeoff || null;
     this.onColonize = callbacks.onColonize || null;
     this.onOpenNotion = callbacks.onOpenNotion || null;
+    this.onTerraform = callbacks.onTerraform || null;
   }
 
   public isPlayerLanded(): boolean {
@@ -611,7 +614,7 @@ export class SpaceGame {
       }
 
       this.keys.add(e.key.toLowerCase());
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'c', 'n'].includes(e.key.toLowerCase())) {
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'c', 'n', 't'].includes(e.key.toLowerCase())) {
         e.preventDefault();
       }
     });
@@ -1258,6 +1261,15 @@ export class SpaceGame {
       }
       return;
     }
+
+    // Handle T key - terraform (for user planets)
+    if (this.keys.has('t')) {
+      this.keys.delete('t');
+      if (planet.id.startsWith('user-planet-') && this.onTerraform) {
+        this.onTerraform(planet);
+      }
+      return;
+    }
   }
 
   private emitOrbitTrail() {
@@ -1828,12 +1840,16 @@ export class SpaceGame {
     if (this.isLanded && this.landedPlanet) {
       const hasNotion = this.landedPlanet.notionUrl;
       const isCompleted = this.landedPlanet.completed;
+      const isUserPlanet = this.landedPlanet.id.startsWith('user-planet-');
       let hint = 'SPACE Take Off';
-      if (!isCompleted) {
+      if (!isCompleted && !isUserPlanet) {
         hint += '  •  C Colonize';
       }
       if (hasNotion) {
         hint += '  •  N Open in Notion';
+      }
+      if (isUserPlanet) {
+        hint += '  •  T Terraform';
       }
       ctx.fillText(hint, 20, canvas.height - 15);
     } else {
@@ -2612,8 +2628,15 @@ export class SpaceGame {
     // Action hints at the bottom
     currentY = boxY + boxHeight - 35;
 
-    if (!planet.completed) {
-      // Colonize hint
+    const isUserPlanet = planet.id.startsWith('user-planet-');
+
+    if (isUserPlanet) {
+      // Terraform hint for user planets
+      ctx.fillStyle = '#ffa500';
+      ctx.font = 'bold 14px Space Grotesk';
+      ctx.fillText('[ T ] Terraform', boxX + boxWidth / 2, currentY);
+    } else if (!planet.completed) {
+      // Colonize hint for regular planets
       ctx.fillStyle = '#4ade80';
       ctx.font = 'bold 14px Space Grotesk';
       ctx.fillText('[ C ] Colonize', boxX + boxWidth / 2 - (hasNotionUrl ? 80 : 0), currentY);
