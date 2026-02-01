@@ -386,6 +386,17 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<SpaceGame | null>(null);
   const onDockRef = useRef<(planet: Planet) => void>(() => {});
+  const landingCallbacksRef = useRef<{
+    onLand: (planet: Planet) => void;
+    onTakeoff: () => void;
+    onColonize: (planet: Planet) => void;
+    onOpenNotion: (url: string) => void;
+  }>({
+    onLand: () => {},
+    onTakeoff: () => {},
+    onColonize: () => {},
+    onOpenNotion: () => {},
+  });
   const [state, setState] = useState<SavedState>(loadState);
   const [customPlanets, setCustomPlanets] = useState<CustomPlanet[]>(loadCustomPlanets);
   const [teamPoints, setTeamPoints] = useState(loadTeamPoints);
@@ -408,6 +419,7 @@ function App() {
   const [upgradePrompt, setUpgradePrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [editingGoal, setEditingGoal] = useState<any | null>(null);
+  const [landedPlanet, setLandedPlanet] = useState<Planet | null>(null);
 
   // Planet creator form state
   const [newPlanet, setNewPlanet] = useState<Partial<CustomPlanet>>({
@@ -502,6 +514,7 @@ function App() {
       shipImage: p.shipImage,
       shipEffects: p.shipEffects,
       shipLevel: p.shipLevel,
+      isOnline: p.isOnline,
     })),
     [teamPlayers]
   );
@@ -1068,6 +1081,102 @@ function App() {
     onDockRef.current(planet);
   }, []);
 
+  // Handle landing on a planet (new system - shows details panel)
+  const handleLand = useCallback((planet: Planet) => {
+    // Special planets open modals instead of showing landed panel
+    if (planet.id === 'memory-lane') {
+      setShowMemoryGallery(true);
+      // Auto-takeoff after modal opens
+      return;
+    }
+    if (planet.id === 'shop-station') {
+      setShowShop(true);
+      return;
+    }
+    if (planet.id === 'planet-builder') {
+      setShowPlanetCreator(true);
+      return;
+    }
+    if (planet.id.startsWith('user-planet-')) {
+      const planetOwnerId = planet.id.replace('user-planet-', '');
+      if (planetOwnerId === state.currentUser) {
+        setShowTerraform(true);
+      } else {
+        setViewingPlanetOwner(planetOwnerId);
+      }
+      return;
+    }
+
+    // For regular planets, just set the landed state (details shown in game canvas)
+    setLandedPlanet(planet);
+  }, [state.currentUser]);
+
+  // Handle takeoff from a planet
+  const handleTakeoff = useCallback(() => {
+    setLandedPlanet(null);
+  }, []);
+
+  // Handle colonizing a planet (completing it)
+  const handleColonize = useCallback((planet: Planet) => {
+    if (planet.completed) return;
+
+    // Fire confetti and sound
+    fireConfetti(planet.size);
+    soundManager.playDockingSound();
+
+    // Handle Notion planets
+    if (planet.id.startsWith('notion-')) {
+      // Mark as completed in database
+      completeNotionPlanet(planet.id);
+
+      // Award points
+      const pointsEarned = planet.points || POINTS_PER_SIZE[planet.size];
+      setTeamPoints(prev => prev + pointsEarned);
+
+      gameRef.current?.completePlanet(planet.id);
+
+      if (team) {
+        completeRemotePlanet(planet.id, pointsEarned);
+      }
+    } else {
+      // Regular planets
+      if (state.completedPlanets.includes(planet.id)) return;
+
+      const pointsEarned = POINTS_PER_SIZE[planet.size];
+      setTeamPoints(prev => prev + pointsEarned);
+
+      setState(prev => ({
+        ...prev,
+        completedPlanets: [...prev.completedPlanets, planet.id],
+        upgradeCount: prev.upgradeCount + 1,
+      }));
+
+      gameRef.current?.completePlanet(planet.id);
+
+      if (team) {
+        completeRemotePlanet(planet.id, pointsEarned);
+      }
+    }
+
+    // Clear landed state after colonizing
+    setLandedPlanet(null);
+  }, [state.completedPlanets, team, completeRemotePlanet, completeNotionPlanet]);
+
+  // Handle opening Notion URL
+  const handleOpenNotion = useCallback((url: string) => {
+    window.open(url, '_blank');
+  }, []);
+
+  // Keep landing callbacks ref updated
+  useEffect(() => {
+    landingCallbacksRef.current = {
+      onLand: handleLand,
+      onTakeoff: handleTakeoff,
+      onColonize: handleColonize,
+      onOpenNotion: handleOpenNotion,
+    };
+  }, [handleLand, handleTakeoff, handleColonize, handleOpenNotion]);
+
   // Buy visual upgrade from shop (AI-generated changes to ship appearance)
   const buyVisualUpgrade = async () => {
     if (teamPoints < VISUAL_UPGRADE_COST) return;
@@ -1420,6 +1529,14 @@ function App() {
     const currentShip = getCurrentUserShip();
     const game = new SpaceGame(canvasRef.current, stableOnDock, customPlanets, currentShip.currentImage, goals, currentShip.upgrades.length, userPlanets, state.currentUser || 'quentin');
     gameRef.current = game;
+
+    // Set up landing callbacks for the new interaction system (use refs for stable references)
+    game.setLandingCallbacks({
+      onLand: (planet) => landingCallbacksRef.current.onLand(planet),
+      onTakeoff: () => landingCallbacksRef.current.onTakeoff(),
+      onColonize: (planet) => landingCallbacksRef.current.onColonize(planet),
+      onOpenNotion: (url) => landingCallbacksRef.current.onOpenNotion(url),
+    });
 
     // Sync notion planets immediately if already loaded
     if (notionPlanetsRef.current.length > 0) {

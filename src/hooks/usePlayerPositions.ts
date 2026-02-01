@@ -11,6 +11,7 @@ interface PlayerInfo {
   shipImage: string;
   shipEffects: ShipEffects;
   shipLevel: number;
+  isOnline: boolean;
 }
 
 interface UsePlayerPositionsOptions {
@@ -298,23 +299,31 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
   }, [teamId, playerId, fetchInitialPositions]);
 
   // Update other players when player list changes (for new ship images, etc.)
+  // Also remove offline players from the map
   useEffect(() => {
     setOtherPlayers((prev) =>
-      prev.map((op) => {
-        const playerInfo = players.find((p) => p.id === op.id);
-        if (playerInfo) {
-          return {
-            ...op,
-            username: playerInfo.username,
-            displayName: playerInfo.displayName,
-            color: playerInfo.color,
-            shipImage: playerInfo.shipImage,
-            shipEffects: playerInfo.shipEffects || defaultShipEffects,
-            shipLevel: playerInfo.shipLevel || 1,
-          };
-        }
-        return op;
-      })
+      prev
+        // Filter out offline players
+        .filter((op) => {
+          const playerInfo = players.find((p) => p.id === op.id);
+          return playerInfo?.isOnline !== false;
+        })
+        // Update remaining players' info
+        .map((op) => {
+          const playerInfo = players.find((p) => p.id === op.id);
+          if (playerInfo) {
+            return {
+              ...op,
+              username: playerInfo.username,
+              displayName: playerInfo.displayName,
+              color: playerInfo.color,
+              shipImage: playerInfo.shipImage,
+              shipEffects: playerInfo.shipEffects || defaultShipEffects,
+              shipLevel: playerInfo.shipLevel || 1,
+            };
+          }
+          return op;
+        })
     );
   }, [players]);
 
