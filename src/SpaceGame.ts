@@ -2526,6 +2526,183 @@ export class SpaceGame {
     }
   }
 
+  private drawLandedPanel(planet: Planet) {
+    const { ctx, canvas } = this;
+
+    // Larger panel for landed state with more details
+    const boxWidth = 400;
+    let boxHeight = 180;
+
+    // Calculate additional height for content
+    const hasDescription = planet.description && planet.description.length > 0;
+    const hasReward = planet.reward && !planet.completed;
+    const hasRealReward = planet.realWorldReward && !planet.completed;
+    const hasNotionUrl = planet.notionUrl;
+    const hasPriority = planet.priority;
+
+    if (hasDescription) boxHeight += 25;
+    if (hasRealReward) boxHeight += 25;
+    if (hasNotionUrl) boxHeight += 25;
+    if (hasPriority) boxHeight += 20;
+
+    const boxX = canvas.width / 2 - boxWidth / 2;
+    const boxY = canvas.height / 2 - boxHeight / 2;
+
+    // Background with glow effect
+    ctx.save();
+
+    // Outer glow
+    ctx.shadowColor = planet.completed ? '#4ade80' : planet.color;
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = 'rgba(10, 10, 20, 0.98)';
+    ctx.beginPath();
+    ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 16);
+    ctx.fill();
+
+    // Reset shadow for content
+    ctx.shadowBlur = 0;
+
+    // Border
+    ctx.strokeStyle = planet.completed ? '#4ade80' : planet.color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Status badge
+    const badgeWidth = planet.completed ? 100 : 80;
+    const badgeX = boxX + boxWidth / 2 - badgeWidth / 2;
+    const badgeY = boxY - 15;
+    ctx.fillStyle = planet.completed ? '#4ade80' : planet.color;
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeWidth, 28, 14);
+    ctx.fill();
+
+    // Badge text
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 12px Space Grotesk';
+    ctx.textAlign = 'center';
+    ctx.fillText(planet.completed ? 'COMPLETED' : 'LANDED', boxX + boxWidth / 2, badgeY + 18);
+
+    // Planet name
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px Space Grotesk';
+    ctx.textAlign = 'center';
+    ctx.fillText(planet.name, boxX + boxWidth / 2, boxY + 45);
+
+    // Type and owner info
+    const typeColors: Record<string, string> = { business: '#4ade80', product: '#5490ff', achievement: '#ffd700', notion: '#94a3b8' };
+    ctx.fillStyle = typeColors[planet.type] || '#94a3b8';
+    ctx.font = '12px Space Grotesk';
+    const typeLabel = planet.type === 'notion' ? 'NOTION TASK' : planet.type.toUpperCase();
+    const ownerName = planet.ownerId ? planet.ownerId.charAt(0).toUpperCase() + planet.ownerId.slice(1) : null;
+    const ownerText = ownerName ? ` • ${ownerName}'s Task` : ' • Shared Task';
+    const sizeLabel = ` • ${planet.size.charAt(0).toUpperCase() + planet.size.slice(1)}`;
+    ctx.fillText(typeLabel + ownerText + sizeLabel, boxX + boxWidth / 2, boxY + 65);
+
+    let currentY = boxY + 90;
+
+    // Priority badge (for notion tasks)
+    if (hasPriority) {
+      const priorityColors: Record<string, string> = {
+        'urgent': '#ff4444',
+        'high': '#ff8c00',
+        'medium': '#ffd700',
+        'low': '#4ade80',
+        'none': '#666'
+      };
+      const priorityColor = priorityColors[planet.priority?.toLowerCase() || 'none'] || '#666';
+      ctx.fillStyle = priorityColor;
+      ctx.font = 'bold 11px Space Grotesk';
+      ctx.fillText(`Priority: ${planet.priority?.toUpperCase()}`, boxX + boxWidth / 2, currentY);
+      currentY += 22;
+    }
+
+    // Description
+    if (hasDescription) {
+      ctx.fillStyle = '#aaa';
+      ctx.font = '13px Space Grotesk';
+      // Wrap text if too long
+      const maxWidth = boxWidth - 40;
+      const desc = planet.description || '';
+      if (ctx.measureText(desc).width > maxWidth) {
+        // Simple word wrap
+        const words = desc.split(' ');
+        let line = '';
+        for (const word of words) {
+          const testLine = line + word + ' ';
+          if (ctx.measureText(testLine).width > maxWidth && line !== '') {
+            ctx.fillText(line.trim(), boxX + boxWidth / 2, currentY);
+            line = word + ' ';
+            currentY += 18;
+          } else {
+            line = testLine;
+          }
+        }
+        ctx.fillText(line.trim(), boxX + boxWidth / 2, currentY);
+      } else {
+        ctx.fillText(desc, boxX + boxWidth / 2, currentY);
+      }
+      currentY += 25;
+    }
+
+    // Divider line
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(boxX + 30, currentY);
+    ctx.lineTo(boxX + boxWidth - 30, currentY);
+    ctx.stroke();
+    currentY += 20;
+
+    // Ship reward
+    if (hasReward) {
+      const rewardLabels: Record<string, string> = {
+        'speed_boost': '🚀 Speed Boost',
+        'acceleration': '⚡ Better Acceleration',
+        'handling': '🎯 Improved Handling',
+        'shield': '🛡️ Shield Effect',
+        'trail': '✨ Trail Effect',
+        'glow': '💫 Ship Glow',
+        'size': '📈 Ship Size Up',
+        'special': '🌟 Special Upgrade',
+      };
+      ctx.fillStyle = '#ffa500';
+      ctx.font = 'bold 13px Space Grotesk';
+      ctx.fillText(`Ship Reward: ${rewardLabels[planet.reward!] || planet.reward}`, boxX + boxWidth / 2, currentY);
+      currentY += 25;
+    }
+
+    // Real world reward
+    if (hasRealReward) {
+      ctx.fillStyle = '#ff6b9d';
+      ctx.font = 'bold 13px Space Grotesk';
+      ctx.fillText(`🎁 ${planet.realWorldReward}`, boxX + boxWidth / 2, currentY);
+      currentY += 25;
+    }
+
+    // Action hints at the bottom
+    currentY = boxY + boxHeight - 35;
+
+    if (!planet.completed) {
+      // Colonize hint
+      ctx.fillStyle = '#4ade80';
+      ctx.font = 'bold 14px Space Grotesk';
+      ctx.fillText('[ C ] Colonize', boxX + boxWidth / 2 - (hasNotionUrl ? 80 : 0), currentY);
+
+      // Notion hint
+      if (hasNotionUrl) {
+        ctx.fillStyle = '#5490ff';
+        ctx.fillText('[ N ] Open Notion', boxX + boxWidth / 2 + 80, currentY);
+      }
+    }
+
+    // Takeoff hint
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.font = '12px Space Grotesk';
+    ctx.fillText('[ SPACE ] to take off', boxX + boxWidth / 2, boxY + boxHeight - 12);
+
+    ctx.restore();
+  }
+
   private drawMinimap() {
     const { ctx, canvas, state } = this;
     const { camera, ship, planets } = state;
