@@ -20,10 +20,9 @@ interface NotionWebhookPayload {
   url?: string;
 }
 
-interface PointConfig {
-  source: string;
-  task_type: string;
-  points: number;
+interface ExistingPlanet {
+  x: number;
+  y: number;
 }
 
 // Player zone positions (must match SpaceGame.ts)
@@ -42,19 +41,64 @@ const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
 // Default zone for unassigned tasks
 const DEFAULT_ZONE = { x: CENTER_X, y: CENTER_Y + 500 }; // Below center
 
-function getRandomOffset(range: number): number {
-  return (Math.random() - 0.5) * range;
+// Planet radius for collision detection
+const PLANET_RADIUS = 50;
+const MIN_DISTANCE = PLANET_RADIUS * 3; // Minimum distance between planet centers
+
+function distance(p1: { x: number; y: number }, p2: { x: number; y: number }): number {
+  return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
 }
 
-function getPlanetPosition(assignedTo: string | null | undefined): { x: number; y: number } {
+function findNonOverlappingPosition(
+  assignedTo: string | null | undefined,
+  existingPlanets: ExistingPlanet[]
+): { x: number; y: number } {
   const baseZone = assignedTo && PLAYER_ZONES[assignedTo.toLowerCase()]
     ? PLAYER_ZONES[assignedTo.toLowerCase()]
     : DEFAULT_ZONE;
 
-  // Add random offset within the zone (spread planets around)
+  // Also avoid the home planet at zone center
+  const allObstacles: ExistingPlanet[] = [
+    ...existingPlanets,
+    { x: baseZone.x, y: baseZone.y }, // Home planet at zone center
+  ];
+
+  // Try to find a non-overlapping position
+  // Start with a spiral pattern around the zone center
+  const maxAttempts = 50;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Spiral outward: increasing radius with each attempt
+    const ring = Math.floor(attempt / 8); // Which ring (0, 1, 2, ...)
+    const angleIndex = attempt % 8; // Position in ring (0-7)
+    const baseRadius = 200 + ring * 150; // Start 200px out, expand by 150px per ring
+    const angle = (angleIndex / 8) * Math.PI * 2 + (ring * 0.3); // Offset angle per ring
+
+    const candidate = {
+      x: baseZone.x + Math.cos(angle) * baseRadius,
+      y: baseZone.y + Math.sin(angle) * baseRadius,
+    };
+
+    // Check if this position is far enough from all existing planets
+    let isValid = true;
+    for (const planet of allObstacles) {
+      if (distance(candidate, planet) < MIN_DISTANCE) {
+        isValid = false;
+        break;
+      }
+    }
+
+    if (isValid) {
+      return candidate;
+    }
+  }
+
+  // Fallback: random position further out if spiral fails
+  const fallbackRadius = 600 + Math.random() * 400;
+  const fallbackAngle = Math.random() * Math.PI * 2;
   return {
-    x: baseZone.x + getRandomOffset(800),
-    y: baseZone.y + getRandomOffset(800),
+    x: baseZone.x + Math.cos(fallbackAngle) * fallbackRadius,
+    y: baseZone.y + Math.sin(fallbackAngle) * fallbackRadius,
   };
 }
 
@@ -161,8 +205,17 @@ Deno.serve(async (req) => {
 
     const team = teams[0];
 
-    // Calculate planet position based on assigned user
-    const position = getPlanetPosition(payload.assigned_to);
+    // Fetch existing notion planets to avoid overlap
+    const { data: existingPlanets } = await supabase
+      .from('notion_planets')
+      .select('x, y')
+      .eq('team_id', team.id);
+
+    // Calculate planet position avoiding overlaps
+    const position = findNonOverlappingPosition(
+      payload.assigned_to,
+      existingPlanets || []
+    );
 
     // Create the planet
     const { data: planet, error: planetError } = await supabase
