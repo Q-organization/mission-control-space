@@ -170,11 +170,53 @@ Deno.serve(async (req) => {
     const notionToken = Deno.env.get('NOTION_API_TOKEN');
     if (notionToken) {
       try {
-        // We need to find the Notion user ID for this username
-        // For now, just log that we would update Notion
-        console.log(`Would update Notion task ${planet.notion_task_id} to assign to ${player_username}`);
-        // Note: Updating "Attributed to" in Notion requires knowing the Notion user ID
-        // This would need a mapping table or API call to resolve username -> Notion user ID
+        // Fetch Notion workspace users to find the matching user ID
+        const usersResponse = await fetch('https://api.notion.com/v1/users', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${notionToken}`,
+            'Notion-Version': '2022-06-28',
+          },
+        });
+
+        if (usersResponse.ok) {
+          const usersData = await usersResponse.json();
+          // Find user whose name matches (case-insensitive)
+          const notionUser = usersData.results?.find((user: { name?: string; type: string }) =>
+            user.type === 'person' &&
+            user.name?.toLowerCase() === player_username.toLowerCase()
+          );
+
+          if (notionUser) {
+            // Update the Notion page with the "Attributed to" field
+            const updateResponse = await fetch(`https://api.notion.com/v1/pages/${planet.notion_task_id}`, {
+              method: 'PATCH',
+              headers: {
+                'Authorization': `Bearer ${notionToken}`,
+                'Content-Type': 'application/json',
+                'Notion-Version': '2022-06-28',
+              },
+              body: JSON.stringify({
+                properties: {
+                  'Attributed to': {
+                    people: [{ id: notionUser.id }],
+                  },
+                },
+              }),
+            });
+
+            if (updateResponse.ok) {
+              console.log(`Updated Notion task ${planet.notion_task_id} - assigned to ${notionUser.name} (${notionUser.id})`);
+            } else {
+              const errorText = await updateResponse.text();
+              console.error('Failed to update Notion page:', errorText);
+            }
+          } else {
+            console.log(`Notion user not found for username: ${player_username}`);
+          }
+        } else {
+          console.error('Failed to fetch Notion users:', await usersResponse.text());
+        }
       } catch (notionError) {
         console.error('Failed to update Notion:', notionError);
       }
