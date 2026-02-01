@@ -1261,7 +1261,10 @@ export class SpaceGame {
     // Handle C key - colonize (complete) or claim (unassigned)
     if (this.keys.has('c')) {
       this.keys.delete('c');
-      if (!planet.completed && this.onColonize) {
+      // Special planets cannot be completed
+      const specialPlanets = ['memory-lane', 'shop-station', 'planet-builder'];
+      const isSpecial = specialPlanets.includes(planet.id) || planet.id.startsWith('user-planet-');
+      if (!planet.completed && !isSpecial && this.onColonize) {
         const isNotionPlanet = planet.id.startsWith('notion-');
         const isUnassigned = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
 
