@@ -53,20 +53,31 @@ const defaultShipEffects: ShipEffects = {
   ownedTrails: [],
 };
 
+// How long before we consider a player offline even if is_online is true
+// This handles cases where browser crashed and beforeunload didn't fire
+const ONLINE_TIMEOUT_MS = 60000; // 60 seconds
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const playerRowToData = (row: any): PlayerData => ({
-  id: row.id,
-  username: row.username,
-  displayName: row.display_name,
-  color: row.color,
-  isOnline: row.is_online,
-  shipImage: row.ship_current_image,
-  shipEffects: (row.ship_effects as unknown as ShipEffects) || defaultShipEffects,
-  shipLevel: 1 + (Array.isArray(row.ship_upgrades) ? row.ship_upgrades.length : 0),
-  planetImageUrl: row.planet_image_url,
-  planetTerraformCount: row.planet_terraform_count,
-  planetSizeLevel: row.planet_size_level,
-});
+const playerRowToData = (row: any): PlayerData => {
+  // Check if player is truly online based on last_seen timestamp
+  const lastSeen = row.last_seen ? new Date(row.last_seen).getTime() : 0;
+  const isRecentlyActive = Date.now() - lastSeen < ONLINE_TIMEOUT_MS;
+  const isOnline = row.is_online && isRecentlyActive;
+
+  return {
+    id: row.id,
+    username: row.username,
+    displayName: row.display_name,
+    color: row.color,
+    isOnline,
+    shipImage: row.ship_current_image,
+    shipEffects: (row.ship_effects as unknown as ShipEffects) || defaultShipEffects,
+    shipLevel: 1 + (Array.isArray(row.ship_upgrades) ? row.ship_upgrades.length : 0),
+    planetImageUrl: row.planet_image_url,
+    planetTerraformCount: row.planet_terraform_count,
+    planetSizeLevel: row.planet_size_level,
+  };
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const transactionRowToTx = (row: any, playerName?: string): PointTx => ({
