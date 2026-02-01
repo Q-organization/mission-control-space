@@ -1643,7 +1643,7 @@ function App() {
     }
 
     // Reset form
-    setNewPlanet({ type: 'business', size: 'medium', reward: 'glow' });
+    setNewPlanet({ type: 'achievement', size: 'medium', reward: 'glow' });
     setPlanetImageFile(null);
     setPlanetImagePreview(null);
     setImagePrompt('');
@@ -2180,40 +2180,52 @@ function App() {
           <div style={styles.modal}>
             <h2 style={styles.modalTitle}>Create New Planet</h2>
 
-            {/* Planet Type Selection - First Choice */}
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Planet Type</label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                {[
-                  { value: 'achievement', label: '🏆 Achievement', color: '#ffd700' },
-                  { value: 'business', label: '💼 Business', color: '#4ade80' },
-                  { value: 'product', label: '🚀 Product', color: '#5490ff' },
-                  { value: 'notion', label: '📋 Notion Task', color: '#00c8ff' },
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setNewPlanet(p => ({ ...p, type: opt.value as any }))}
-                    style={{
-                      padding: '12px',
-                      border: newPlanet.type === opt.value ? `2px solid ${opt.color}` : '2px solid #333',
-                      borderRadius: '8px',
-                      background: newPlanet.type === opt.value ? `${opt.color}20` : 'transparent',
-                      color: newPlanet.type === opt.value ? opt.color : '#888',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: newPlanet.type === opt.value ? 'bold' : 'normal',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              {newPlanet.type === 'notion' && (
-                <div style={{ marginTop: '8px', fontSize: '12px', color: '#00c8ff' }}>
-                  Will sync to Notion board automatically
-                </div>
-              )}
+            {/* Planet Type Selection - Two Big Buttons */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+              <button
+                onClick={() => setNewPlanet(p => ({ ...p, type: 'achievement' }))}
+                style={{
+                  padding: '24px 16px',
+                  border: newPlanet.type === 'achievement' ? '3px solid #ffd700' : '2px solid #333',
+                  borderRadius: '12px',
+                  background: newPlanet.type === 'achievement' ? 'rgba(255, 215, 0, 0.15)' : 'rgba(255,255,255,0.03)',
+                  color: newPlanet.type === 'achievement' ? '#ffd700' : '#888',
+                  cursor: 'pointer',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span style={{ fontSize: '32px' }}>🏆</span>
+                Achievement
+                <span style={{ fontSize: '11px', fontWeight: 'normal', opacity: 0.7 }}>Local milestone</span>
+              </button>
+              <button
+                onClick={() => setNewPlanet(p => ({ ...p, type: 'notion' }))}
+                style={{
+                  padding: '24px 16px',
+                  border: newPlanet.type === 'notion' ? '3px solid #00c8ff' : '2px solid #333',
+                  borderRadius: '12px',
+                  background: newPlanet.type === 'notion' ? 'rgba(0, 200, 255, 0.15)' : 'rgba(255,255,255,0.03)',
+                  color: newPlanet.type === 'notion' ? '#00c8ff' : '#888',
+                  cursor: 'pointer',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <span style={{ fontSize: '32px' }}>📋</span>
+                Task
+                <span style={{ fontSize: '11px', fontWeight: 'normal', opacity: 0.7 }}>Syncs to Notion</span>
+              </button>
             </div>
 
             {/* Common Fields */}
