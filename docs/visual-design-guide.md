@@ -30,25 +30,52 @@ A polished, playful game art style that balances detail with readability. Inspir
 
 ### Notion Task Type Planets
 
-**Bug Planet**
+**Bug Planet** (`/notion-bug.png`)
 - Primary: Red `#ff4444`
 - Accent: Crimson/Orange `#ff6600`
-- Theme: Cracked surface, glowing fissures, warning lights, damaged structures
+- Theme: Cute alien creature sitting on planet (squash the bug!)
 - Use for: Bug tickets from Notion
 
-**Enhancement Planet**
+**Enhancement Planet** (`/notion-enhancement.png`)
 - Primary: Purple `#9944ff`
 - Accent: Magenta/Pink `#ff44ff`
-- Theme: Holographic displays, upgrade modules, glowing circuits, antenna arrays
+- Theme: Glowing gem/crystal on planet (valuable improvement)
 - Use for: Enhancement/feature tickets from Notion
 
-**Task Planet**
+**Task Planet** (`/notion-task.png`)
 - Primary: Teal `#44ddaa`
 - Accent: Green/Cyan `#00ffaa`
-- Theme: Small outposts, communication towers, data nodes, work stations
+- Theme: Toolbox with wrench on planet (work to do)
 - Use for: Generic task tickets from Notion
 
-> **Note:** Priority (Critical, High, Medium, Low) controls size and pulsation effects, not skin.
+### Priority Effects (Animated)
+
+Priority determines planet size AND animated visual effects:
+
+**Critical Priority** - Meteor Storm + Fire Aura
+- Animated meteors (6) falling toward planet from all directions
+- Orange/red trails with glowing heads
+- Intense flame aura overlay on top (`/priority-critical.png`)
+- Flame pulses slightly for extra urgency
+- Communicates: "DROP EVERYTHING!"
+
+**High Priority** - Lightning Storm
+- Animated lightning bolts (3) striking around planet
+- Jagged yellow/white bolts with quick flashes
+- Random flickering pattern
+- Communicates: "Important, do soon"
+
+**Medium Priority**
+- No additional effects
+- Standard planet glow
+- Communicates: "Normal priority"
+
+**Low Priority**
+- No additional effects
+- Standard planet glow (subtle)
+- Communicates: "When you have time"
+
+> **Note:** Priority also affects planet size - higher priority = larger radius.
 
 ### Planet Design Structure
 
@@ -102,17 +129,22 @@ A stylized cartoon planet with a futuristic factory station on top. Orange plane
 
 **Bug Planet (Notion):**
 ```
-A stylized cartoon planet with a bug/virus theme. Red and dark crimson planet with cracked surface and glowing fissures, glowing red ring around it. The surface has crystalline shards, warning lights, and damaged structures. Clean vector game art style with nice depth and soft glow effects. Red and orange color palette with glowing accents. Dark space background with stars.
+A stylized cartoon planet with a cute alien bug creature sitting on top. Red and crimson planet with soft surface. The alien is small, round, with big eyes, looks like a bug to squash. Friendly cartoon game art style, soft gradients, rounded shapes. Red and orange color palette with subtle glow. Dark space background.
 ```
 
 **Enhancement Planet (Notion):**
 ```
-A stylized cartoon planet with an enhancement/upgrade theme. Purple and violet planet with glowing tech patterns on surface, glowing magenta ring around it. The surface has holographic displays, upgrade modules, glowing circuits and antenna arrays. Clean vector game art style with nice depth and soft glow effects. Purple and pink color palette with glowing accents. Dark space background with stars.
+A stylized cartoon planet with a large glowing crystal gem on top. Purple and violet planet with soft surface. The crystal is bright, magical, glowing with inner light, represents valuable upgrade. Friendly cartoon game art style, soft gradients, rounded shapes. Purple and pink color palette with magical glow. Dark space background.
 ```
 
 **Task Planet (Notion):**
 ```
-A stylized cartoon planet with a task/work theme. Teal and green planet with surface details and craters, glowing cyan ring around it. The surface has small outposts, communication towers, data nodes and work stations. Clean vector game art style with nice depth and soft glow effects. Teal and green color palette with glowing accents. Dark space background with stars.
+A stylized cartoon planet with a toolbox and wrench station on top. Teal and green planet with soft surface. The toolbox is open with tools visible, wrench, gears, represents work to do. Friendly cartoon game art style, soft gradients, rounded shapes. Teal and cyan color palette with subtle glow. Dark space background.
+```
+
+**Critical Priority Flame Overlay:**
+```
+Intense circular fire storm effect, raging flames and inferno surrounding an empty center, orange red and yellow fire, dramatic blazing aura, game effect art style, transparent center hole for overlay, chaotic fire energy, black background
 ```
 
 ### Post-Processing
