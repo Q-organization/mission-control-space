@@ -18,6 +18,8 @@ jobs:
       - run: npm ci
 
       - run: npm run build
+        env:
+          VITE_WS_SERVER_URL: ws://13.250.26.247:8080
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
