@@ -46,8 +46,8 @@ const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
   'hugues': { x: CENTER_X - PLAYER_DISTANCE, y: CENTER_Y },
 };
 
-// Default zone for unassigned tasks - orbit ring around Mission Control
-const DEFAULT_ZONE = { x: MISSION_CONTROL_X, y: MISSION_CONTROL_Y };
+// Default zone for unassigned tasks - consistent with notion-sync (center area, slightly below)
+const DEFAULT_ZONE = { x: CENTER_X, y: CENTER_Y + 500 };
 
 // Points based on priority
 const PRIORITY_POINTS: Record<string, number> = {
@@ -293,6 +293,18 @@ function calculatePoints(priority: string | undefined): number {
   return PRIORITY_POINTS[key] || PRIORITY_POINTS.default;
 }
 
+// Normalize UUID for consistent comparison (Notion IDs can have or not have dashes)
+function normalizeId(id: string): string {
+  return id.replace(/-/g, '').toLowerCase();
+}
+
+// Format UUID with dashes (standard format)
+function formatUuidWithDashes(id: string): string {
+  const normalized = id.replace(/-/g, '').toLowerCase();
+  if (normalized.length !== 32) return id; // Invalid UUID, return as-is
+  return `${normalized.slice(0, 8)}-${normalized.slice(8, 12)}-${normalized.slice(12, 16)}-${normalized.slice(16, 20)}-${normalized.slice(20)}`;
+}
+
 // Find player by Notion user ID (via mapping table) or fall back to name matching
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function findPlayerByNotionUser(
@@ -360,8 +372,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Archived status = completed (planet stays as trophy)
-    const isArchived = payload.status === 'archived' || payload.status?.includes('archived');
+    // Check status for proper handling
+    const statusLower = (payload.status || '').toLowerCase();
+    const isTicketOpen = statusLower === 'ticket open';
+    const isArchived = statusLower === 'archived' || statusLower.includes('archived');
+    const isDestroyed = statusLower === 'destroyed';
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -396,12 +411,65 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Check if planet already exists
-    const { data: existingPlanet } = await supabase
+    // Normalize the Notion task ID for consistent comparison
+    // Notion API sometimes returns IDs with dashes, sometimes without
+    const normalizedTaskId = formatUuidWithDashes(payload.id);
+
+    // Check if planet already exists (try with normalized ID)
+    let { data: existingPlanet } = await supabase
       .from('notion_planets')
-      .select('id, team_id, assigned_to, completed, x, y')
-      .eq('notion_task_id', payload.id)
+      .select('id, team_id, assigned_to, completed, x, y, notion_task_id')
+      .eq('notion_task_id', normalizedTaskId)
       .single();
+
+    // If not found, try with original ID (in case DB has different format)
+    if (!existingPlanet && payload.id !== normalizedTaskId) {
+      const { data: altPlanet } = await supabase
+        .from('notion_planets')
+        .select('id, team_id, assigned_to, completed, x, y, notion_task_id')
+        .eq('notion_task_id', payload.id)
+        .single();
+      existingPlanet = altPlanet;
+    }
+
+    // Handle destroyed status - delete planet from game
+    if (isDestroyed && existingPlanet) {
+      const { error: deleteError } = await supabase
+        .from('notion_planets')
+        .delete()
+        .eq('id', existingPlanet.id);
+
+      if (deleteError) {
+        console.error('Failed to delete destroyed planet:', deleteError);
+      } else {
+        console.log(`Deleted planet "${payload.name}" - status is Destroyed`);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          action: 'deleted',
+          reason: 'status_destroyed',
+          planet_name: payload.name,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // If status is not "Ticket Open" and planet doesn't exist, skip creating it
+    if (!isTicketOpen && !existingPlanet) {
+      console.log(`Skipping "${payload.name}" - status is "${payload.status}", not Ticket Open`);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          action: 'skipped',
+          reason: 'status_not_ticket_open',
+          planet_name: payload.name,
+          status: payload.status,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // If planet exists, update it instead of creating a new one
     if (existingPlanet) {
@@ -441,11 +509,7 @@ Deno.serve(async (req) => {
       }
 
       // Check if status indicates completion (archived = done)
-      const isCompleted = isArchived ||
-                          payload.status === 'done' ||
-                          payload.status === 'complete' ||
-                          payload.status?.includes('done') ||
-                          payload.status?.includes('✅');
+      const isCompleted = isArchived;
 
       if (isCompleted && !existingPlanet.completed) {
         updates.completed = true;
@@ -530,12 +594,12 @@ Deno.serve(async (req) => {
       existingPlanets || []
     );
 
-    // Create planet
+    // Create planet using upsert to prevent duplicates
     const { data: planet, error: planetError } = await supabase
       .from('notion_planets')
-      .insert({
+      .upsert({
         team_id: team.id,
-        notion_task_id: payload.id,
+        notion_task_id: normalizedTaskId,
         name: payload.name,
         description: payload.description || null,
         notion_url: payload.url || null,
@@ -547,6 +611,9 @@ Deno.serve(async (req) => {
         x: Math.round(position.x),
         y: Math.round(position.y),
         completed: false,
+      }, {
+        onConflict: 'notion_task_id',
+        ignoreDuplicates: false,
       })
       .select()
       .single();
@@ -570,30 +637,41 @@ Deno.serve(async (req) => {
       );
 
       if (creator) {
-        // Insert point transaction for creation (personal points)
-        await supabase.from('point_transactions').insert({
-          team_id: team.id,
-          player_id: creator.id,
-          source: 'notion',
-          notion_task_id: payload.id,
-          task_name: `Created: ${payload.name}`,
-          points: 10,
-          point_type: 'personal',
-        });
-
-        // Update creator's personal points (not team points)
-        const { data: creatorData } = await supabase
-          .from('players')
-          .select('personal_points')
-          .eq('id', creator.id)
+        // Check if creator already received points for this task (avoid duplicate awards)
+        const { data: existingTransaction } = await supabase
+          .from('point_transactions')
+          .select('id')
+          .eq('notion_task_id', normalizedTaskId)
+          .eq('player_id', creator.id)
+          .eq('task_name', `Created: ${payload.name}`)
           .single();
 
-        await supabase
-          .from('players')
-          .update({ personal_points: (creatorData?.personal_points || 0) + 10 })
-          .eq('id', creator.id);
+        if (!existingTransaction) {
+          // Insert point transaction for creation (personal points)
+          await supabase.from('point_transactions').insert({
+            team_id: team.id,
+            player_id: creator.id,
+            source: 'notion',
+            notion_task_id: normalizedTaskId,
+            task_name: `Created: ${payload.name}`,
+            points: 10,
+            point_type: 'personal',
+          });
 
-        console.log(`Awarded 10 personal points to ${creator.username} for creating "${payload.name}"`);
+          // Update creator's personal points (not team points)
+          const { data: creatorData } = await supabase
+            .from('players')
+            .select('personal_points')
+            .eq('id', creator.id)
+            .single();
+
+          await supabase
+            .from('players')
+            .update({ personal_points: (creatorData?.personal_points || 0) + 10 })
+            .eq('id', creator.id);
+
+          console.log(`Awarded 10 personal points to ${creator.username} for creating "${payload.name}"`);
+        }
       }
     }
 

@@ -17,7 +17,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { notion_planet_id }: CompleteRequest = await req.json();
+    const body = await req.json();
+    const { notion_planet_id }: CompleteRequest = body;
+
+    console.log('=== NOTION-COMPLETE CALLED ===');
+    console.log('Request body:', JSON.stringify(body));
+    console.log('notion_planet_id:', notion_planet_id);
 
     if (!notion_planet_id) {
       return new Response(
@@ -39,13 +44,19 @@ Deno.serve(async (req) => {
       .single();
 
     if (fetchError || !planet) {
+      console.log('Planet not found. Error:', fetchError?.message);
       return new Response(
         JSON.stringify({ error: 'Planet not found', details: fetchError?.message }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    console.log('Found planet:', planet.name);
+    console.log('Notion task ID:', planet.notion_task_id);
+    console.log('Already completed:', planet.completed);
+
     if (planet.completed) {
+      console.log('Planet already completed, skipping Notion update');
       return new Response(
         JSON.stringify({ message: 'Planet already completed', notion_task_id: planet.notion_task_id }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -63,7 +74,9 @@ Deno.serve(async (req) => {
     }
 
     // Update Notion page status to "Archived"
-    const notionResponse = await fetch(`https://api.notion.com/v1/pages/${planet.notion_task_id}`, {
+    // Try "select" type first (Status field is a Select), fall back to "status" type
+    console.log('Calling Notion API to set status to Archived...');
+    let notionResponse = await fetch(`https://api.notion.com/v1/pages/${planet.notion_task_id}`, {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${notionToken}`,
@@ -80,6 +93,34 @@ Deno.serve(async (req) => {
         },
       }),
     });
+
+    console.log('Notion API response status:', notionResponse.status);
+
+    // If select type failed, try status type (in case field type changes)
+    if (!notionResponse.ok) {
+      const errorText = await notionResponse.text();
+      console.log('Notion API error:', errorText);
+      if (errorText.includes('select') || errorText.includes('validation')) {
+        console.log('Select type failed, trying status type...');
+        notionResponse = await fetch(`https://api.notion.com/v1/pages/${planet.notion_task_id}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${notionToken}`,
+            'Content-Type': 'application/json',
+            'Notion-Version': '2022-06-28',
+          },
+          body: JSON.stringify({
+            properties: {
+              'Status': {
+                status: {
+                  name: 'Archived',
+                },
+              },
+            },
+          }),
+        });
+      }
+    }
 
     if (!notionResponse.ok) {
       const errorText = await notionResponse.text();

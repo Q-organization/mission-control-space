@@ -45,15 +45,18 @@ Deno.serve(async (req) => {
 
     const page = await response.json();
 
-    // Extract relevant user info
+    // Extract relevant info
     const props = page.properties;
     const attributedTo = props['Attributed to']?.people || [];
     const createdBy = page.created_by;
+    const status = props['Status']?.status?.name || props['Status']?.select?.name || 'Unknown';
 
     return new Response(
       JSON.stringify({
         page_id: page.id,
         title: props['Ticket']?.title?.[0]?.plain_text || 'Unknown',
+        status: status,
+        archived: page.archived,
         attributed_to: attributedTo.map((p: any) => ({
           id: p.id,
           name: p.name,
@@ -63,7 +66,7 @@ Deno.serve(async (req) => {
           id: createdBy?.id,
           name: createdBy?.name,
         },
-        raw_attributed_to: attributedTo,
+        raw_status: props['Status'],
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

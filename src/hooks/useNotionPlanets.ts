@@ -13,29 +13,6 @@ const TASK_TYPE_COLORS: Record<string, { color: string; glowColor: string }> = {
   default: { color: '#94a3b8', glowColor: '#64748b' },
 };
 
-// Map coordinates (must match SpaceGame.ts)
-const CENTER_X = 5000;
-const CENTER_Y = 5000;
-const HUB_DISTANCE = 2800;
-const PLAYER_DISTANCE = 3000;
-const MISSION_CONTROL_X = CENTER_X;
-const MISSION_CONTROL_Y = CENTER_Y + HUB_DISTANCE * 1.1; // Lower on the map
-
-// Player zone positions for assigned tasks
-const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
-  'quentin': { x: CENTER_X + PLAYER_DISTANCE, y: CENTER_Y },
-  'alex': { x: CENTER_X + PLAYER_DISTANCE * 0.7, y: CENTER_Y - PLAYER_DISTANCE * 0.7 },
-  'armel': { x: CENTER_X, y: CENTER_Y - PLAYER_DISTANCE },
-  'milya': { x: CENTER_X - PLAYER_DISTANCE * 0.7, y: CENTER_Y - PLAYER_DISTANCE * 0.7 },
-  'hugues': { x: CENTER_X - PLAYER_DISTANCE, y: CENTER_Y },
-};
-
-// Check if a position is in the old center area (near achievements)
-const isNearOldCenter = (x: number, y: number): boolean => {
-  const distFromCenter = Math.sqrt((x - CENTER_X) ** 2 + (y - CENTER_Y) ** 2);
-  return distFromCenter < 800; // Within 800 units of center = old placement
-};
-
 // Convert DB row to NotionPlanet
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rowToNotionPlanet = (row: any): NotionPlanet => ({
@@ -56,57 +33,10 @@ const rowToNotionPlanet = (row: any): NotionPlanet => ({
   created_at: row.created_at,
 });
 
-// Calculate position for a planet - reposition if in old center area
-// Uses half-arches in FRONT of Mission Control (toward center/up)
-const calculatePlanetPosition = (np: NotionPlanet, index: number): { x: number; y: number } => {
-  // If assigned to a player, use their zone (backend should handle this, but fallback)
-  if (np.assigned_to) {
-    const zone = PLAYER_ZONES[np.assigned_to.toLowerCase()];
-    if (zone) {
-      // If position is valid and near player zone, keep it
-      const distFromZone = Math.sqrt((np.x - zone.x) ** 2 + (np.y - zone.y) ** 2);
-      if (distFromZone < 1000) {
-        return { x: np.x, y: np.y };
-      }
-    }
-  }
-
-  // If position is near the old center (achievements area), reposition to staggered arcs above Mission Control
-  if (isNearOldCenter(np.x, np.y)) {
-    const baseDistance = 350; // Clear of stations
-    const arcSpacing = 110;
-    const planetsPerArc = 5;
-    const arcIndex = Math.floor(index / planetsPerArc);
-    const posInArc = index % planetsPerArc;
-    const arcRadius = baseDistance + arcIndex * arcSpacing;
-
-    const arcSpread = Math.PI * 0.35;
-    const baseAngle = -Math.PI / 2;
-    // Stagger: odd arcs offset by half a position
-    const staggerOffset = (arcIndex % 2 === 1) ? 0.5 : 0;
-    const t = planetsPerArc > 1 ? (posInArc + staggerOffset) / planetsPerArc : 0.5;
-    const angle = baseAngle + (t - 0.5) * arcSpread * 2;
-
-    // Organic variation (seeded by index)
-    const seed = (index * 137.5) % 1;
-    const radiusVariation = (seed - 0.5) * 25;
-    const angleVariation = (((index * 97.3) % 1) - 0.5) * 0.06;
-
-    const finalRadius = arcRadius + radiusVariation;
-    const finalAngle = angle + angleVariation;
-
-    return {
-      x: MISSION_CONTROL_X + Math.cos(finalAngle) * finalRadius,
-      y: MISSION_CONTROL_Y + Math.sin(finalAngle) * finalRadius,
-    };
-  }
-
-  // Position is valid, use as-is
-  return { x: np.x, y: np.y };
-};
-
 // Convert NotionPlanet to game Planet
-export const notionPlanetToGamePlanet = (np: NotionPlanet, index: number = 0): Planet => {
+// Note: Position is determined by the backend (notion-sync, notion-webhook, notion-claim)
+// Frontend just uses the DB position directly - no client-side repositioning
+export const notionPlanetToGamePlanet = (np: NotionPlanet): Planet => {
   const taskType = np.task_type?.toLowerCase() || 'default';
   const colors = TASK_TYPE_COLORS[taskType] || TASK_TYPE_COLORS.default;
 
@@ -125,14 +55,11 @@ export const notionPlanetToGamePlanet = (np: NotionPlanet, index: number = 0): P
     radius = 32;
   }
 
-  // Calculate position (reposition if needed)
-  const position = calculatePlanetPosition(np, index);
-
   return {
     id: `notion-${np.id}`,
     name: np.name,
-    x: position.x,
-    y: position.y,
+    x: np.x,
+    y: np.y,
     radius: radius,
     color: colors.color,
     glowColor: colors.glowColor,
@@ -195,19 +122,12 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
 
     try {
       // Call edge function to complete in both our DB and Notion
-      const response = await fetch(
-        'https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/notion-complete',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ notion_planet_id: actualId }),
-        }
-      );
+      // Use supabase.functions.invoke which handles auth automatically
+      const { error } = await supabase.functions.invoke('notion-complete', {
+        body: { notion_planet_id: actualId },
+      });
 
-      if (!response.ok) {
-        const error = await response.json();
+      if (error) {
         console.error('Error completing notion planet:', error);
       }
     } catch (error) {
@@ -315,7 +235,7 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
   // Memoize game planets to prevent unnecessary re-renders
   // Pass index for positioning planets that need repositioning from old center
   const gamePlanets = useMemo(
-    () => notionPlanets.map((np, index) => notionPlanetToGamePlanet(np, index)),
+    () => notionPlanets.map((np) => notionPlanetToGamePlanet(np)),
     [notionPlanets]
   );
 

@@ -296,7 +296,8 @@ Deno.serve(async (req) => {
     const team = teams[0];
 
     // Fetch all pages from Notion database
-    // Filter out archived tasks
+    // Only get "Ticket Open" tasks (live planets)
+    // Using "select" filter since the Status property is a Select field
     const notionResponse = await fetch(`https://api.notion.com/v1/databases/${NOTION_DATABASE_ID}/query`, {
       method: 'POST',
       headers: {
@@ -306,14 +307,10 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         filter: {
-          and: [
-            {
-              property: 'Status',
-              status: {
-                does_not_equal: 'Archived',
-              },
-            },
-          ],
+          property: 'Status',
+          select: {
+            equals: 'Ticket Open',
+          },
         },
         page_size: 100,
       }),
@@ -329,9 +326,23 @@ Deno.serve(async (req) => {
     }
 
     const notionData = await notionResponse.json();
-    const pages = notionData.results || [];
+    let pages = notionData.results || [];
 
-    console.log(`Found ${pages.length} non-archived tickets in Notion`);
+    console.log(`Notion API returned ${pages.length} pages`);
+
+    // Double-check: filter to only "Ticket Open" status (safeguard against API quirks)
+    // This ensures we never recreate Archived or Destroyed tasks
+    pages = pages.filter((page: any) => {
+      const props = page.properties;
+      const status = props['Status']?.select?.name || props['Status']?.status?.name || '';
+      const isTicketOpen = status.toLowerCase() === 'ticket open';
+      if (!isTicketOpen) {
+        console.log(`Filtering out "${props['Ticket']?.title?.[0]?.plain_text || page.id}" - status is "${status}", not "Ticket Open"`);
+      }
+      return isTicketOpen;
+    });
+
+    console.log(`After filtering: ${pages.length} "Ticket Open" tasks`);
 
     const created: string[] = [];
     const updated: string[] = [];
@@ -349,21 +360,30 @@ Deno.serve(async (req) => {
     // Get all existing planets to check for deletions and existing entries
     const { data: allPlanets } = await supabase
       .from('notion_planets')
-      .select('id, notion_task_id, name, assigned_to, x, y')
+      .select('id, notion_task_id, name, assigned_to, x, y, completed')
       .eq('team_id', team.id);
 
     // Build lookup map for existing planets by normalized notion_task_id
-    const existingByTaskId = new Map<string, { id: string; notion_task_id: string; name: string; assigned_to: string | null; x: number; y: number }>();
+    type ExistingPlanetData = { id: string; notion_task_id: string; name: string; assigned_to: string | null; x: number; y: number; completed: boolean };
+    const existingByTaskId = new Map<string, ExistingPlanetData>();
     const existingPositions: ExistingPlanet[] = [];
     for (const planet of allPlanets || []) {
       existingByTaskId.set(normalizeId(planet.notion_task_id), { ...planet });
       existingPositions.push({ x: planet.x, y: planet.y });
     }
 
-    // Find planets whose Notion tasks no longer exist (deleted from Notion)
+    // Find planets whose Notion tasks are no longer "Ticket Open"
+    // Only delete non-completed planets (completed ones should stay with flag)
     for (const planet of allPlanets || []) {
       if (!notionTaskIds.has(normalizeId(planet.notion_task_id))) {
-        // Task was deleted from Notion - remove the planet
+        // Task is no longer "Ticket Open" in Notion
+        if (planet.completed) {
+          // Keep completed planets - they have a flag, were archived/destroyed in Notion
+          skipped.push(`${planet.name} (keeping completed)`);
+          continue;
+        }
+
+        // Non-completed planet whose task is no longer open - remove it
         const { error: deleteError } = await supabase
           .from('notion_planets')
           .delete()
@@ -373,7 +393,7 @@ Deno.serve(async (req) => {
           errors.push(`Failed to delete ${planet.name}: ${deleteError.message}`);
         } else {
           deleted.push(planet.name);
-          console.log(`Deleted planet "${planet.name}" - Notion task no longer exists`);
+          console.log(`Deleted planet "${planet.name}" - Notion task no longer "Ticket Open"`);
         }
       }
     }
@@ -397,20 +417,6 @@ Deno.serve(async (req) => {
         if (assignedPlayer) {
           resolvedAssignedTo = assignedPlayer.username.toLowerCase();
         }
-      }
-
-      // Skip if status is archived (but mark as completed if exists)
-      if (parsed.status === 'archived') {
-        const existingArchived = existingByTaskId.get(normalizeId(parsed.id));
-        if (existingArchived) {
-          // Mark as completed
-          await supabase
-            .from('notion_planets')
-            .update({ completed: true })
-            .eq('id', existingArchived.id);
-          skipped.push(`${parsed.name} (archived)`);
-        }
-        continue;
       }
 
       // Check if already exists (using normalized ID for comparison)

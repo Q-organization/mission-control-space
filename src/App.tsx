@@ -877,26 +877,20 @@ function App() {
     setSyncResult(null);
 
     try {
-      const response = await fetch(
-        'https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/notion-sync',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
+      const { data: result, error } = await supabase.functions.invoke('notion-sync', {
+        body: {},
+      });
 
-      if (!response.ok) {
-        const error = await response.json();
+      if (error) {
         console.error('Notion sync failed:', error);
         setSyncResult({
           created: [],
           updated: [],
           deleted: [],
-          errors: [error.error || 'Unknown error'],
+          errors: [error.message || 'Unknown error'],
           skipped: 0,
         });
       } else {
-        const result = await response.json();
         console.log('Notion sync result:', result);
         setSyncResult({
           created: result.created || [],
@@ -1392,10 +1386,8 @@ function App() {
 
       // Archive the task in Notion (fire and forget)
       const actualId = planet.id.replace('notion-', '');
-      fetch('https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/notion-update-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planet_id: actualId, action: 'archive' }),
+      supabase.functions.invoke('notion-update-status', {
+        body: { planet_id: actualId, action: 'archive' },
       }).catch(err => console.error('Failed to archive in Notion:', err));
     } else {
       // Regular planets
@@ -1488,21 +1480,14 @@ function App() {
     if (planet.id.startsWith('notion-')) {
       const actualId = planet.id.replace('notion-', '');
       try {
-        const response = await fetch(
-          'https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/notion-update-status',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ planet_id: actualId, action: 'destroy' }),
-          }
-        );
+        const { data, error } = await supabase.functions.invoke('notion-update-status', {
+          body: { planet_id: actualId, action: 'destroy' },
+        });
 
-        if (!response.ok) {
-          const error = await response.json();
+        if (error) {
           console.error('Failed to destroy planet:', error);
         } else {
-          const result = await response.json();
-          console.log(`Destroyed planet: ${result.planet_name}`);
+          console.log(`Destroyed planet: ${data?.planet_name}`);
         }
       } catch (err) {
         console.error('Error destroying planet:', err);
@@ -1963,29 +1948,21 @@ function App() {
       // Create Notion task via edge function
       setIsCreatingPlanet(true);
       try {
+        const { data: result, error } = await supabase.functions.invoke('notion-create', {
+          body: {
+            name: newPlanet.name,
+            description: newPlanet.description,
+            type: notionTaskType,
+            priority: notionPriority,
+            assigned_to: notionAssignedTo || null,
+            created_by: state.currentUser || 'unknown',
+          },
+        });
 
-        const response = await fetch(
-          'https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/notion-create',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: newPlanet.name,
-              description: newPlanet.description,
-              type: notionTaskType,
-              priority: notionPriority,
-              assigned_to: notionAssignedTo || null,
-              created_by: state.currentUser || 'unknown',
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          const error = await response.json();
+        if (error) {
           console.error('Failed to create Notion task:', error);
           alert('Failed to create task in Notion');
         } else {
-          const result = await response.json();
           console.log('Created Notion task:', result);
           // Planet will appear via realtime subscription
         }
