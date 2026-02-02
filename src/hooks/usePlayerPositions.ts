@@ -76,6 +76,7 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
   const channelRef = useRef<RealtimeChannel | null>(null);
   const lastBroadcastRef = useRef<number>(0);
   const lastDbUpdateRef = useRef<number>(0);
+  const lastBroadcastPositionRef = useRef<{ x: number; y: number; rotation: number } | null>(null);
   const positionCacheRef = useRef<Map<string, CachedPosition>>(new Map());
   const playersRef = useRef<PlayerInfo[]>(players);
   // Direct callback for position updates (bypasses React state for lower latency)
@@ -96,9 +97,26 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
     if (!channelRef.current || !playerId) return;
 
     const now = Date.now();
-    // Throttle broadcasts to 30Hz (33ms) - plenty for smooth interpolation, less network congestion
-    if (now - lastBroadcastRef.current < 33) return;
+    // Throttle broadcasts to 10Hz (100ms) - still smooth, 3x fewer messages than 30Hz
+    if (now - lastBroadcastRef.current < 100) return;
+
+    // Only broadcast if actually moving or rotating
+    const speed = Math.sqrt(localShip.vx * localShip.vx + localShip.vy * localShip.vy);
+    const isMoving = speed > 0.1 || localShip.thrusting;
+    const lastPos = lastBroadcastPositionRef.current;
+    const rotationChanged = lastPos && Math.abs(localShip.rotation - lastPos.rotation) > 0.01;
+    const positionChanged = lastPos && (
+      Math.abs(localShip.x - lastPos.x) > 1 ||
+      Math.abs(localShip.y - lastPos.y) > 1
+    );
+
+    // Skip broadcast if stationary and no significant change
+    if (!isMoving && lastPos && !rotationChanged && !positionChanged) {
+      return;
+    }
+
     lastBroadcastRef.current = now;
+    lastBroadcastPositionRef.current = { x: localShip.x, y: localShip.y, rotation: localShip.rotation };
 
     channelRef.current.send({
       type: 'broadcast',
@@ -115,8 +133,8 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
       },
     });
 
-    // Persist to database less frequently (every 2 seconds)
-    if (now - lastDbUpdateRef.current > 2000) {
+    // Persist to database less frequently (every 5 seconds)
+    if (now - lastDbUpdateRef.current > 5000) {
       lastDbUpdateRef.current = now;
       supabase
         .from('ship_positions')
