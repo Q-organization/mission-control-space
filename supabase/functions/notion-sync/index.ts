@@ -466,7 +466,7 @@ Deno.serve(async (req) => {
       // Check if this was a new insert or an update (we track as created for simplicity)
       created.push(parsed.name);
 
-      // Award 10 points to creator - find by Notion ID or name
+      // Award 10 personal points to creator - find by Notion ID or name
       if (parsed.created_by || parsed.created_by_notion_id) {
         const creator = await findPlayerByNotionUser(
           supabase,
@@ -483,19 +483,28 @@ Deno.serve(async (req) => {
             notion_task_id: parsed.id,
             task_name: `Created: ${parsed.name}`,
             points: 10,
+            point_type: 'personal',
           });
+
+          // Update creator's personal points
+          const { data: creatorData } = await supabase
+            .from('players')
+            .select('personal_points')
+            .eq('id', creator.id)
+            .single();
+
+          await supabase
+            .from('players')
+            .update({ personal_points: (creatorData?.personal_points || 0) + 10 })
+            .eq('id', creator.id);
+
           totalCreatorPoints += 10;
         }
       }
     }
 
-    // Update team points if any creator points were awarded
-    if (totalCreatorPoints > 0) {
-      await supabase
-        .from('teams')
-        .update({ team_points: team.team_points + totalCreatorPoints })
-        .eq('id', team.id);
-    }
+    // Note: totalCreatorPoints is now tracked for logging purposes only
+    // Personal points are updated per-player, not team-wide
 
     console.log(`Sync complete: ${created.length} created, ${updated.length} updated, ${deleted.length} deleted, ${skipped.length} skipped, ${errors.length} errors`);
 

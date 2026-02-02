@@ -61,15 +61,29 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Add users from task assignments
+    // Add users from task assignments - log all people found
+    const taskAssignments: { taskName: string; personId: string; personName: string }[] = [];
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const page of (dbData.results || [])) {
       const props = page.properties;
+
+      // Get task name
+      let taskName = '';
+      if (props['Ticket']?.title?.[0]?.plain_text) {
+        taskName = props['Ticket'].title[0].plain_text;
+      }
 
       // From "Attributed to" (assigned)
       if (props['Attributed to']?.people) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const person of props['Attributed to'].people) {
+          taskAssignments.push({
+            taskName,
+            personId: person.id || 'no-id',
+            personName: person.name || 'no-name',
+          });
+
           if (person.id && !usersMap.has(person.id)) {
             usersMap.set(person.id, {
               id: person.id,
@@ -113,6 +127,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         notion_users: notionUsers,
+        task_assignments: taskAssignments,
         game_players: players || [],
         existing_mappings: existingMappings || [],
       }),
