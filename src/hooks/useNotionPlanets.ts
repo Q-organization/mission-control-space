@@ -13,6 +13,29 @@ const TASK_TYPE_COLORS: Record<string, { color: string; glowColor: string }> = {
   default: { color: '#94a3b8', glowColor: '#64748b' },
 };
 
+// Map coordinates (must match SpaceGame.ts)
+const CENTER_X = 5000;
+const CENTER_Y = 5000;
+const HUB_DISTANCE = 2800;
+const PLAYER_DISTANCE = 3000;
+const MISSION_CONTROL_X = CENTER_X;
+const MISSION_CONTROL_Y = CENTER_Y + HUB_DISTANCE * 1.1; // Lower on the map
+
+// Player zone positions for assigned tasks
+const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
+  'quentin': { x: CENTER_X + PLAYER_DISTANCE, y: CENTER_Y },
+  'alex': { x: CENTER_X + PLAYER_DISTANCE * 0.7, y: CENTER_Y - PLAYER_DISTANCE * 0.7 },
+  'armel': { x: CENTER_X, y: CENTER_Y - PLAYER_DISTANCE },
+  'milya': { x: CENTER_X - PLAYER_DISTANCE * 0.7, y: CENTER_Y - PLAYER_DISTANCE * 0.7 },
+  'hugues': { x: CENTER_X - PLAYER_DISTANCE, y: CENTER_Y },
+};
+
+// Check if a position is in the old center area (near achievements)
+const isNearOldCenter = (x: number, y: number): boolean => {
+  const distFromCenter = Math.sqrt((x - CENTER_X) ** 2 + (y - CENTER_Y) ** 2);
+  return distFromCenter < 800; // Within 800 units of center = old placement
+};
+
 // Convert DB row to NotionPlanet
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rowToNotionPlanet = (row: any): NotionPlanet => ({
@@ -33,8 +56,57 @@ const rowToNotionPlanet = (row: any): NotionPlanet => ({
   created_at: row.created_at,
 });
 
+// Calculate position for a planet - reposition if in old center area
+// Uses half-arches in FRONT of Mission Control (toward center/up)
+const calculatePlanetPosition = (np: NotionPlanet, index: number): { x: number; y: number } => {
+  // If assigned to a player, use their zone (backend should handle this, but fallback)
+  if (np.assigned_to) {
+    const zone = PLAYER_ZONES[np.assigned_to.toLowerCase()];
+    if (zone) {
+      // If position is valid and near player zone, keep it
+      const distFromZone = Math.sqrt((np.x - zone.x) ** 2 + (np.y - zone.y) ** 2);
+      if (distFromZone < 1000) {
+        return { x: np.x, y: np.y };
+      }
+    }
+  }
+
+  // If position is near the old center (achievements area), reposition to staggered arcs above Mission Control
+  if (isNearOldCenter(np.x, np.y)) {
+    const baseDistance = 350; // Clear of stations
+    const arcSpacing = 110;
+    const planetsPerArc = 5;
+    const arcIndex = Math.floor(index / planetsPerArc);
+    const posInArc = index % planetsPerArc;
+    const arcRadius = baseDistance + arcIndex * arcSpacing;
+
+    const arcSpread = Math.PI * 0.35;
+    const baseAngle = -Math.PI / 2;
+    // Stagger: odd arcs offset by half a position
+    const staggerOffset = (arcIndex % 2 === 1) ? 0.5 : 0;
+    const t = planetsPerArc > 1 ? (posInArc + staggerOffset) / planetsPerArc : 0.5;
+    const angle = baseAngle + (t - 0.5) * arcSpread * 2;
+
+    // Organic variation (seeded by index)
+    const seed = (index * 137.5) % 1;
+    const radiusVariation = (seed - 0.5) * 25;
+    const angleVariation = (((index * 97.3) % 1) - 0.5) * 0.06;
+
+    const finalRadius = arcRadius + radiusVariation;
+    const finalAngle = angle + angleVariation;
+
+    return {
+      x: MISSION_CONTROL_X + Math.cos(finalAngle) * finalRadius,
+      y: MISSION_CONTROL_Y + Math.sin(finalAngle) * finalRadius,
+    };
+  }
+
+  // Position is valid, use as-is
+  return { x: np.x, y: np.y };
+};
+
 // Convert NotionPlanet to game Planet
-export const notionPlanetToGamePlanet = (np: NotionPlanet): Planet => {
+export const notionPlanetToGamePlanet = (np: NotionPlanet, index: number = 0): Planet => {
   const taskType = np.task_type?.toLowerCase() || 'default';
   const colors = TASK_TYPE_COLORS[taskType] || TASK_TYPE_COLORS.default;
 
@@ -53,11 +125,14 @@ export const notionPlanetToGamePlanet = (np: NotionPlanet): Planet => {
     radius = 32;
   }
 
+  // Calculate position (reposition if needed)
+  const position = calculatePlanetPosition(np, index);
+
   return {
     id: `notion-${np.id}`,
     name: np.name,
-    x: np.x,
-    y: np.y,
+    x: position.x,
+    y: position.y,
     radius: radius,
     color: colors.color,
     glowColor: colors.glowColor,
@@ -88,7 +163,7 @@ interface UseNotionPlanetsReturn {
   gamePlanets: Planet[];
   isLoading: boolean;
   completePlanet: (notionPlanetId: string) => Promise<void>;
-  claimPlanet: (notionPlanetId: string, playerUsername: string) => Promise<boolean>;
+  claimPlanet: (notionPlanetId: string, playerUsername: string) => Promise<{ x: number; y: number } | null>;
 }
 
 export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPlanetsReturn {
@@ -141,8 +216,9 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
   }, [teamId]);
 
   // Claim an unassigned notion planet (moves it to player's zone)
-  const claimPlanet = useCallback(async (notionPlanetId: string, playerUsername: string): Promise<boolean> => {
-    if (!teamId) return false;
+  // Returns the new position if successful, null if failed
+  const claimPlanet = useCallback(async (notionPlanetId: string, playerUsername: string): Promise<{ x: number; y: number } | null> => {
+    if (!teamId) return null;
 
     // Extract the actual ID (remove 'notion-' prefix if present)
     const actualId = notionPlanetId.startsWith('notion-')
@@ -167,13 +243,14 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
       if (!response.ok) {
         const error = await response.json();
         console.error('Error claiming notion planet:', error);
-        return false;
+        return null;
       }
 
-      return true;
+      const result = await response.json();
+      return result.new_position || null;
     } catch (error) {
       console.error('Error claiming notion planet:', error);
-      return false;
+      return null;
     }
   }, [teamId]);
 
@@ -244,8 +321,9 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
   }, [teamId]);
 
   // Memoize game planets to prevent unnecessary re-renders
+  // Pass index for positioning planets that need repositioning from old center
   const gamePlanets = useMemo(
-    () => notionPlanets.map(notionPlanetToGamePlanet),
+    () => notionPlanets.map((np, index) => notionPlanetToGamePlanet(np, index)),
     [notionPlanets]
   );
 

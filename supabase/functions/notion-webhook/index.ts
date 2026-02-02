@@ -96,8 +96,8 @@ function findNonOverlappingPosition(
   // For unassigned tasks: staggered honeycomb arcs ABOVE Mission Control
   // For assigned tasks: scatter around player zone
   if (isUnassigned) {
-    const baseDistance = 280;
-    const arcSpacing = 100;
+    const baseDistance = 350; // Clear of stations
+    const arcSpacing = 110;
     const planetsPerArc = 5;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -138,16 +138,23 @@ function findNonOverlappingPosition(
       }
     }
   } else {
-    // Assigned tasks: scatter around player zone
+    // Assigned tasks: tight rings around player's home planet
+    // Ring 1 at 380 units, Ring 2 at 480 units, etc.
+    // Gap filling: tries each slot in order, skips occupied ones
+    const baseRadius = 380;
+    const ringSpacing = 100;
+    const angleStep = 0.7; // ~40 degrees, fits ~9 planets per ring
+    const planetsPerRing = 9;
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const ring = Math.floor(attempt / 8);
-      const angleIndex = attempt % 8;
-      const baseRadius = 200 + ring * 150;
-      const angle = (angleIndex / 8) * Math.PI * 2 + (ring * 0.3);
+      const ring = Math.floor(attempt / planetsPerRing);
+      const slotInRing = attempt % planetsPerRing;
+      const radius = baseRadius + ring * ringSpacing;
+      const angle = slotInRing * angleStep + (ring * 0.35); // Offset each ring
 
       const candidate = {
-        x: baseZone.x + Math.cos(angle) * baseRadius,
-        y: baseZone.y + Math.sin(angle) * baseRadius,
+        x: baseZone.x + Math.cos(angle) * radius,
+        y: baseZone.y + Math.sin(angle) * radius,
       };
 
       let isValid = true;
@@ -167,15 +174,16 @@ function findNonOverlappingPosition(
   // Fallback - place in outer arcs above Mission Control
   if (isUnassigned) {
     const fallbackArc = 3 + Math.floor(Math.random() * 4); // Arcs 3-6
-    const fallbackRadius = 280 + fallbackArc * 110 + (Math.random() - 0.5) * 40;
+    const fallbackRadius = 350 + fallbackArc * 110 + (Math.random() - 0.5) * 40;
     const fallbackAngle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.35 * 2;
     return {
       x: baseZone.x + Math.cos(fallbackAngle) * fallbackRadius,
       y: baseZone.y + Math.sin(fallbackAngle) * fallbackRadius,
     };
   }
-  // For assigned tasks: scatter around player zone
-  const fallbackRadius = 500 + Math.random() * 200;
+  // For assigned tasks: outer rings around home planet
+  const fallbackRing = 2 + Math.floor(Math.random() * 3); // Rings 2-4
+  const fallbackRadius = 380 + fallbackRing * 100;
   const fallbackAngle = Math.random() * Math.PI * 2;
   return {
     x: baseZone.x + Math.cos(fallbackAngle) * fallbackRadius,

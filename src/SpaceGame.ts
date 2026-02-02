@@ -7,7 +7,6 @@ interface CustomPlanetData {
   description: string;
   type: 'business' | 'product' | 'achievement' | 'notion';
   size: 'small' | 'medium' | 'big';
-  reward: RewardType;
   realWorldReward?: string;
   imageUrl?: string;
   createdBy: string;
@@ -18,7 +17,6 @@ interface GoalData {
   name: string;
   size: 'small' | 'medium' | 'big';
   description: string;
-  reward: RewardType;
   realWorldReward?: string;
 }
 
@@ -167,10 +165,14 @@ export class SpaceGame {
   private claimProgress: number = 0;
   private claimPlanet: Planet | null = null;
   private claimParticles: { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }[] = [];
-  private claimStartX: number = 0;
-  private claimStartY: number = 0;
+  private claimStartX: number = 0; // Planet center X at start
+  private claimStartY: number = 0; // Planet center Y at start
+  private claimShipStartX: number = 0; // Ship X at start (exact position)
+  private claimShipStartY: number = 0; // Ship Y at start (exact position)
+  private claimPlanetRadius: number = 0; // Planet radius at start (frozen value)
   private claimTargetX: number = 0;
   private claimTargetY: number = 0;
+  private claimTargetReady: boolean = false; // True when API has returned with actual target position
   private claimTrailPoints: { x: number; y: number; alpha: number }[] = [];
 
   // Upgrading animation state (orbiting satellites/robots)
@@ -325,33 +327,33 @@ export class SpaceGame {
 
     // Use provided goals or fallback to defaults
     const businessMilestones = goals?.business || [
-      { id: 'b1', name: 'First Customer', size: 'medium' as const, description: 'Land your very first paying customer', reward: 'speed_boost' as const, realWorldReward: 'Celebrate with the team!' },
-      { id: 'b2', name: '$1k MRR', size: 'small' as const, description: 'Reach $1,000 monthly recurring revenue', reward: 'trail' as const },
-      { id: 'b3', name: '$5k MRR', size: 'medium' as const, description: 'Hit $5,000 monthly recurring revenue', reward: 'glow' as const, realWorldReward: '+$500/month salary increase' },
-      { id: 'b4', name: 'Break Even', size: 'big' as const, description: 'Revenue covers all expenses - sustainable!', reward: 'shield' as const, realWorldReward: 'Team dinner at a fancy restaurant' },
-      { id: 'b5', name: '$10k MRR', size: 'medium' as const, description: 'Double digits! $10,000 MRR milestone', reward: 'acceleration' as const, realWorldReward: '+$1,000/month salary increase' },
-      { id: 'b6', name: '$25k MRR', size: 'medium' as const, description: 'Quarter way to $100k MRR', reward: 'handling' as const, realWorldReward: 'New MacBook Pro' },
-      { id: 'b7', name: '100 Customers', size: 'big' as const, description: 'Triple digit customer base achieved', reward: 'size' as const, realWorldReward: 'Weekend trip anywhere in Europe' },
-      { id: 'b8', name: '$50k MRR', size: 'big' as const, description: 'Half way to the $100k MRR goal', reward: 'special' as const, realWorldReward: '+$2,500/month salary increase' },
-      { id: 'b9', name: '$100k MRR', size: 'big' as const, description: 'The big one! $100,000 monthly recurring', reward: 'special' as const, realWorldReward: '10% equity bonus + $5k/month raise' },
-      { id: 'b10', name: '$5M ARR', size: 'big' as const, description: 'Five million annual recurring revenue!', reward: 'special' as const, realWorldReward: 'Lambo or Tesla of your choice' },
+      { id: 'b1', name: 'First Customer', size: 'medium' as const, description: 'Land your very first paying customer', realWorldReward: 'Celebrate with the team!' },
+      { id: 'b2', name: '$1k MRR', size: 'small' as const, description: 'Reach $1,000 monthly recurring revenue' },
+      { id: 'b3', name: '$5k MRR', size: 'medium' as const, description: 'Hit $5,000 monthly recurring revenue', realWorldReward: '+$500/month salary increase' },
+      { id: 'b4', name: 'Break Even', size: 'big' as const, description: 'Revenue covers all expenses - sustainable!', realWorldReward: 'Team dinner at a fancy restaurant' },
+      { id: 'b5', name: '$10k MRR', size: 'medium' as const, description: 'Double digits! $10,000 MRR milestone', realWorldReward: '+$1,000/month salary increase' },
+      { id: 'b6', name: '$25k MRR', size: 'medium' as const, description: 'Quarter way to $100k MRR', realWorldReward: 'New MacBook Pro' },
+      { id: 'b7', name: '100 Customers', size: 'big' as const, description: 'Triple digit customer base achieved', realWorldReward: 'Weekend trip anywhere in Europe' },
+      { id: 'b8', name: '$50k MRR', size: 'big' as const, description: 'Half way to the $100k MRR goal', realWorldReward: '+$2,500/month salary increase' },
+      { id: 'b9', name: '$100k MRR', size: 'big' as const, description: 'The big one! $100,000 monthly recurring', realWorldReward: '10% equity bonus + $5k/month raise' },
+      { id: 'b10', name: '$5M ARR', size: 'big' as const, description: 'Five million annual recurring revenue!', realWorldReward: 'Lambo or Tesla of your choice' },
     ];
 
     const productMilestones = goals?.product || [
-      { id: 'p1', name: 'Ship v1', size: 'big' as const, description: 'Launch the first version of the product', reward: 'acceleration' as const, realWorldReward: 'Launch party!' },
-      { id: 'p2', name: 'Case Study', size: 'medium' as const, description: 'Publish first customer success story', reward: 'trail' as const },
-      { id: 'p3', name: 'Onboarding v2', size: 'medium' as const, description: 'Revamped onboarding with better activation', reward: 'handling' as const },
-      { id: 'p4', name: 'Self-Serve', size: 'big' as const, description: 'Customers can sign up without sales call', reward: 'speed_boost' as const, realWorldReward: '+$1,500/month salary increase' },
-      { id: 'p5', name: 'API Launch', size: 'big' as const, description: 'Public API for integrations and developers', reward: 'glow' as const, realWorldReward: 'Conference trip to speak about it' },
-      { id: 'p6', name: 'Enterprise', size: 'big' as const, description: 'Enterprise tier with SSO, SLA, dedicated support', reward: 'shield' as const, realWorldReward: '+$3,000/month salary increase' },
+      { id: 'p1', name: 'Ship v1', size: 'big' as const, description: 'Launch the first version of the product', realWorldReward: 'Launch party!' },
+      { id: 'p2', name: 'Case Study', size: 'medium' as const, description: 'Publish first customer success story' },
+      { id: 'p3', name: 'Onboarding v2', size: 'medium' as const, description: 'Revamped onboarding with better activation' },
+      { id: 'p4', name: 'Self-Serve', size: 'big' as const, description: 'Customers can sign up without sales call', realWorldReward: '+$1,500/month salary increase' },
+      { id: 'p5', name: 'API Launch', size: 'big' as const, description: 'Public API for integrations and developers', realWorldReward: 'Conference trip to speak about it' },
+      { id: 'p6', name: 'Enterprise', size: 'big' as const, description: 'Enterprise tier with SSO, SLA, dedicated support', realWorldReward: '+$3,000/month salary increase' },
     ];
 
     const achievements = goals?.achievement || [
-      { id: 'a1', name: 'Alex Hormozi', size: 'big' as const, description: 'Get noticed by Alex Hormozi', reward: 'special' as const, realWorldReward: 'Lifetime bragging rights + framed tweet' },
-      { id: 'a2', name: 'Gary Vee', size: 'big' as const, description: 'Get a shoutout from Gary Vaynerchuk', reward: 'special' as const, realWorldReward: 'VIP tickets to VeeCon' },
-      { id: 'a3', name: 'Viral Post', size: 'medium' as const, description: 'A post goes viral (1M+ impressions)', reward: 'trail' as const, realWorldReward: 'Professional photoshoot' },
-      { id: 'a4', name: '$10k Day', size: 'big' as const, description: 'Make $10,000 in a single day', reward: 'glow' as const, realWorldReward: 'Rolex or luxury watch' },
-      { id: 'a5', name: 'First Hire', size: 'medium' as const, description: 'Hire the first team member', reward: 'size' as const, realWorldReward: 'CEO title officially earned' },
+      { id: 'a1', name: 'Alex Hormozi', size: 'big' as const, description: 'Get noticed by Alex Hormozi', realWorldReward: 'Lifetime bragging rights + framed tweet' },
+      { id: 'a2', name: 'Gary Vee', size: 'big' as const, description: 'Get a shoutout from Gary Vaynerchuk', realWorldReward: 'VIP tickets to VeeCon' },
+      { id: 'a3', name: 'Viral Post', size: 'medium' as const, description: 'A post goes viral (1M+ impressions)', realWorldReward: 'Professional photoshoot' },
+      { id: 'a4', name: '$10k Day', size: 'big' as const, description: 'Make $10,000 in a single day', realWorldReward: 'Rolex or luxury watch' },
+      { id: 'a5', name: 'First Hire', size: 'medium' as const, description: 'Hire the first team member', realWorldReward: 'CEO title officially earned' },
     ];
 
     const sizeRadius = { small: 35, medium: 50, big: 70 };
@@ -385,7 +387,6 @@ export class SpaceGame {
         hasRing: i === 3 || i === 7,
         hasMoon: i === 4 || i === 9,
         description: m.description,
-        reward: m.reward,
         realWorldReward: m.realWorldReward,
         ownerId: null, // Shared planet
       });
@@ -416,7 +417,6 @@ export class SpaceGame {
         hasRing: i === 2 || i === 5,
         hasMoon: i === 1,
         description: m.description,
-        reward: m.reward,
         realWorldReward: m.realWorldReward,
         ownerId: null, // Shared planet
       });
@@ -439,19 +439,18 @@ export class SpaceGame {
         hasRing: true,
         hasMoon: false,
         description: m.description,
-        reward: m.reward,
         realWorldReward: m.realWorldReward,
         ownerId: null, // Shared planet
       });
     });
 
-    // SPECIAL STATIONS - At Mission Control (bottom middle)
+    // SPECIAL STATIONS - At Mission Control (pushed down a bit)
     // Shop Station - Buy upgrades (right of Mission Control)
     planets.push({
       id: 'shop-station',
       name: 'Upgrade Shop',
       x: MISSION_CONTROL_X + 280,
-      y: MISSION_CONTROL_Y,
+      y: MISSION_CONTROL_Y + 180,
       radius: 110,
       color: '#5490ff',
       glowColor: 'rgba(84, 144, 255, 0.5)',
@@ -470,7 +469,7 @@ export class SpaceGame {
       id: 'planet-builder',
       name: 'Planet Factory',
       x: MISSION_CONTROL_X - 280,
-      y: MISSION_CONTROL_Y,
+      y: MISSION_CONTROL_Y + 180,
       radius: 100,
       color: '#ffa500',
       glowColor: 'rgba(255, 165, 0, 0.5)',
@@ -508,10 +507,10 @@ export class SpaceGame {
     const planets: Planet[] = [];
     const sizeRadius = { small: 35, medium: 50, big: 70 };
 
-    // Place custom planets in organic curved rows ABOVE Mission Control
+    // Place custom planets in organic curved arcs ABOVE Mission Control
     // Staggered honeycomb pattern - each arc offset so planets sit between previous arc's planets
-    const baseDistance = 280; // First arc distance from Mission Control
-    const arcSpacing = 100; // Distance between arcs
+    const baseDistance = 350; // First arc distance from Mission Control (clear of stations)
+    const arcSpacing = 110; // Distance between arcs
     const planetsPerArc = 5;
 
     customPlanets.forEach((cp, i) => {
@@ -562,7 +561,6 @@ export class SpaceGame {
         hasRing: cp.size === 'big',
         hasMoon: false,
         description: cp.description,
-        reward: cp.reward,
         realWorldReward: cp.realWorldReward,
       });
     });
@@ -594,8 +592,8 @@ export class SpaceGame {
     const i = existingCustom.length;
 
     // Place in organic curved arcs above Mission Control (staggered honeycomb)
-    const baseDistance = 280;
-    const arcSpacing = 100;
+    const baseDistance = 350; // Clear of stations
+    const arcSpacing = 110;
     const planetsPerArc = 5;
     const arcIndex = Math.floor(i / planetsPerArc);
     const posInArc = i % planetsPerArc;
@@ -641,7 +639,6 @@ export class SpaceGame {
       hasRing: customPlanet.size === 'big',
       hasMoon: false,
       description: customPlanet.description,
-      reward: customPlanet.reward,
       realWorldReward: customPlanet.realWorldReward,
     };
 
@@ -833,7 +830,8 @@ export class SpaceGame {
       userPlanetSizeLevels.set(userId, sizeLevel);
 
       // Base radius grows with terraform count and size level (20% per size level)
-      const baseRadius = 50 + terraformCount * 3;
+      // Home planets are 2x larger for visibility
+      const baseRadius = 100 + terraformCount * 5;
       const sizeMultiplier = 1 + (sizeLevel * 0.2); // 20% per level
       const finalRadius = baseRadius * sizeMultiplier;
 
@@ -1359,7 +1357,7 @@ export class SpaceGame {
         const isUnassigned = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
 
         if (isUnassigned && this.onClaimRequest) {
-          // Request claim - App will call API first, then start animation with actual target position
+          // Request claim - App starts animation immediately, calls API in parallel, sets target when ready
           this.onClaimRequest(planet);
         } else if (this.onColonize) {
           // Direct complete for assigned planets
@@ -1493,29 +1491,38 @@ export class SpaceGame {
     }
   }
 
-  // Public method to start claim animation with a specific target position
-  // Called by App.tsx after the claim API returns the actual position
-  public startClaimToPosition(planetId: string, targetX: number, targetY: number) {
-    // Find the planet by ID
-    const planet = this.state.planets.find(p => p.id === planetId);
-    if (!planet) {
-      console.error('Cannot start claim animation: planet not found', planetId);
-      return;
-    }
+  // Public method to start claim animation immediately (called when user presses C)
+  // Animation starts with charging phase while API call happens in parallel
+  public startClaimAnimation(planet: Planet) {
+    const { ship } = this.state;
+
+    // FREEZE all starting values immediately - these won't change during animation
+    // Store exact ship position
+    this.claimShipStartX = ship.x;
+    this.claimShipStartY = ship.y;
+    // Store planet radius (frozen - won't use planet.radius during animation)
+    this.claimPlanetRadius = planet.radius;
+    // Calculate planet center from ship position (ship is above planet)
+    this.claimStartX = ship.x;
+    this.claimStartY = ship.y + planet.radius + 25;
 
     this.isClaiming = true;
     this.claimProgress = 0;
     this.claimPlanet = planet;
     this.claimParticles = [];
     this.claimTrailPoints = [];
+    this.claimTargetReady = false; // Target not known yet, API is being called
 
-    // Store starting position
-    this.claimStartX = planet.x;
-    this.claimStartY = planet.y;
-
-    // Use the exact target position from the API
-    this.claimTargetX = targetX;
-    this.claimTargetY = targetY;
+    // Temporary target (will be updated when API returns)
+    // Use player zone center as fallback
+    const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
+    if (playerZone) {
+      this.claimTargetX = playerZone.centerX;
+      this.claimTargetY = playerZone.centerY;
+    } else {
+      this.claimTargetX = CENTER_X;
+      this.claimTargetY = CENTER_Y;
+    }
 
     // Clear landed state
     this.isLanded = false;
@@ -1525,22 +1532,26 @@ export class SpaceGame {
     soundManager.playDockingSound();
   }
 
-  // Start claim animation (teleport ship + planet to home base) - fallback with calculated position
-  private startClaimAnimation(planet: Planet) {
-    // Find current player's home base zone
-    const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
-    let targetX = CENTER_X;
-    let targetY = CENTER_Y;
+  // Public method to set the actual target position when API returns
+  // Called by App.tsx after claim API succeeds
+  public setClaimTarget(targetX: number, targetY: number) {
+    if (!this.isClaiming) return;
 
-    if (playerZone) {
-      // Target slightly offset from zone center so planets spread out
-      const offsetAngle = Math.random() * Math.PI * 2;
-      const offsetDist = 200 + Math.random() * 400;
-      targetX = playerZone.centerX + Math.cos(offsetAngle) * offsetDist;
-      targetY = playerZone.centerY + Math.sin(offsetAngle) * offsetDist;
-    }
+    this.claimTargetX = targetX;
+    this.claimTargetY = targetY;
+    this.claimTargetReady = true;
+  }
 
-    this.startClaimToPosition(planet.id, targetX, targetY);
+  // Public method to cancel claim animation (if API fails)
+  public cancelClaimAnimation() {
+    if (!this.isClaiming) return;
+
+    this.isClaiming = false;
+    this.claimProgress = 0;
+    this.claimPlanet = null;
+    this.claimParticles = [];
+    this.claimTrailPoints = [];
+    this.claimTargetReady = false;
   }
 
   // Update claim animation - teleport ship + planet together to home base
@@ -1548,55 +1559,80 @@ export class SpaceGame {
     if (!this.isClaiming || !this.claimPlanet) return;
 
     const planet = this.claimPlanet;
-    this.claimProgress += 0.015; // ~3.5 second animation
-
     const { ship } = this.state;
 
-    // Phase 1 (0-0.2): Charging - energy gathers around ship+planet
-    // Phase 2 (0.2-0.35): Warp flash initiation
+    // Phase timings (adjusted for longer charging that waits for API)
+    // Phase 1 (0-0.25): Charging - energy gathers, can extend if waiting for API
+    // Phase 2 (0.25-0.35): Warp flash initiation (only starts when target is ready)
     // Phase 3 (0.35-0.85): Teleport movement - ship+planet fly together
     // Phase 4 (0.85-1.0): Arrival flash at destination
 
-    if (this.claimProgress < 0.2) {
-      // Phase 1: Charging - ship stays on planet, energy particles gather
-      ship.x = planet.x;
-      ship.y = planet.y - planet.radius - 25;
+    const CHARGING_END = 0.25;
+
+    // Use FROZEN values from when animation started (immune to realtime updates)
+    const startX = this.claimStartX;
+    const startY = this.claimStartY;
+    const shipStartX = this.claimShipStartX;
+    const shipStartY = this.claimShipStartY;
+    const radius = this.claimPlanetRadius;
+
+    // Only advance past charging phase if target is ready
+    if (this.claimProgress < CHARGING_END || !this.claimTargetReady) {
+      // Charging phase - keep progressing up to CHARGING_END, then hold
+      if (this.claimProgress < CHARGING_END) {
+        this.claimProgress += 0.012; // Slower charging for more dramatic effect
+      }
+      // If we hit the end but target isn't ready, clamp progress and keep charging effects
+      if (this.claimProgress >= CHARGING_END && !this.claimTargetReady) {
+        this.claimProgress = CHARGING_END - 0.001; // Hold just before transition
+      }
+
+      // Phase 1: Charging - ship stays at EXACT frozen start position
+      ship.x = shipStartX;
+      ship.y = shipStartY;
       ship.vx = 0;
       ship.vy = 0;
       ship.rotation = -Math.PI / 2;
 
-      // Emit charging particles converging on ship+planet
-      if (Math.random() < 0.5) {
+      // Emit charging particles converging on ORIGINAL planet location
+      const chargeIntensity = Math.min(1, this.claimProgress / CHARGING_END);
+      if (Math.random() < 0.4 + chargeIntensity * 0.3) {
         const angle = Math.random() * Math.PI * 2;
         const dist = 150 + Math.random() * 100;
-        const targetX = planet.x + (Math.random() - 0.5) * planet.radius;
-        const targetY = planet.y + (Math.random() - 0.5) * planet.radius;
-        const startX = targetX + Math.cos(angle) * dist;
-        const startY = targetY + Math.sin(angle) * dist;
+        const particleTargetX = startX + (Math.random() - 0.5) * radius;
+        const particleTargetY = startY + (Math.random() - 0.5) * radius;
+        const particleStartX = particleTargetX + Math.cos(angle) * dist;
+        const particleStartY = particleTargetY + Math.sin(angle) * dist;
         this.claimParticles.push({
-          x: startX,
-          y: startY,
-          vx: (targetX - startX) * 0.08,
-          vy: (targetY - startY) * 0.08,
-          life: 15,
+          x: particleStartX,
+          y: particleStartY,
+          vx: (particleTargetX - particleStartX) * (0.06 + chargeIntensity * 0.04),
+          vy: (particleTargetY - particleStartY) * (0.06 + chargeIntensity * 0.04),
+          life: 18,
           color: '#00ffff',
           size: 2 + Math.random() * 3,
         });
       }
-    } else if (this.claimProgress < 0.35) {
-      // Phase 2: Warp flash - still in place, bright glow
-      ship.x = planet.x;
-      ship.y = planet.y - planet.radius - 25;
+    } else {
+      // Target is ready, continue with rest of animation
+      this.claimProgress += 0.018; // Slightly faster for the action phases
+    }
+
+    // Phase 2: Warp flash (0.25-0.35) - still at ORIGINAL location
+    if (this.claimProgress >= 0.25 && this.claimProgress < 0.35) {
+      // Keep ship at exact frozen start position
+      ship.x = shipStartX;
+      ship.y = shipStartY;
       ship.vx = 0;
       ship.vy = 0;
 
-      // Emit bright flash particles
-      if (this.claimProgress < 0.28) {
+      // Emit bright flash particles from ORIGINAL location
+      if (this.claimProgress < 0.32) {
         for (let i = 0; i < 5; i++) {
           const angle = Math.random() * Math.PI * 2;
           this.claimParticles.push({
-            x: planet.x,
-            y: planet.y,
+            x: startX,
+            y: startY,
             vx: Math.cos(angle) * (1 + Math.random() * 2),
             vy: Math.sin(angle) * (1 + Math.random() * 2),
             life: 20,
@@ -1605,31 +1641,33 @@ export class SpaceGame {
           });
         }
       }
-    } else if (this.claimProgress < 0.85) {
-      // Phase 3: Teleport movement - ship + planet fly together to home base
+    }
+
+    // Phase 3: Teleport movement (0.35-0.85)
+    if (this.claimProgress >= 0.35 && this.claimProgress < 0.85) {
       const moveProgress = (this.claimProgress - 0.35) / 0.5;
       // Use easeInOutCubic for smooth acceleration/deceleration
       const eased = moveProgress < 0.5
         ? 4 * moveProgress * moveProgress * moveProgress
         : 1 - Math.pow(-2 * moveProgress + 2, 3) / 2;
 
-      // Interpolate position
-      const currentX = this.claimStartX + (this.claimTargetX - this.claimStartX) * eased;
-      const currentY = this.claimStartY + (this.claimTargetY - this.claimStartY) * eased;
+      // Interpolate position (planet center)
+      const currentX = startX + (this.claimTargetX - startX) * eased;
+      const currentY = startY + (this.claimTargetY - startY) * eased;
 
       // Update planet position (this moves the actual planet during animation)
       planet.x = currentX;
       planet.y = currentY;
 
-      // Ship stays docked on planet
+      // Ship stays docked on planet (use frozen radius)
       ship.x = currentX;
-      ship.y = currentY - planet.radius - 25;
+      ship.y = currentY - radius - 25;
       ship.vx = 0;
       ship.vy = 0;
 
       // Calculate direction of travel for ship rotation
-      const dx = this.claimTargetX - this.claimStartX;
-      const dy = this.claimTargetY - this.claimStartY;
+      const dx = this.claimTargetX - startX;
+      const dy = this.claimTargetY - startY;
       ship.rotation = Math.atan2(dy, dx) - Math.PI / 2;
 
       // Add trail points
@@ -1637,13 +1675,13 @@ export class SpaceGame {
         this.claimTrailPoints.push({ x: currentX, y: currentY, alpha: 1 });
       }
 
-      // Emit speed trail particles behind
+      // Emit speed trail particles behind (use frozen radius)
       const trailAngle = Math.atan2(dy, dx) + Math.PI; // Opposite direction
       for (let i = 0; i < 3; i++) {
         const spread = (Math.random() - 0.5) * 0.8;
         this.claimParticles.push({
-          x: currentX + Math.cos(trailAngle + spread) * (planet.radius + 10),
-          y: currentY + Math.sin(trailAngle + spread) * (planet.radius + 10),
+          x: currentX + Math.cos(trailAngle + spread) * (radius + 10),
+          y: currentY + Math.sin(trailAngle + spread) * (radius + 10),
           vx: Math.cos(trailAngle + spread) * (2 + Math.random() * 3),
           vy: Math.sin(trailAngle + spread) * (2 + Math.random() * 3),
           life: 25 + Math.random() * 15,
@@ -1656,7 +1694,7 @@ export class SpaceGame {
       planet.x = this.claimTargetX;
       planet.y = this.claimTargetY;
       ship.x = this.claimTargetX;
-      ship.y = this.claimTargetY - planet.radius - 25;
+      ship.y = this.claimTargetY - radius - 25; // Use frozen radius
       ship.vx = 0;
       ship.vy = 0;
 
@@ -1704,8 +1742,9 @@ export class SpaceGame {
       this.isClaiming = false;
       this.claimParticles = [];
       this.claimTrailPoints = [];
+      this.claimTargetReady = false;
 
-      // Claim API was already called before animation started (via onClaimRequest)
+      // Claim API was already called at animation start (via onClaimRequest)
       // No need to call onColonize here - the planet is already claimed and at its final position
       this.claimPlanet = null;
     }
@@ -1724,43 +1763,58 @@ export class SpaceGame {
     // Transform to world coordinates (same as getWrappedPositions)
     ctx.translate(-this.state.camera.x, -this.state.camera.y);
 
-    // Phase 1 (0-0.2): Charging glow around ship + planet
-    if (this.claimProgress < 0.2) {
-      const chargeIntensity = this.claimProgress / 0.2;
+    // Use FROZEN values from when animation started (immune to realtime updates)
+    const startX = this.claimStartX;
+    const startY = this.claimStartY;
+    const radius = this.claimPlanetRadius;
 
-      // Glow around planet
+    // Phase 1 (0-0.25): Charging glow around ship + planet at ORIGINAL location
+    if (this.claimProgress < 0.25) {
+      const chargeIntensity = Math.min(1, this.claimProgress / 0.25);
+
+      // Glow around planet - more intense glow that builds up
       ctx.beginPath();
-      const planetGlowRadius = planet.radius + 20 + chargeIntensity * 30;
+      const planetGlowRadius = radius + 20 + chargeIntensity * 40;
       const planetGradient = ctx.createRadialGradient(
-        planet.x, planet.y, planet.radius * 0.5,
-        planet.x, planet.y, planetGlowRadius
+        startX, startY, radius * 0.5,
+        startX, startY, planetGlowRadius
       );
-      planetGradient.addColorStop(0, `rgba(0, 255, 255, ${chargeIntensity * 0.3})`);
-      planetGradient.addColorStop(0.5, `rgba(0, 255, 255, ${chargeIntensity * 0.2})`);
+      planetGradient.addColorStop(0, `rgba(0, 255, 255, ${chargeIntensity * 0.4})`);
+      planetGradient.addColorStop(0.5, `rgba(0, 255, 255, ${chargeIntensity * 0.25})`);
       planetGradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
-      ctx.arc(planet.x, planet.y, planetGlowRadius, 0, Math.PI * 2);
+      ctx.arc(startX, startY, planetGlowRadius, 0, Math.PI * 2);
       ctx.fillStyle = planetGradient;
       ctx.fill();
 
-      // Pulsing ring around planet
+      // Pulsing ring around planet - faster pulse as charge builds
+      const pulseSpeed = 30 + chargeIntensity * 20;
       ctx.beginPath();
-      ctx.arc(planet.x, planet.y, planet.radius + 15 + Math.sin(this.claimProgress * 40) * 5, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(0, 255, 255, ${chargeIntensity * 0.8})`;
-      ctx.lineWidth = 2;
+      ctx.arc(startX, startY, radius + 15 + Math.sin(this.claimProgress * pulseSpeed) * 8, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(0, 255, 255, ${0.5 + chargeIntensity * 0.5})`;
+      ctx.lineWidth = 2 + chargeIntensity * 2;
       ctx.stroke();
+
+      // Second ring (outer) for more dramatic effect
+      if (chargeIntensity > 0.5) {
+        ctx.beginPath();
+        ctx.arc(startX, startY, radius + 35 + Math.sin(this.claimProgress * pulseSpeed + 1) * 10, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(0, 255, 255, ${(chargeIntensity - 0.5) * 0.6})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
     }
 
-    // Phase 2 (0.2-0.35): Warp flash - bright glow before departure
-    if (this.claimProgress >= 0.2 && this.claimProgress < 0.35) {
-      const flashProgress = (this.claimProgress - 0.2) / 0.15;
+    // Phase 2 (0.25-0.35): Warp flash - bright glow before departure at ORIGINAL location
+    if (this.claimProgress >= 0.25 && this.claimProgress < 0.35) {
+      const flashProgress = (this.claimProgress - 0.25) / 0.1;
       const flashIntensity = flashProgress < 0.5 ? flashProgress * 2 : (1 - flashProgress) * 2;
 
       // Bright flash circle
       ctx.beginPath();
-      ctx.arc(planet.x, planet.y, planet.radius + 50 + flashProgress * 100, 0, Math.PI * 2);
+      ctx.arc(startX, startY, radius + 50 + flashProgress * 100, 0, Math.PI * 2);
       const flashGradient = ctx.createRadialGradient(
-        planet.x, planet.y, 0,
-        planet.x, planet.y, planet.radius + 100
+        startX, startY, 0,
+        startX, startY, radius + 100
       );
       flashGradient.addColorStop(0, `rgba(255, 255, 255, ${flashIntensity * 0.9})`);
       flashGradient.addColorStop(0.3, `rgba(0, 255, 255, ${flashIntensity * 0.6})`);
@@ -2935,15 +2989,6 @@ export class SpaceGame {
         }
         ctx.globalAlpha = 1;
       }
-    }
-
-    // Atmosphere rim (skip for custom image planets and notion type planets)
-    if (!hasCustomImage && !notionTypeImage) {
-      ctx.beginPath();
-      ctx.arc(x, y, planet.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = planet.completed ? '#4ade80' : style.baseColor + '60';
-      ctx.lineWidth = planet.completed ? 3 : 2;
-      ctx.stroke();
     }
 
     // Bug planets: Draw cracks/damage effect

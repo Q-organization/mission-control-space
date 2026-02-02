@@ -15,6 +15,7 @@ interface PlayerData {
   planetImageUrl: string;
   planetTerraformCount: number;
   planetSizeLevel: number;
+  personalPoints: number;
 }
 
 interface UseMultiplayerSyncOptions {
@@ -78,6 +79,7 @@ const playerRowToData = (row: any): PlayerData => {
     planetImageUrl: row.planet_image_url,
     planetTerraformCount: row.planet_terraform_count,
     planetSizeLevel: row.planet_size_level,
+    personalPoints: row.personal_points || 0,
   };
 };
 
@@ -357,23 +359,41 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
 
   // Update personal points (for spending on upgrades)
   const updatePersonalPoints = useCallback(async (amount: number) => {
-    if (!playerDbIdRef.current) return;
+    if (!playerDbIdRef.current) {
+      console.error('updatePersonalPoints: No player ID available');
+      return;
+    }
 
-    // Get current personal points
-    const { data: currentPlayer } = await supabase
-      .from('players')
-      .select('personal_points')
-      .eq('id', playerDbIdRef.current)
-      .single();
-
-    if (currentPlayer) {
-      const newPoints = (currentPlayer.personal_points || 0) + amount;
-      await supabase
+    try {
+      // Get current personal points
+      const { data: currentPlayer, error: fetchError } = await supabase
         .from('players')
-        .update({ personal_points: newPoints })
-        .eq('id', playerDbIdRef.current);
+        .select('personal_points')
+        .eq('id', playerDbIdRef.current)
+        .single();
 
-      setPersonalPoints(newPoints);
+      if (fetchError) {
+        console.error('updatePersonalPoints: Failed to fetch player', fetchError);
+        return;
+      }
+
+      if (currentPlayer) {
+        const newPoints = (currentPlayer.personal_points || 0) + amount;
+        const { error: updateError } = await supabase
+          .from('players')
+          .update({ personal_points: newPoints })
+          .eq('id', playerDbIdRef.current);
+
+        if (updateError) {
+          console.error('updatePersonalPoints: Failed to update', updateError);
+          return;
+        }
+
+        console.log(`Personal points updated: ${currentPlayer.personal_points || 0} + ${amount} = ${newPoints}`);
+        setPersonalPoints(newPoints);
+      }
+    } catch (err) {
+      console.error('updatePersonalPoints: Exception', err);
     }
   }, []);
 

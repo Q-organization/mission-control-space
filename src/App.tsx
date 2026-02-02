@@ -7,7 +7,7 @@ import { useTeam } from './hooks/useTeam';
 import { useMultiplayerSync } from './hooks/useMultiplayerSync';
 import { usePlayerPositions } from './hooks/usePlayerPositions';
 import { useNotionPlanets } from './hooks/useNotionPlanets';
-import { getLocalPlayerId, getShareUrl as buildShareUrl, supabase } from './lib/supabase';
+import { getLocalPlayerId, supabase } from './lib/supabase';
 
 const FAL_API_KEY = 'c2df5aba-75d9-4626-95bb-aa366317d09e:8f90bb335a773f0ce3f261354107daa6';
 const STORAGE_KEY = 'mission-control-space-state';
@@ -109,31 +109,31 @@ const TRAIL_EFFECTS = [
 // Default goals/milestones
 const DEFAULT_GOALS = {
   business: [
-    { id: 'b1', name: 'First Customer', size: 'medium', description: 'Land your very first paying customer', reward: 'speed_boost', realWorldReward: 'Celebrate with the team!' },
-    { id: 'b2', name: '$1k MRR', size: 'small', description: 'Reach $1,000 monthly recurring revenue', reward: 'trail' },
-    { id: 'b3', name: '$5k MRR', size: 'medium', description: 'Hit $5,000 monthly recurring revenue', reward: 'glow', realWorldReward: '+$500/month salary increase' },
-    { id: 'b4', name: 'Break Even', size: 'big', description: 'Revenue covers all expenses - sustainable!', reward: 'shield', realWorldReward: 'Team dinner at a fancy restaurant' },
-    { id: 'b5', name: '$10k MRR', size: 'medium', description: 'Double digits! $10,000 MRR milestone', reward: 'acceleration', realWorldReward: '+$1,000/month salary increase' },
-    { id: 'b6', name: '$25k MRR', size: 'medium', description: 'Quarter way to $100k MRR', reward: 'handling', realWorldReward: 'New MacBook Pro' },
-    { id: 'b7', name: '100 Customers', size: 'big', description: 'Triple digit customer base achieved', reward: 'size', realWorldReward: 'Weekend trip anywhere in Europe' },
-    { id: 'b8', name: '$50k MRR', size: 'big', description: 'Half way to the $100k MRR goal', reward: 'special', realWorldReward: '+$2,500/month salary increase' },
-    { id: 'b9', name: '$100k MRR', size: 'big', description: 'The big one! $100,000 monthly recurring', reward: 'special', realWorldReward: '10% equity bonus + $5k/month raise' },
-    { id: 'b10', name: '$5M ARR', size: 'big', description: 'Five million annual recurring revenue!', reward: 'special', realWorldReward: 'Lambo or Tesla of your choice' },
+    { id: 'b1', name: 'First Customer', size: 'medium', description: 'Land your very first paying customer', realWorldReward: 'Celebrate with the team!' },
+    { id: 'b2', name: '$1k MRR', size: 'small', description: 'Reach $1,000 monthly recurring revenue' },
+    { id: 'b3', name: '$5k MRR', size: 'medium', description: 'Hit $5,000 monthly recurring revenue', realWorldReward: '+$500/month salary increase' },
+    { id: 'b4', name: 'Break Even', size: 'big', description: 'Revenue covers all expenses - sustainable!', realWorldReward: 'Team dinner at a fancy restaurant' },
+    { id: 'b5', name: '$10k MRR', size: 'medium', description: 'Double digits! $10,000 MRR milestone', realWorldReward: '+$1,000/month salary increase' },
+    { id: 'b6', name: '$25k MRR', size: 'medium', description: 'Quarter way to $100k MRR', realWorldReward: 'New MacBook Pro' },
+    { id: 'b7', name: '100 Customers', size: 'big', description: 'Triple digit customer base achieved', realWorldReward: 'Weekend trip anywhere in Europe' },
+    { id: 'b8', name: '$50k MRR', size: 'big', description: 'Half way to the $100k MRR goal', realWorldReward: '+$2,500/month salary increase' },
+    { id: 'b9', name: '$100k MRR', size: 'big', description: 'The big one! $100,000 monthly recurring', realWorldReward: '10% equity bonus + $5k/month raise' },
+    { id: 'b10', name: '$5M ARR', size: 'big', description: 'Five million annual recurring revenue!', realWorldReward: 'Lambo or Tesla of your choice' },
   ],
   product: [
-    { id: 'p1', name: 'Ship v1', size: 'big', description: 'Launch the first version of the product', reward: 'acceleration', realWorldReward: 'Launch party!' },
-    { id: 'p2', name: 'Case Study', size: 'medium', description: 'Publish first customer success story', reward: 'trail' },
-    { id: 'p3', name: 'Onboarding v2', size: 'medium', description: 'Revamped onboarding with better activation', reward: 'handling' },
-    { id: 'p4', name: 'Self-Serve', size: 'big', description: 'Customers can sign up without sales call', reward: 'speed_boost', realWorldReward: '+$1,500/month salary increase' },
-    { id: 'p5', name: 'API Launch', size: 'big', description: 'Public API for integrations and developers', reward: 'glow', realWorldReward: 'Conference trip to speak about it' },
-    { id: 'p6', name: 'Enterprise', size: 'big', description: 'Enterprise tier with SSO, SLA, dedicated support', reward: 'shield', realWorldReward: '+$3,000/month salary increase' },
+    { id: 'p1', name: 'Ship v1', size: 'big', description: 'Launch the first version of the product', realWorldReward: 'Launch party!' },
+    { id: 'p2', name: 'Case Study', size: 'medium', description: 'Publish first customer success story' },
+    { id: 'p3', name: 'Onboarding v2', size: 'medium', description: 'Revamped onboarding with better activation' },
+    { id: 'p4', name: 'Self-Serve', size: 'big', description: 'Customers can sign up without sales call', realWorldReward: '+$1,500/month salary increase' },
+    { id: 'p5', name: 'API Launch', size: 'big', description: 'Public API for integrations and developers', realWorldReward: 'Conference trip to speak about it' },
+    { id: 'p6', name: 'Enterprise', size: 'big', description: 'Enterprise tier with SSO, SLA, dedicated support', realWorldReward: '+$3,000/month salary increase' },
   ],
   achievement: [
-    { id: 'a1', name: 'Alex Hormozi', size: 'big', description: 'Get noticed by Alex Hormozi', reward: 'special', realWorldReward: 'Lifetime bragging rights + framed tweet' },
-    { id: 'a2', name: 'Gary Vee', size: 'big', description: 'Get a shoutout from Gary Vaynerchuk', reward: 'special', realWorldReward: 'VIP tickets to VeeCon' },
-    { id: 'a3', name: 'Viral Post', size: 'medium', description: 'A post goes viral (1M+ impressions)', reward: 'trail', realWorldReward: 'Professional photoshoot' },
-    { id: 'a4', name: '$10k Day', size: 'big', description: 'Make $10,000 in a single day', reward: 'glow', realWorldReward: 'Rolex or luxury watch' },
-    { id: 'a5', name: 'First Hire', size: 'medium', description: 'Hire the first team member', reward: 'size', realWorldReward: 'CEO title officially earned' },
+    { id: 'a1', name: 'Alex Hormozi', size: 'big', description: 'Get noticed by Alex Hormozi', realWorldReward: 'Lifetime bragging rights + framed tweet' },
+    { id: 'a2', name: 'Gary Vee', size: 'big', description: 'Get a shoutout from Gary Vaynerchuk', realWorldReward: 'VIP tickets to VeeCon' },
+    { id: 'a3', name: 'Viral Post', size: 'medium', description: 'A post goes viral (1M+ impressions)', realWorldReward: 'Professional photoshoot' },
+    { id: 'a4', name: '$10k Day', size: 'big', description: 'Make $10,000 in a single day', realWorldReward: 'Rolex or luxury watch' },
+    { id: 'a5', name: 'First Hire', size: 'medium', description: 'Hire the first team member', realWorldReward: 'CEO title officially earned' },
   ],
 };
 
@@ -142,7 +142,6 @@ interface Goal {
   name: string;
   size: 'small' | 'medium' | 'big';
   description: string;
-  reward: RewardType;
   realWorldReward?: string;
 }
 
@@ -201,7 +200,6 @@ interface CustomPlanet {
   description: string;
   type: 'business' | 'product' | 'achievement' | 'notion';
   size: 'small' | 'medium' | 'big';
-  reward: RewardType;
   realWorldReward?: string;
   imageUrl?: string;
   createdBy: string;
@@ -390,6 +388,7 @@ function App() {
     onLand: (planet: Planet) => void;
     onTakeoff: () => void;
     onColonize: (planet: Planet) => void;
+    onClaimRequest: (planet: Planet) => void;
     onOpenNotion: (url: string) => void;
     onTerraform: (planet: Planet) => void;
     onDestroyPlanet: (planet: Planet) => void;
@@ -397,6 +396,7 @@ function App() {
     onLand: () => {},
     onTakeoff: () => {},
     onColonize: () => {},
+    onClaimRequest: () => {},
     onOpenNotion: () => {},
     onTerraform: () => {},
     onDestroyPlanet: () => {},
@@ -422,13 +422,13 @@ function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [upgradePrompt, setUpgradePrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [editingGoal, setEditingGoal] = useState<any | null>(null);
   const [landedPlanet, setLandedPlanet] = useState<Planet | null>(null);
 
   // Planet creator form state
   const [newPlanet, setNewPlanet] = useState<Partial<CustomPlanet>>({
     size: 'medium',
-    reward: 'glow',
   });
   const [planetImageFile, setPlanetImageFile] = useState<File | null>(null);
   const [planetImagePreview, setPlanetImagePreview] = useState<string | null>(null);
@@ -454,7 +454,6 @@ function App() {
   const [planetPrompts, setPlanetPrompts] = useState<PlanetPrompts>(DEFAULT_PLANET_PROMPTS);
 
   // Multiplayer state
-  const [shareToast, setShareToast] = useState<string | null>(null);
   const [pointToast, setPointToast] = useState<PointTx | null>(null);
   const positionBroadcastRef = useRef<number>(0);
 
@@ -617,17 +616,6 @@ function App() {
       setPersonalPoints(syncedPersonalPoints);
     }
   }, [syncedPersonalPoints]);
-
-  // Copy share URL to clipboard
-  const copyShareUrl = () => {
-    if (team?.inviteCode) {
-      const url = buildShareUrl(team.inviteCode);
-      navigator.clipboard.writeText(url).then(() => {
-        setShareToast('Link copied!');
-        setTimeout(() => setShareToast(null), 2000);
-      });
-    }
-  };
 
   // Load prompts from JSON files on mount
   useEffect(() => {
@@ -933,7 +921,6 @@ function App() {
       name: 'New Goal',
       size: 'medium',
       description: 'Description here',
-      reward: 'glow',
     };
     setGoals(prev => ({
       ...prev,
@@ -961,6 +948,7 @@ function App() {
 
     // Close modal immediately
     setShowTerraform(false);
+    gameRef.current?.clearLandedState();
     setIsUpgrading(true);
     setUpgradeMessage('Creating your planet...');
     gameRef.current?.startUpgradeAnimation(planetId);
@@ -1051,6 +1039,7 @@ function App() {
 
     // Close modal immediately
     setShowTerraform(false);
+    gameRef.current?.clearLandedState();
     setTerraformPrompt('');
     setIsUpgrading(true);
     setUpgradeMessage('Terraforming planet...');
@@ -1417,6 +1406,28 @@ function App() {
     setLandedPlanet(null);
   }, [state.completedPlanets, state.currentUser, team, completeRemotePlanet, completeNotionPlanet, claimNotionPlanet, updateRemotePersonalPoints]);
 
+  // Handle claim request - called when user wants to claim an unassigned planet
+  // Starts animation IMMEDIATELY, then calls API in parallel
+  const handleClaimRequest = useCallback(async (planet: Planet) => {
+    if (!state.currentUser) return;
+
+    // Start animation immediately for instant feedback
+    gameRef.current?.startClaimAnimation(planet);
+    setLandedPlanet(null);
+
+    // Call API in parallel - animation will wait during charging phase if needed
+    const newPosition = await claimNotionPlanet(planet.id, state.currentUser);
+
+    if (newPosition) {
+      // Set the actual target position - animation will proceed to movement phase
+      gameRef.current?.setClaimTarget(newPosition.x, newPosition.y);
+    } else {
+      // API failed - cancel the animation
+      console.error('Failed to claim planet');
+      gameRef.current?.cancelClaimAnimation();
+    }
+  }, [state.currentUser, claimNotionPlanet]);
+
   // Handle opening Notion URL
   const handleOpenNotion = useCallback((url: string) => {
     window.open(url, '_blank');
@@ -1493,11 +1504,12 @@ function App() {
       onLand: handleLand,
       onTakeoff: handleTakeoff,
       onColonize: handleColonize,
+      onClaimRequest: handleClaimRequest,
       onOpenNotion: handleOpenNotion,
       onTerraform: handleTerraform,
       onDestroyPlanet: handleDestroyPlanet,
     };
-  }, [handleLand, handleTakeoff, handleColonize, handleOpenNotion, handleTerraform, handleDestroyPlanet]);
+  }, [handleLand, handleTakeoff, handleColonize, handleClaimRequest, handleOpenNotion, handleTerraform, handleDestroyPlanet]);
 
   // Close all modals with Escape key
   useEffect(() => {
@@ -1540,6 +1552,7 @@ function App() {
 
     // Close modal immediately
     setShowShop(false);
+    gameRef.current?.clearLandedState();
     setUpgradePrompt('');
     setIsUpgrading(true);
     setUpgradeMessage('Modifying your vessel...');
@@ -1904,7 +1917,6 @@ function App() {
         description: newPlanet.description,
         type: newPlanet.type || 'business',
         size: newPlanet.size || 'medium',
-        reward: newPlanet.reward || 'glow',
         realWorldReward: newPlanet.realWorldReward,
         imageUrl: planetImagePreview || undefined,
         createdBy: state.currentUser || 'unknown',
@@ -1915,7 +1927,7 @@ function App() {
     }
 
     // Reset form
-    setNewPlanet({ size: 'medium', reward: 'glow' });
+    setNewPlanet({ size: 'medium' });
     setPlanetImageFile(null);
     setPlanetImagePreview(null);
     setImagePrompt('');
@@ -1923,6 +1935,7 @@ function App() {
     setNotionAssignedTo('');
     setNotionTaskType('task');
     setShowPlanetCreator(false);
+    gameRef.current?.clearLandedState();
   };
 
   // Initialize game
@@ -1938,6 +1951,7 @@ function App() {
       onLand: (planet) => landingCallbacksRef.current.onLand(planet),
       onTakeoff: () => landingCallbacksRef.current.onTakeoff(),
       onColonize: (planet) => landingCallbacksRef.current.onColonize(planet),
+      onClaimRequest: (planet) => landingCallbacksRef.current.onClaimRequest(planet),
       onOpenNotion: (url) => landingCallbacksRef.current.onOpenNotion(url),
       onTerraform: (planet) => landingCallbacksRef.current.onTerraform(planet),
       onDestroyPlanet: (planet) => landingCallbacksRef.current.onDestroyPlanet(planet),
@@ -2082,23 +2096,16 @@ function App() {
         )}
       </div>
 
-      {/* Share button - always available when connected */}
+      {/* Leaderboard button - always available when connected */}
       {team && (
         <div style={styles.multiplayerButtons}>
           <button
-            style={styles.shareButton}
-            onClick={copyShareUrl}
-            title="Copy invite link"
+            style={styles.leaderboardButton}
+            onClick={() => setShowLeaderboard(true)}
+            title="View leaderboard"
           >
-            🔗 Share
+            🏆 Leaderboard
           </button>
-        </div>
-      )}
-
-      {/* Share toast */}
-      {shareToast && (
-        <div style={styles.toast}>
-          {shareToast}
         </div>
       )}
 
@@ -2161,9 +2168,79 @@ function App() {
         {isMuted ? '🔇' : '🔊'}
       </button>
 
+      {/* Leaderboard Modal */}
+      {showLeaderboard && (
+        <div style={styles.modalOverlay} onClick={() => setShowLeaderboard(false)}>
+          <div style={{ ...styles.modal, maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>🏆 Leaderboard</h2>
+            <div style={{ marginTop: '1rem' }}>
+              {[...teamPlayers]
+                .sort((a, b) => b.personalPoints - a.personalPoints)
+                .map((player, index) => (
+                  <div
+                    key={player.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '12px 16px',
+                      background: player.username === state.currentUser
+                        ? 'rgba(255, 200, 0, 0.15)'
+                        : 'rgba(255,255,255,0.03)',
+                      borderRadius: '10px',
+                      marginBottom: '8px',
+                      border: player.username === state.currentUser
+                        ? '1px solid rgba(255, 200, 0, 0.3)'
+                        : '1px solid rgba(255,255,255,0.05)',
+                    }}
+                  >
+                    <span style={{
+                      fontSize: index === 0 ? '1.5rem' : '1rem',
+                      width: '32px',
+                      textAlign: 'center',
+                    }}>
+                      {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                    </span>
+                    <span style={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '50%',
+                      background: player.color,
+                      flexShrink: 0,
+                    }} />
+                    <span style={{
+                      flex: 1,
+                      color: '#fff',
+                      fontWeight: player.username === state.currentUser ? 600 : 400,
+                    }}>
+                      {player.displayName}
+                      {player.username === state.currentUser && (
+                        <span style={{ color: '#888', fontWeight: 400, marginLeft: '6px' }}>(you)</span>
+                      )}
+                    </span>
+                    <span style={{
+                      color: '#ffc800',
+                      fontWeight: 600,
+                      fontSize: '1rem',
+                    }}>
+                      ⭐ {player.personalPoints}
+                    </span>
+                  </div>
+                ))}
+            </div>
+            <button
+              style={{ ...styles.closeButton, marginTop: '1.5rem' }}
+              onClick={() => setShowLeaderboard(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Shop Modal */}
       {showShop && (
-        <div style={styles.modalOverlay} onClick={() => !isUpgrading && setShowShop(false)}>
+        <div style={styles.modalOverlay} onClick={() => { if (!isUpgrading) { setShowShop(false); gameRef.current?.clearLandedState(); } }}>
           <div style={{ ...styles.modal, maxWidth: 550 }} onClick={e => e.stopPropagation()}>
             <h2 style={styles.modalTitle}>🛒 Upgrade Shop</h2>
             <p style={styles.shopPoints}>⭐ {personalPoints} Your Points Available</p>
@@ -2294,11 +2371,11 @@ function App() {
                 );
               })()}
 
-              {/* Glows Lane */}
+              {/* Shield Lane */}
               <div style={styles.effectLane}>
                 <div style={styles.effectLaneLabel}>
-                  <span style={styles.effectLaneIcon}>✨</span>
-                  <span>Glow</span>
+                  <span style={styles.effectLaneIcon}>🛡️</span>
+                  <span>Shield</span>
                 </div>
                 <div style={styles.effectLaneItems}>
                   {GLOW_EFFECTS.map(glow => {
@@ -2365,7 +2442,7 @@ function App() {
               </div>
             </div>
 
-            <button style={{ ...styles.cancelButton, width: '100%', marginTop: '1rem' }} onClick={() => setShowShop(false)}>
+            <button style={{ ...styles.cancelButton, width: '100%', marginTop: '1rem' }} onClick={() => { setShowShop(false); gameRef.current?.clearLandedState(); }}>
               Close
             </button>
           </div>
@@ -2547,7 +2624,7 @@ function App() {
                 </div>
 
                 <div style={styles.modalButtons}>
-                  <button style={styles.cancelButton} onClick={() => setShowPlanetCreator(false)} disabled={isCreatingPlanet}>
+                  <button style={styles.cancelButton} onClick={() => { setShowPlanetCreator(false); gameRef.current?.clearLandedState(); }} disabled={isCreatingPlanet}>
                     Cancel
                   </button>
                   <button
@@ -2571,7 +2648,7 @@ function App() {
 
       {/* Terraform Modal */}
       {showTerraform && (
-        <div style={styles.modalOverlay} onClick={() => !isUpgrading && setShowTerraform(false)}>
+        <div style={styles.modalOverlay} onClick={() => { if (!isUpgrading) { setShowTerraform(false); gameRef.current?.clearLandedState(); } }}>
           <div style={styles.modal} onClick={e => e.stopPropagation()}>
             <h2 style={styles.modalTitle}>🌍 Terraform Your Planet</h2>
             <p style={styles.shopPoints}>⭐ {personalPoints} Your Points Available</p>
@@ -2615,7 +2692,7 @@ function App() {
                 >
                   {isUpgrading ? 'Generating...' : 'Generate Base Planet (25 ⭐)'}
                 </button>
-                <button style={{ ...styles.cancelButton, marginTop: '1rem' }} onClick={() => setShowTerraform(false)}>
+                <button style={{ ...styles.cancelButton, marginTop: '1rem' }} onClick={() => { setShowTerraform(false); gameRef.current?.clearLandedState(); }}>
                   Cancel
                 </button>
               </div>
@@ -2715,7 +2792,7 @@ function App() {
                 </div>
 
                 <div style={styles.modalButtons}>
-                  <button style={styles.cancelButton} onClick={() => setShowTerraform(false)}>
+                  <button style={styles.cancelButton} onClick={() => { setShowTerraform(false); gameRef.current?.clearLandedState(); }}>
                     Cancel
                   </button>
                   <button
@@ -2734,7 +2811,7 @@ function App() {
 
       {/* View Other Player's Planet Modal */}
       {viewingPlanetOwner && (
-        <div style={styles.modalOverlay} onClick={() => setViewingPlanetOwner(null)}>
+        <div style={styles.modalOverlay} onClick={() => { setViewingPlanetOwner(null); gameRef.current?.clearLandedState(); }}>
           <div style={{ ...styles.modal, maxWidth: 500 }} onClick={e => e.stopPropagation()}>
             <h2 style={styles.modalTitle}>
               🌍 {viewingPlanetOwner.charAt(0).toUpperCase() + viewingPlanetOwner.slice(1)}'s World
@@ -2814,7 +2891,7 @@ function App() {
               </p>
             )}
 
-            <button style={styles.cancelButton} onClick={() => setViewingPlanetOwner(null)}>
+            <button style={styles.cancelButton} onClick={() => { setViewingPlanetOwner(null); gameRef.current?.clearLandedState(); }}>
               Close
             </button>
           </div>
@@ -3043,23 +3120,6 @@ function App() {
                     </select>
                   </div>
 
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Ship Reward</label>
-                    <select
-                      style={styles.select}
-                      value={editingGoal.reward}
-                      onChange={e => setEditingGoal({ ...editingGoal, reward: e.target.value })}
-                    >
-                      <option value="speed_boost">🚀 Speed Boost</option>
-                      <option value="acceleration">⚡ Acceleration</option>
-                      <option value="handling">🎯 Handling</option>
-                      <option value="shield">🛡️ Shield</option>
-                      <option value="trail">✨ Trail</option>
-                      <option value="glow">💫 Glow</option>
-                      <option value="size">📈 Size</option>
-                      <option value="special">🌟 Special</option>
-                    </select>
-                  </div>
                 </div>
 
                 <div style={styles.formGroup}>
@@ -3084,7 +3144,6 @@ function App() {
                         name: editingGoal.name,
                         description: editingGoal.description,
                         size: editingGoal.size,
-                        reward: editingGoal.reward,
                         realWorldReward: editingGoal.realWorldReward,
                       });
                       setEditingGoal(null);
@@ -3428,9 +3487,9 @@ const styles: Record<string, React.CSSProperties> = {
   multiplayerButtons: {
     position: 'absolute', top: 20, right: 180, display: 'flex', gap: '0.5rem',
   },
-  shareButton: {
-    background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-    borderRadius: 8, padding: '0.4rem 0.75rem', color: '#fff', fontSize: '0.8rem',
+  leaderboardButton: {
+    background: 'rgba(255,200,0,0.15)', border: '1px solid rgba(255,200,0,0.3)',
+    borderRadius: 8, padding: '0.4rem 0.75rem', color: '#ffc800', fontSize: '0.8rem',
     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem',
   },
   toast: {
