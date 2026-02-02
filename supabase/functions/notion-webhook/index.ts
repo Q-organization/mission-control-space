@@ -32,6 +32,11 @@ interface ExistingPlanet {
 const CENTER_X = 5000;
 const CENTER_Y = 5000;
 const PLAYER_DISTANCE = 3000;
+const HUB_DISTANCE = 2800;
+
+// Mission Control position (bottom middle, lower than Business and Product hubs)
+const MISSION_CONTROL_X = CENTER_X;
+const MISSION_CONTROL_Y = CENTER_Y + HUB_DISTANCE * 1.1;
 
 const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
   'quentin': { x: CENTER_X + PLAYER_DISTANCE, y: CENTER_Y },
@@ -41,8 +46,8 @@ const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
   'hugues': { x: CENTER_X - PLAYER_DISTANCE, y: CENTER_Y },
 };
 
-// Default zone for unassigned tasks
-const DEFAULT_ZONE = { x: CENTER_X, y: CENTER_Y + 500 };
+// Default zone for unassigned tasks - orbit ring around Mission Control
+const DEFAULT_ZONE = { x: MISSION_CONTROL_X, y: MISSION_CONTROL_Y };
 
 // Points based on priority
 const PRIORITY_POINTS: Record<string, number> = {
@@ -69,42 +74,98 @@ function findNonOverlappingPosition(
   assignedTo: string | null | undefined,
   existingPlanets: ExistingPlanet[]
 ): { x: number; y: number } {
-  const baseZone = assignedTo && PLAYER_ZONES[assignedTo.toLowerCase()]
-    ? PLAYER_ZONES[assignedTo.toLowerCase()]
-    : DEFAULT_ZONE;
+  const isUnassigned = !assignedTo || !PLAYER_ZONES[assignedTo.toLowerCase()];
+  const baseZone = isUnassigned ? DEFAULT_ZONE : PLAYER_ZONES[assignedTo.toLowerCase()];
 
+  // For unassigned tasks, also avoid the Shop and Factory stations
   const allObstacles: ExistingPlanet[] = [
     ...existingPlanets,
     { x: baseZone.x, y: baseZone.y },
   ];
 
+  // Add Mission Control stations as obstacles for unassigned tasks
+  if (isUnassigned) {
+    allObstacles.push(
+      { x: MISSION_CONTROL_X + 200, y: MISSION_CONTROL_Y }, // Shop
+      { x: MISSION_CONTROL_X - 200, y: MISSION_CONTROL_Y }, // Factory
+    );
+  }
+
   const maxAttempts = 50;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const ring = Math.floor(attempt / 8);
-    const angleIndex = attempt % 8;
-    const baseRadius = 200 + ring * 150;
-    const angle = (angleIndex / 8) * Math.PI * 2 + (ring * 0.3);
+  // For unassigned tasks: horizontal rows ABOVE Mission Control
+  // For assigned tasks: scatter around player zone
+  if (isUnassigned) {
+    const rowStartY = -250; // First row 250 units above Mission Control
+    const rowSpacing = 120;
+    const planetsPerRow = 5;
+    const horizontalSpacing = 150;
 
-    const candidate = {
-      x: baseZone.x + Math.cos(angle) * baseRadius,
-      y: baseZone.y + Math.sin(angle) * baseRadius,
-    };
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const row = Math.floor(attempt / planetsPerRow);
+      const posInRow = attempt % planetsPerRow;
+      const rowWidth = (planetsPerRow - 1) * horizontalSpacing;
+      const startX = -rowWidth / 2;
 
-    let isValid = true;
-    for (const planet of allObstacles) {
-      if (distance(candidate, planet) < MIN_DISTANCE) {
-        isValid = false;
-        break;
+      const candidate = {
+        x: baseZone.x + startX + posInRow * horizontalSpacing,
+        y: baseZone.y + rowStartY - row * rowSpacing,
+      };
+
+      let isValid = true;
+      for (const planet of allObstacles) {
+        if (distance(candidate, planet) < MIN_DISTANCE) {
+          isValid = false;
+          break;
+        }
+      }
+
+      if (isValid) {
+        return candidate;
       }
     }
+  } else {
+    // Assigned tasks: scatter around player zone
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const ring = Math.floor(attempt / 8);
+      const angleIndex = attempt % 8;
+      const baseRadius = 200 + ring * 150;
+      const angle = (angleIndex / 8) * Math.PI * 2 + (ring * 0.3);
 
-    if (isValid) {
-      return candidate;
+      const candidate = {
+        x: baseZone.x + Math.cos(angle) * baseRadius,
+        y: baseZone.y + Math.sin(angle) * baseRadius,
+      };
+
+      let isValid = true;
+      for (const planet of allObstacles) {
+        if (distance(candidate, planet) < MIN_DISTANCE) {
+          isValid = false;
+          break;
+        }
+      }
+
+      if (isValid) {
+        return candidate;
+      }
     }
   }
 
-  const fallbackRadius = 600 + Math.random() * 400;
+  // Fallback - place in extended rows above Mission Control
+  if (isUnassigned) {
+    const rowStartY = -250;
+    const rowSpacing = 120;
+    const horizontalSpacing = 150;
+    // Random position in extended grid
+    const fallbackRow = Math.floor(Math.random() * 5) + 3; // Rows 3-7
+    const fallbackPos = Math.floor(Math.random() * 7) - 3; // -3 to +3
+    return {
+      x: baseZone.x + fallbackPos * horizontalSpacing,
+      y: baseZone.y + rowStartY - fallbackRow * rowSpacing,
+    };
+  }
+  // For assigned tasks: scatter around player zone
+  const fallbackRadius = 500 + Math.random() * 200;
   const fallbackAngle = Math.random() * Math.PI * 2;
   return {
     x: baseZone.x + Math.cos(fallbackAngle) * fallbackRadius,
