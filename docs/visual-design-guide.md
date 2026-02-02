@@ -28,6 +28,28 @@ A polished, playful game art style that balances detail with readability. Inspir
 - Glow: Warm golden emissive highlights
 - Use for: Crafting, building, production
 
+### Notion Task Type Planets
+
+**Bug Planet**
+- Primary: Red `#ff4444`
+- Accent: Crimson/Orange `#ff6600`
+- Theme: Cracked surface, glowing fissures, warning lights, damaged structures
+- Use for: Bug tickets from Notion
+
+**Enhancement Planet**
+- Primary: Purple `#9944ff`
+- Accent: Magenta/Pink `#ff44ff`
+- Theme: Holographic displays, upgrade modules, glowing circuits, antenna arrays
+- Use for: Enhancement/feature tickets from Notion
+
+**Task Planet**
+- Primary: Teal `#44ddaa`
+- Accent: Green/Cyan `#00ffaa`
+- Theme: Small outposts, communication towers, data nodes, work stations
+- Use for: Generic task tickets from Notion
+
+> **Note:** Priority (Critical, High, Medium, Low) controls size and pulsation effects, not skin.
+
 ### Planet Design Structure
 
 ```
@@ -76,6 +98,21 @@ A stylized cartoon planet with a futuristic shop station on top. Blue planet wit
 **Factory Station:**
 ```
 A stylized cartoon planet with a futuristic factory station on top. Orange planet with surface details and craters, glowing golden ring around it. The factory base has multiple rounded buildings, smokestacks with soft emissions, gears, pipes, glowing furnaces and industrial lights. Clean vector game art style with nice depth and soft glow effects. Orange and gold color palette with glowing accents. Dark space background with stars.
+```
+
+**Bug Planet (Notion):**
+```
+A stylized cartoon planet with a bug/virus theme. Red and dark crimson planet with cracked surface and glowing fissures, glowing red ring around it. The surface has crystalline shards, warning lights, and damaged structures. Clean vector game art style with nice depth and soft glow effects. Red and orange color palette with glowing accents. Dark space background with stars.
+```
+
+**Enhancement Planet (Notion):**
+```
+A stylized cartoon planet with an enhancement/upgrade theme. Purple and violet planet with glowing tech patterns on surface, glowing magenta ring around it. The surface has holographic displays, upgrade modules, glowing circuits and antenna arrays. Clean vector game art style with nice depth and soft glow effects. Purple and pink color palette with glowing accents. Dark space background with stars.
+```
+
+**Task Planet (Notion):**
+```
+A stylized cartoon planet with a task/work theme. Teal and green planet with surface details and craters, glowing cyan ring around it. The surface has small outposts, communication towers, data nodes and work stations. Clean vector game art style with nice depth and soft glow effects. Teal and green color palette with glowing accents. Dark space background with stars.
 ```
 
 ### Post-Processing

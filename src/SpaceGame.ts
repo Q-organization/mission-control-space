@@ -135,6 +135,7 @@ export class SpaceGame {
   private suckProgress: number = 0;
   private customPlanetImages: Map<string, HTMLImageElement> = new Map();
   private userPlanetImages: Map<string, HTMLImageElement> = new Map();
+  private notionTypeImages: Map<string, HTMLImageElement> = new Map();
 
   // Landing animation state
   private isLanding: boolean = false;
@@ -150,6 +151,7 @@ export class SpaceGame {
   private onLand: ((planet: Planet) => void) | null = null;
   private onTakeoff: (() => void) | null = null;
   private onColonize: ((planet: Planet) => void) | null = null;
+  private onClaimRequest: ((planet: Planet) => void) | null = null; // Called when user wants to claim - App handles API then calls startClaimToPosition
   private onOpenNotion: ((url: string) => void) | null = null;
   private onTerraform: ((planet: Planet) => void) | null = null;
   private onDestroyPlanet: ((planet: Planet) => void) | null = null;
@@ -245,6 +247,11 @@ export class SpaceGame {
     // Load station skins
     this.loadCustomPlanetImage('shop-station', '/shop-station.png');
     this.loadCustomPlanetImage('planet-builder', '/planet-factory.png');
+
+    // Load Notion task type skins
+    this.loadNotionTypeImage('bug', '/notion-bug.png');
+    this.loadNotionTypeImage('enhancement', '/notion-enhancement.png');
+    this.loadNotionTypeImage('task', '/notion-task.png');
 
     // Initialize black hole (more centered, slightly offset)
     // Black hole in the central zone
@@ -572,6 +579,15 @@ export class SpaceGame {
     };
   }
 
+  private loadNotionTypeImage(taskType: string, imageUrl: string) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = imageUrl;
+    img.onload = () => {
+      this.notionTypeImages.set(taskType, img);
+    };
+  }
+
   public addCustomPlanet(customPlanet: CustomPlanetData) {
     const sizeRadius = { small: 35, medium: 50, big: 70 };
     const existingCustom = this.state.planets.filter(p => p.id.startsWith('custom-'));
@@ -650,6 +666,7 @@ export class SpaceGame {
     onLand?: (planet: Planet) => void;
     onTakeoff?: () => void;
     onColonize?: (planet: Planet) => void;
+    onClaimRequest?: (planet: Planet) => void;
     onOpenNotion?: (url: string) => void;
     onTerraform?: (planet: Planet) => void;
     onDestroyPlanet?: (planet: Planet) => void;
@@ -657,6 +674,7 @@ export class SpaceGame {
     this.onLand = callbacks.onLand || null;
     this.onTakeoff = callbacks.onTakeoff || null;
     this.onColonize = callbacks.onColonize || null;
+    this.onClaimRequest = callbacks.onClaimRequest || null;
     this.onOpenNotion = callbacks.onOpenNotion || null;
     this.onTerraform = callbacks.onTerraform || null;
     this.onDestroyPlanet = callbacks.onDestroyPlanet || null;
@@ -1336,14 +1354,14 @@ export class SpaceGame {
       // Special planets cannot be completed
       const specialPlanets = ['shop-station', 'planet-builder'];
       const isSpecial = specialPlanets.includes(planet.id) || planet.id.startsWith('user-planet-');
-      if (!planet.completed && !isSpecial && this.onColonize) {
+      if (!planet.completed && !isSpecial) {
         const isNotionPlanet = planet.id.startsWith('notion-');
         const isUnassigned = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
 
-        if (isUnassigned) {
-          // Start claim animation for unassigned notion planets
-          this.startClaimAnimation(planet);
-        } else {
+        if (isUnassigned && this.onClaimRequest) {
+          // Request claim - App will call API first, then start animation with actual target position
+          this.onClaimRequest(planet);
+        } else if (this.onColonize) {
           // Direct complete for assigned planets
           this.onColonize(planet);
         }
@@ -1475,8 +1493,16 @@ export class SpaceGame {
     }
   }
 
-  // Start claim animation (teleport ship + planet to home base)
-  private startClaimAnimation(planet: Planet) {
+  // Public method to start claim animation with a specific target position
+  // Called by App.tsx after the claim API returns the actual position
+  public startClaimToPosition(planetId: string, targetX: number, targetY: number) {
+    // Find the planet by ID
+    const planet = this.state.planets.find(p => p.id === planetId);
+    if (!planet) {
+      console.error('Cannot start claim animation: planet not found', planetId);
+      return;
+    }
+
     this.isClaiming = true;
     this.claimProgress = 0;
     this.claimPlanet = planet;
@@ -1487,19 +1513,9 @@ export class SpaceGame {
     this.claimStartX = planet.x;
     this.claimStartY = planet.y;
 
-    // Find current player's home base zone
-    const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
-    if (playerZone) {
-      // Target slightly offset from zone center so planets spread out
-      const offsetAngle = Math.random() * Math.PI * 2;
-      const offsetDist = 200 + Math.random() * 400;
-      this.claimTargetX = playerZone.centerX + Math.cos(offsetAngle) * offsetDist;
-      this.claimTargetY = playerZone.centerY + Math.sin(offsetAngle) * offsetDist;
-    } else {
-      // Fallback: teleport toward center
-      this.claimTargetX = CENTER_X;
-      this.claimTargetY = CENTER_Y;
-    }
+    // Use the exact target position from the API
+    this.claimTargetX = targetX;
+    this.claimTargetY = targetY;
 
     // Clear landed state
     this.isLanded = false;
@@ -1507,6 +1523,24 @@ export class SpaceGame {
 
     // Play a sound
     soundManager.playDockingSound();
+  }
+
+  // Start claim animation (teleport ship + planet to home base) - fallback with calculated position
+  private startClaimAnimation(planet: Planet) {
+    // Find current player's home base zone
+    const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
+    let targetX = CENTER_X;
+    let targetY = CENTER_Y;
+
+    if (playerZone) {
+      // Target slightly offset from zone center so planets spread out
+      const offsetAngle = Math.random() * Math.PI * 2;
+      const offsetDist = 200 + Math.random() * 400;
+      targetX = playerZone.centerX + Math.cos(offsetAngle) * offsetDist;
+      targetY = playerZone.centerY + Math.sin(offsetAngle) * offsetDist;
+    }
+
+    this.startClaimToPosition(planet.id, targetX, targetY);
   }
 
   // Update claim animation - teleport ship + planet together to home base
@@ -1671,10 +1705,8 @@ export class SpaceGame {
       this.claimParticles = [];
       this.claimTrailPoints = [];
 
-      // Call the colonize callback to actually claim
-      if (this.onColonize && this.claimPlanet) {
-        this.onColonize(this.claimPlanet);
-      }
+      // Claim API was already called before animation started (via onClaimRequest)
+      // No need to call onColonize here - the planet is already claimed and at its final position
       this.claimPlanet = null;
     }
   }
@@ -2495,8 +2527,12 @@ export class SpaceGame {
     }
 
     // Draw planet info panel when nearby OR landed panel when on planet
+    // Station planets (shop-station, planet-builder, user-planet-*) don't show the landed panel - they only have shop functionality
     if (this.isLanded && this.landedPlanet) {
-      this.drawLandedPanel(this.landedPlanet);
+      const isStation = this.landedPlanet.id === 'shop-station' || this.landedPlanet.id === 'planet-builder' || this.landedPlanet.id.startsWith('user-planet-');
+      if (!isStation) {
+        this.drawLandedPanel(this.landedPlanet);
+      }
     } else if (state.nearbyPlanet) {
       this.drawPlanetInfo(state.nearbyPlanet, state.dockingPlanet !== null);
     }
@@ -2749,6 +2785,9 @@ export class SpaceGame {
     const isBug = taskType === 'bug';
     const isFeature = taskType === 'feature' || taskType === 'enhancement';
 
+    // Get Notion type image if available
+    const notionTypeImage = isNotionPlanet ? this.notionTypeImages.get(taskType) || this.notionTypeImages.get('task') : null;
+
     // Pulsing glow for critical priority
     const pulseIntensity = isCritical ? 0.3 + Math.sin(Date.now() * 0.005) * 0.2 : 0;
     const glowMultiplier = isCritical ? 3.5 : (isHigh ? 3 : 2.5);
@@ -2763,20 +2802,6 @@ export class SpaceGame {
     ctx.arc(x, y, planet.radius * glowMultiplier, 0, Math.PI * 2);
     ctx.fillStyle = glowGradient;
     ctx.fill();
-
-    // Critical priority: pulsing outer ring
-    if (isCritical && !planet.completed) {
-      const ringPulse = 1 + Math.sin(Date.now() * 0.003) * 0.1;
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(x, y, planet.radius * 1.4 * ringPulse, 0, Math.PI * 2);
-      ctx.strokeStyle = style.baseColor + '60';
-      ctx.lineWidth = 3;
-      ctx.setLineDash([8, 4]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
 
     // Ring (if has ring and not custom image planet)
     if ((planet as any).hasRing && !isHormoziPlanet && !hasCustomImage) {
@@ -2871,6 +2896,16 @@ export class SpaceGame {
         imgSize,
         imgSize
       );
+    } else if (notionTypeImage && !planet.completed) {
+      // Draw Notion task type planet image
+      const imgSize = planet.radius * 2.5;
+      ctx.drawImage(
+        notionTypeImage,
+        x - imgSize / 2,
+        y - imgSize / 2,
+        imgSize,
+        imgSize
+      );
     } else {
       // Planet body with gradient
       const planetGradient = ctx.createRadialGradient(
@@ -2902,8 +2937,8 @@ export class SpaceGame {
       }
     }
 
-    // Atmosphere rim (skip for custom image planets)
-    if (!hasCustomImage) {
+    // Atmosphere rim (skip for custom image planets and notion type planets)
+    if (!hasCustomImage && !notionTypeImage) {
       ctx.beginPath();
       ctx.arc(x, y, planet.radius, 0, Math.PI * 2);
       ctx.strokeStyle = planet.completed ? '#4ade80' : style.baseColor + '60';
