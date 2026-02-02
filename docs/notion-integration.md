@@ -26,6 +26,7 @@ The integration provides bidirectional sync between Notion and the game:
                         ┌─────────────────────────────────────┐
                         │     Supabase Database               │
                         │     notion_planets table            │
+                        │     notion_user_mappings table      │
                         │     point_transactions table        │
                         └──────────────┬──────────────────────┘
                                        │
@@ -65,6 +66,31 @@ The integration provides bidirectional sync between Notion and the game:
 Tracks all point awards for auditing:
 - Points for creating tasks (10 points)
 - Points for completing tasks (based on priority)
+
+### notion_user_mappings Table
+
+Maps Notion users to game players for correct identification:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `team_id` | UUID | Reference to teams table |
+| `player_id` | UUID | Reference to players table |
+| `notion_user_id` | TEXT | Notion user ID (unique per team) |
+| `notion_user_name` | TEXT | Notion display name (for reference) |
+
+**Why this table exists**: Notion user names don't always match game player usernames. This mapping allows the system to correctly identify players regardless of naming differences.
+
+**Setup**: Populate this table via Supabase dashboard or SQL:
+```sql
+INSERT INTO notion_user_mappings (team_id, player_id, notion_user_id, notion_user_name)
+VALUES (
+  'your-team-uuid',
+  'player-uuid',
+  'notion-user-id',  -- Get from Notion API or webhook logs
+  'Notion Display Name'
+);
+```
 
 ## Edge Functions
 
@@ -210,6 +236,16 @@ Tracks all point awards for auditing:
 ## Player Zones
 
 Planets are positioned near their assigned player's "zone" in the game world.
+
+### User Resolution Flow
+
+When a task is assigned in Notion, the system:
+1. Extracts the Notion user ID from the `Attributed to` property
+2. Looks up the player in `notion_user_mappings` by Notion user ID
+3. If found, uses the player's game username for zone placement
+4. If not found, falls back to matching by Notion display name (case-insensitive)
+
+This ensures correct zone placement even when Notion names differ from game usernames.
 
 ### Zone Configuration
 

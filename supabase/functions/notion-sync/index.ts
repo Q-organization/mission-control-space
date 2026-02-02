@@ -113,7 +113,9 @@ function parseNotionPage(page: any): {
   type?: string;
   priority?: string;
   assigned_to?: string;
+  assigned_to_notion_id?: string;
   created_by?: string;
+  created_by_notion_id?: string;
   status?: string;
   url?: string;
 } | null {
@@ -138,18 +140,25 @@ function parseNotionPage(page: any): {
 
   // Extract "Attributed to" (people) - for planet placement
   let assignedTo = '';
-  if (props['Attributed to']?.people?.[0]?.name) {
-    assignedTo = props['Attributed to'].people[0].name.toLowerCase();
+  let assignedToNotionId = '';
+  if (props['Attributed to']?.people?.[0]) {
+    const person = props['Attributed to'].people[0];
+    assignedTo = person.name?.toLowerCase() || '';
+    assignedToNotionId = person.id || '';
   }
 
   // Extract "Created by" - for points attribution
   let createdBy = '';
-  if (props['Créé par']?.created_by?.name) {
-    createdBy = props['Créé par'].created_by.name.toLowerCase();
-  } else if (props['Created by']?.created_by?.name) {
-    createdBy = props['Created by'].created_by.name.toLowerCase();
-  } else if (page.created_by?.name) {
-    createdBy = page.created_by.name.toLowerCase();
+  let createdByNotionId = '';
+  if (props['Créé par']?.created_by) {
+    createdBy = props['Créé par'].created_by.name?.toLowerCase() || '';
+    createdByNotionId = props['Créé par'].created_by.id || '';
+  } else if (props['Created by']?.created_by) {
+    createdBy = props['Created by'].created_by.name?.toLowerCase() || '';
+    createdByNotionId = props['Created by'].created_by.id || '';
+  } else if (page.created_by) {
+    createdBy = page.created_by.name?.toLowerCase() || '';
+    createdByNotionId = page.created_by.id || '';
   }
 
   // Extract description
@@ -192,10 +201,51 @@ function parseNotionPage(page: any): {
     type: type || undefined,
     priority: priority || undefined,
     assigned_to: assignedTo || undefined,
+    assigned_to_notion_id: assignedToNotionId || undefined,
     created_by: createdBy || undefined,
+    created_by_notion_id: createdByNotionId || undefined,
     status: status || undefined,
     url: page.url || undefined,
   };
+}
+
+// Find player by Notion user ID (via mapping table) or fall back to name matching
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function findPlayerByNotionUser(
+  supabase: any,
+  teamId: string,
+  notionUserId: string | undefined,
+  notionUserName: string | undefined
+): Promise<{ id: string; username: string } | null> {
+  // First try to find by Notion user ID mapping
+  if (notionUserId) {
+    const { data: mapping } = await supabase
+      .from('notion_user_mappings')
+      .select('player_id, players!inner(id, username)')
+      .eq('team_id', teamId)
+      .eq('notion_user_id', notionUserId)
+      .single();
+
+    if (mapping?.players) {
+      return { id: mapping.players.id, username: mapping.players.username };
+    }
+  }
+
+  // Fall back to name matching
+  if (notionUserName) {
+    const { data: player } = await supabase
+      .from('players')
+      .select('id, username')
+      .eq('team_id', teamId)
+      .ilike('username', notionUserName)
+      .single();
+
+    if (player) {
+      return player;
+    }
+  }
+
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -321,6 +371,20 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Resolve assigned player's game username using mapping
+      let resolvedAssignedTo = parsed.assigned_to || null;
+      if (parsed.assigned_to || parsed.assigned_to_notion_id) {
+        const assignedPlayer = await findPlayerByNotionUser(
+          supabase,
+          team.id,
+          parsed.assigned_to_notion_id,
+          parsed.assigned_to
+        );
+        if (assignedPlayer) {
+          resolvedAssignedTo = assignedPlayer.username.toLowerCase();
+        }
+      }
+
       // Skip if status is archived (but mark as completed if exists)
       if (parsed.status === 'archived') {
         const existingArchived = existingByTaskId.get(normalizeId(parsed.id));
@@ -345,7 +409,7 @@ Deno.serve(async (req) => {
           .update({
             name: parsed.name,
             description: parsed.description || null,
-            assigned_to: parsed.assigned_to || null,
+            assigned_to: resolvedAssignedTo,
             task_type: parsed.type || null,
             priority: parsed.priority || null,
             points: points,
@@ -364,8 +428,8 @@ Deno.serve(async (req) => {
       // Calculate points based on priority
       const points = calculatePoints(parsed.priority);
 
-      // Find position for new planet
-      const position = findNonOverlappingPosition(parsed.assigned_to, existingPositions);
+      // Find position for new planet using resolved player username
+      const position = findNonOverlappingPosition(resolvedAssignedTo, existingPositions);
 
       // Add to existing positions for next iteration
       existingPositions.push(position);
@@ -379,7 +443,7 @@ Deno.serve(async (req) => {
           name: parsed.name,
           description: parsed.description || null,
           notion_url: parsed.url || null,
-          assigned_to: parsed.assigned_to || null,
+          assigned_to: resolvedAssignedTo,
           created_by: parsed.created_by || null,
           task_type: parsed.type || null,
           priority: parsed.priority || null,
@@ -402,14 +466,14 @@ Deno.serve(async (req) => {
       // Check if this was a new insert or an update (we track as created for simplicity)
       created.push(parsed.name);
 
-      // Award 10 points to creator
-      if (parsed.created_by) {
-        const { data: creator } = await supabase
-          .from('players')
-          .select('id')
-          .eq('team_id', team.id)
-          .ilike('username', parsed.created_by)
-          .single();
+      // Award 10 points to creator - find by Notion ID or name
+      if (parsed.created_by || parsed.created_by_notion_id) {
+        const creator = await findPlayerByNotionUser(
+          supabase,
+          team.id,
+          parsed.created_by_notion_id,
+          parsed.created_by
+        );
 
         if (creator) {
           await supabase.from('point_transactions').insert({

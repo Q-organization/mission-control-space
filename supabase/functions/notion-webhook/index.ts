@@ -15,8 +15,10 @@ interface NotionWebhookPayload {
   type?: string; // bug, enhancement
   priority?: string; // critical, high, medium, low
   points?: number;
-  assigned_to?: string; // For planet placement
-  created_by?: string; // For points attribution
+  assigned_to?: string; // Player username for planet placement
+  assigned_to_notion_id?: string; // Notion user ID for mapping
+  created_by?: string; // Player username for points attribution
+  created_by_notion_id?: string; // Notion user ID for mapping
   status?: string;
   url?: string;
 }
@@ -136,18 +138,25 @@ function parseNativeNotionPayload(raw: any): NotionWebhookPayload | null {
 
   // Extract "Attributed to" (people) - for planet placement
   let assignedTo = '';
-  if (props['Attributed to']?.people?.[0]?.name) {
-    assignedTo = props['Attributed to'].people[0].name.toLowerCase();
+  let assignedToNotionId = '';
+  if (props['Attributed to']?.people?.[0]) {
+    const person = props['Attributed to'].people[0];
+    assignedTo = person.name?.toLowerCase() || '';
+    assignedToNotionId = person.id || '';
   }
 
   // Extract "Created by" - for points attribution
   let createdBy = '';
-  if (props['Créé par']?.created_by?.name) {
-    createdBy = props['Créé par'].created_by.name.toLowerCase();
-  } else if (props['Created by']?.created_by?.name) {
-    createdBy = props['Created by'].created_by.name.toLowerCase();
-  } else if (data.created_by?.name) {
-    createdBy = data.created_by.name.toLowerCase();
+  let createdByNotionId = '';
+  if (props['Créé par']?.created_by) {
+    createdBy = props['Créé par'].created_by.name?.toLowerCase() || '';
+    createdByNotionId = props['Créé par'].created_by.id || '';
+  } else if (props['Created by']?.created_by) {
+    createdBy = props['Created by'].created_by.name?.toLowerCase() || '';
+    createdByNotionId = props['Created by'].created_by.id || '';
+  } else if (data.created_by) {
+    createdBy = data.created_by.name?.toLowerCase() || '';
+    createdByNotionId = data.created_by.id || '';
   }
 
   // Extract description
@@ -190,7 +199,9 @@ function parseNativeNotionPayload(raw: any): NotionWebhookPayload | null {
     type: type || undefined,
     priority: priority || undefined,
     assigned_to: assignedTo || undefined,
+    assigned_to_notion_id: assignedToNotionId || undefined,
     created_by: createdBy || undefined,
+    created_by_notion_id: createdByNotionId || undefined,
     status: status || undefined,
     url: data.url || undefined,
   };
@@ -201,6 +212,45 @@ function calculatePoints(priority: string | undefined): number {
   if (!priority) return PRIORITY_POINTS.default;
   const key = priority.toLowerCase();
   return PRIORITY_POINTS[key] || PRIORITY_POINTS.default;
+}
+
+// Find player by Notion user ID (via mapping table) or fall back to name matching
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function findPlayerByNotionUser(
+  supabase: any,
+  teamId: string,
+  notionUserId: string | undefined,
+  notionUserName: string | undefined
+): Promise<{ id: string; username: string } | null> {
+  // First try to find by Notion user ID mapping
+  if (notionUserId) {
+    const { data: mapping } = await supabase
+      .from('notion_user_mappings')
+      .select('player_id, players!inner(id, username)')
+      .eq('team_id', teamId)
+      .eq('notion_user_id', notionUserId)
+      .single();
+
+    if (mapping?.players) {
+      return { id: mapping.players.id, username: mapping.players.username };
+    }
+  }
+
+  // Fall back to name matching
+  if (notionUserName) {
+    const { data: player } = await supabase
+      .from('players')
+      .select('id, username')
+      .eq('team_id', teamId)
+      .ilike('username', notionUserName)
+      .single();
+
+    if (player) {
+      return player;
+    }
+  }
+
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -238,10 +288,39 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Find team (needed for all operations)
+    const { data: teams } = await supabase
+      .from('teams')
+      .select('id, team_points')
+      .limit(1);
+
+    if (!teams || teams.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'No team configured' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const team = teams[0];
+
+    // Resolve assigned player's game username using mapping (for correct zone placement)
+    let resolvedAssignedTo = payload.assigned_to || null;
+    if (payload.assigned_to || payload.assigned_to_notion_id) {
+      const assignedPlayer = await findPlayerByNotionUser(
+        supabase,
+        team.id,
+        payload.assigned_to_notion_id,
+        payload.assigned_to
+      );
+      if (assignedPlayer) {
+        resolvedAssignedTo = assignedPlayer.username.toLowerCase();
+      }
+    }
+
     // Check if planet already exists
     const { data: existingPlanet } = await supabase
       .from('notion_planets')
-      .select('id, assigned_to, completed, x, y')
+      .select('id, team_id, assigned_to, completed, x, y')
       .eq('notion_task_id', payload.id)
       .single();
 
@@ -251,7 +330,7 @@ Deno.serve(async (req) => {
       const points = payload.points || calculatePoints(payload.priority);
 
       // Check if assignment changed - need to move planet
-      const assignmentChanged = existingPlanet.assigned_to !== (payload.assigned_to || null);
+      const assignmentChanged = existingPlanet.assigned_to !== resolvedAssignedTo;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updates: any = {
@@ -272,14 +351,14 @@ Deno.serve(async (req) => {
           .neq('id', existingPlanet.id);
 
         const newPosition = findNonOverlappingPosition(
-          payload.assigned_to,
+          resolvedAssignedTo,
           existingPlanets || []
         );
-        updates.assigned_to = payload.assigned_to || null;
+        updates.assigned_to = resolvedAssignedTo;
         updates.x = Math.round(newPosition.x);
         updates.y = Math.round(newPosition.y);
 
-        console.log(`Moving planet "${payload.name}" to ${payload.assigned_to || 'unassigned'} zone`);
+        console.log(`Moving planet "${payload.name}" to ${resolvedAssignedTo || 'unassigned'} zone`);
       }
 
       // Check if status indicates completion (archived = done)
@@ -292,14 +371,14 @@ Deno.serve(async (req) => {
       if (isCompleted && !existingPlanet.completed) {
         updates.completed = true;
 
-        // Award points for completion
-        if (payload.assigned_to) {
-          const { data: player } = await supabase
-            .from('players')
-            .select('id')
-            .eq('team_id', team.id)
-            .ilike('username', payload.assigned_to)
-            .single();
+        // Award points for completion - find player by Notion ID or name
+        if (payload.assigned_to || payload.assigned_to_notion_id) {
+          const player = await findPlayerByNotionUser(
+            supabase,
+            team.id,
+            payload.assigned_to_notion_id,
+            payload.assigned_to
+          );
 
           if (player) {
             await supabase.from('point_transactions').insert({
@@ -317,7 +396,7 @@ Deno.serve(async (req) => {
               .update({ team_points: team.team_points + points })
               .eq('id', team.id);
 
-            console.log(`Awarded ${points} points to ${payload.assigned_to} for completing "${payload.name}"`);
+            console.log(`Awarded ${points} points to ${player.username} for completing "${payload.name}"`);
           }
         }
       }
@@ -353,30 +432,15 @@ Deno.serve(async (req) => {
     // Calculate points based on priority
     const points = payload.points || calculatePoints(payload.priority);
 
-    // Find team
-    const { data: teams } = await supabase
-      .from('teams')
-      .select('id, team_points')
-      .limit(1);
-
-    if (!teams || teams.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'No team configured' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const team = teams[0];
-
     // Fetch existing planets
     const { data: existingPlanets } = await supabase
       .from('notion_planets')
       .select('x, y')
       .eq('team_id', team.id);
 
-    // Calculate position based on assigned_to
+    // Calculate position based on resolved assigned player
     const position = findNonOverlappingPosition(
-      payload.assigned_to,
+      resolvedAssignedTo,
       existingPlanets || []
     );
 
@@ -389,7 +453,7 @@ Deno.serve(async (req) => {
         name: payload.name,
         description: payload.description || null,
         notion_url: payload.url || null,
-        assigned_to: payload.assigned_to || null,
+        assigned_to: resolvedAssignedTo,
         created_by: payload.created_by || null,
         task_type: payload.type || null,
         priority: payload.priority || null,
@@ -410,14 +474,14 @@ Deno.serve(async (req) => {
     }
 
     // Award 10 points to the creator for creating the task
-    if (payload.created_by) {
-      // Find the player by username
-      const { data: creator } = await supabase
-        .from('players')
-        .select('id')
-        .eq('team_id', team.id)
-        .ilike('username', payload.created_by)
-        .single();
+    if (payload.created_by || payload.created_by_notion_id) {
+      // Find the player by Notion user ID or username
+      const creator = await findPlayerByNotionUser(
+        supabase,
+        team.id,
+        payload.created_by_notion_id,
+        payload.created_by
+      );
 
       if (creator) {
         // Insert point transaction for creation
@@ -436,18 +500,18 @@ Deno.serve(async (req) => {
           .update({ team_points: team.team_points + 10 })
           .eq('id', team.id);
 
-        console.log(`Awarded 10 points to ${payload.created_by} for creating "${payload.name}"`);
+        console.log(`Awarded 10 points to ${creator.username} for creating "${payload.name}"`);
       }
     }
 
-    console.log(`Created planet "${payload.name}" for ${payload.assigned_to || 'unassigned'}`);
+    console.log(`Created planet "${payload.name}" for ${resolvedAssignedTo || 'unassigned'}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         planet_id: planet.id,
         planet_name: payload.name,
-        assigned_to: payload.assigned_to || null,
+        assigned_to: resolvedAssignedTo,
         created_by: payload.created_by || null,
         position: position,
         points: points,
