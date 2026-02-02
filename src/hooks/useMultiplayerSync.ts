@@ -185,6 +185,7 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
         display_name: displayName,
         color,
         is_online: true,
+        last_seen: new Date().toISOString(), // Required for isOnline check in playerRowToData
       };
       // Include ship data if provided
       if (shipImage) {
@@ -256,7 +257,17 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
       .eq('team_id', teamId);
 
     if (playersData) {
-      setPlayers(playersData.map(playerRowToData));
+      // Map to PlayerData, but ensure current player is always marked online
+      // (the fetch might return stale data due to replication lag)
+      const mappedPlayers = playersData.map((row) => {
+        const player = playerRowToData(row);
+        // Force current player to be online - we just registered them
+        if (playerDbIdRef.current && player.id === playerDbIdRef.current) {
+          return { ...player, isOnline: true };
+        }
+        return player;
+      });
+      setPlayers(mappedPlayers);
 
       // Find current player's personal points
       const currentPlayer = playersData.find(p => p.username === username);
@@ -445,8 +456,9 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
     }
 
     const setupSubscriptions = async () => {
-      await registerPlayer();
-      await fetchTeamData();
+      // IMPORTANT: Create and subscribe to channel FIRST, before registering
+      // This prevents a race condition where Player 2's registration event
+      // is missed because Player 1 hasn't subscribed yet
 
       // Create channel for this team
       const channel = supabase.channel(`team:${teamId}`);
@@ -484,9 +496,16 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
             }
           } else if (payload.eventType === 'UPDATE') {
             const player = playerRowToData(payload.new);
-            setPlayers((prev) =>
-              prev.map((p) => (p.id === player.id ? player : p))
-            );
+            setPlayers((prev) => {
+              const existingIndex = prev.findIndex((p) => p.id === player.id);
+              if (existingIndex >= 0) {
+                // Update existing player
+                return prev.map((p) => (p.id === player.id ? player : p));
+              } else {
+                // Player not in list (edge case: missed INSERT) - add them
+                return [...prev, player];
+              }
+            });
             // Update personal points if this is the current player
             if (player.id === playerDbIdRef.current && payload.new.personal_points !== undefined) {
               setPersonalPoints(payload.new.personal_points || 0);
@@ -531,11 +550,16 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
         }
       );
 
+      // Subscribe and wait for it to be ready BEFORE registering player
       await channel.subscribe((status) => {
         setIsConnected(status === 'SUBSCRIBED');
       });
 
       channelRef.current = channel;
+
+      // NOW register player and fetch data - subscription is active so we won't miss events
+      await registerPlayer();
+      await fetchTeamData();
     };
 
     setupSubscriptions();

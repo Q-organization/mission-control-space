@@ -599,28 +599,38 @@ function App() {
   }, [notionGamePlanets]);
 
   // Set up direct position update callback (bypasses React state for smoother movement)
+  // Uses refs to always call the latest game instance, avoiding stale closure issues
+  const positionCallbackRef = useRef<((playerId: string, data: { x: number; y: number; vx: number; vy: number; rotation: number; thrusting: boolean; boosting: boolean; timestamp: number }) => void) | null>(null);
+  const upgradeCallbackRef = useRef<((playerId: string, data: { isUpgrading: boolean; targetPlanetId: string | null }) => void) | null>(null);
+
+  // Update callback refs when game is available
   useEffect(() => {
-    if (gameRef.current) {
-      setPositionUpdateCallback((playerId, data) => {
-        gameRef.current?.onPlayerPositionUpdate(playerId, data);
-      });
-    }
+    positionCallbackRef.current = (playerId, data) => {
+      gameRef.current?.onPlayerPositionUpdate(playerId, data);
+    };
+    upgradeCallbackRef.current = (playerId, data) => {
+      if (data.isUpgrading) {
+        gameRef.current?.setOtherPlayerUpgrading(playerId, data.targetPlanetId);
+      } else {
+        gameRef.current?.clearOtherPlayerUpgrading(playerId);
+      }
+    };
+  }, []);
+
+  // Register the callback wrappers with the hook (these stay stable)
+  useEffect(() => {
+    setPositionUpdateCallback((playerId, data) => {
+      positionCallbackRef.current?.(playerId, data);
+    });
     return () => {
       setPositionUpdateCallback(null);
     };
   }, [setPositionUpdateCallback]);
 
-  // Set up upgrade animation callback (shows other players' upgrade animations)
   useEffect(() => {
-    if (gameRef.current) {
-      setUpgradeUpdateCallback((playerId, data) => {
-        if (data.isUpgrading) {
-          gameRef.current?.setOtherPlayerUpgrading(playerId, data.targetPlanetId);
-        } else {
-          gameRef.current?.clearOtherPlayerUpgrading(playerId);
-        }
-      });
-    }
+    setUpgradeUpdateCallback((playerId, data) => {
+      upgradeCallbackRef.current?.(playerId, data);
+    });
     return () => {
       setUpgradeUpdateCallback(null);
     };

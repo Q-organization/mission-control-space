@@ -4440,6 +4440,7 @@ export class SpaceGame {
       let targetY: number;
       let targetRotation: number;
       let targetThrusting: boolean;
+      let targetBoosting: boolean;
 
       if (latest) {
         // Predict where the ship should be NOW based on snapshot + velocity
@@ -4451,11 +4452,13 @@ export class SpaceGame {
         targetY = latest.y + latest.vy * predictionTime * 60;
         targetRotation = latest.rotation;
         targetThrusting = latest.thrusting;
+        targetBoosting = latest.boosting;
       } else {
         targetX = player.x;
         targetY = player.y;
         targetRotation = player.rotation;
         targetThrusting = player.thrusting;
+        targetBoosting = player.boosting ?? false;
       }
 
       // Unwrap target for world wrapping
@@ -4476,8 +4479,9 @@ export class SpaceGame {
       while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
       renderState.renderRotation += rotDiff * LERP_FACTOR;
 
-      // Thrusting - direct
+      // Thrusting and boosting - direct (no interpolation needed)
       renderState.renderThrusting = targetThrusting;
+      renderState.renderBoosting = targetBoosting;
 
       renderState.lastUpdateTime = now;
     }
