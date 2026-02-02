@@ -37,6 +37,7 @@ interface ShipEffects {
   trailType: 'default' | 'fire' | 'ice' | 'rainbow';
   sizeBonus: number;
   speedBonus: number;
+  landingSpeedBonus: number;
   ownedGlows: string[];
   ownedTrails: string[];
   hasDestroyCanon: boolean;
@@ -130,7 +131,7 @@ export class SpaceGame {
   private hormoziPlanetImage: HTMLImageElement | null = null;
   private canonImage: HTMLImageElement | null = null; // Destroy Canon weapon image
   private shipLevel: number = 1;
-  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false };
+  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false };
   private blackHole: BlackHole;
   private shipBeingSucked: boolean = false;
   private suckProgress: number = 0;
@@ -1219,8 +1220,9 @@ export class SpaceGame {
   private updateLandingAnimation() {
     if (!this.isLanding || !this.landingPlanet || !this.landingStartPos) return;
 
-    // ~3.5 second animation at 60fps
-    this.landingProgress += 0.005;
+    // ~3.5 second animation at 60fps, faster with landing speed upgrades (+15% per level)
+    const landingSpeedMultiplier = 1 + (this.shipEffects.landingSpeedBonus || 0) * 0.15;
+    this.landingProgress += 0.005 * landingSpeedMultiplier;
     const progress = Math.min(this.landingProgress, 1);
 
     const planet = this.landingPlanet;

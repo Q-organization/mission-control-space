@@ -84,11 +84,14 @@ const POINTS_PER_SIZE = { small: 50, medium: 100, big: 200 };
 const VISUAL_UPGRADE_COST = 75;
 
 // Programmatic ship effects (no AI needed - instant purchase)
-// Size upgrades: 5 levels with increasing costs (ship)
-const SIZE_COSTS = [40, 60, 90, 130, 180]; // Cost per level
+// Size upgrades: 10 levels with increasing costs (ship)
+const SIZE_COSTS = [40, 60, 90, 130, 180, 240, 310, 390, 480, 580]; // Cost per level
 
-// Speed upgrades: 5 levels with increasing costs
-const SPEED_COSTS = [30, 50, 80, 120, 180]; // Cost per level
+// Speed upgrades: 10 levels with increasing costs
+const SPEED_COSTS = [30, 50, 80, 120, 170, 230, 300, 380, 470, 570]; // Cost per level
+
+// Landing speed upgrades: 5 levels with increasing costs
+const LANDING_SPEED_COSTS = [35, 55, 85, 125, 175]; // Cost per level
 
 // Planet size upgrades: 5 levels with increasing costs
 const PLANET_SIZE_COSTS = [50, 80, 120, 170, 230]; // Cost per level
@@ -219,7 +222,8 @@ interface ShipEffects {
   glowColor: string | null;
   trailType: 'default' | 'fire' | 'ice' | 'rainbow';
   sizeBonus: number; // Percentage bonus (e.g., 10 = +10%)
-  speedBonus: number; // 0-5 levels, each gives +10% speed
+  speedBonus: number; // 0-10 levels, each gives +10% speed
+  landingSpeedBonus: number; // 0-5 levels, each gives +15% faster landing
   ownedGlows: string[]; // Owned glow colors
   ownedTrails: string[]; // Owned trail types
   hasDestroyCanon: boolean; // Owns Destroy Canon weapon
@@ -424,6 +428,7 @@ function App() {
   const [showUserSelect, setShowUserSelect] = useState(!state.currentUser);
   const [showPlanetCreator, setShowPlanetCreator] = useState(false);
   const [showShop, setShowShop] = useState(false);
+  const [shopTab, setShopTab] = useState<'stats' | 'cosmetics' | 'weapons'>('stats');
   const [isMuted, setIsMuted] = useState(false);
   const [upgradePrompt, setUpgradePrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
@@ -706,7 +711,7 @@ function App() {
           .from('players')
           .update({
             ship_current_image: '/ship-base.png',
-            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, ownedGlows: [], ownedTrails: [] },
+            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false },
             ship_upgrades: [],
           })
           .eq('team_id', team.id);
@@ -829,7 +834,7 @@ function App() {
           .from('players')
           .update({
             ship_current_image: '/ship-base.png',
-            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, ownedGlows: [], ownedTrails: [] },
+            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false },
             ship_upgrades: [],
             planet_image_url: null,
             planet_terraform_count: 0,
@@ -1384,6 +1389,14 @@ function App() {
       updateRemotePersonalPoints(pointsEarned);
 
       gameRef.current?.completePlanet(planet.id);
+
+      // Archive the task in Notion (fire and forget)
+      const actualId = planet.id.replace('notion-', '');
+      fetch('https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/notion-update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planet_id: actualId, action: 'archive' }),
+      }).catch(err => console.error('Failed to archive in Notion:', err));
     } else {
       // Regular planets
       if (state.completedPlanets.includes(planet.id)) return;
@@ -1471,25 +1484,25 @@ function App() {
     // Clear landed state
     setLandedPlanet(null);
 
-    // Handle Notion planets - delete via edge function (bypasses RLS)
+    // Handle Notion planets - mark as destroyed in Notion and delete from our DB
     if (planet.id.startsWith('notion-')) {
       const actualId = planet.id.replace('notion-', '');
       try {
         const response = await fetch(
-          'https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/notion-delete',
+          'https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/notion-update-status',
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ planet_id: actualId }),
+            body: JSON.stringify({ planet_id: actualId, action: 'destroy' }),
           }
         );
 
         if (!response.ok) {
           const error = await response.json();
-          console.error('Failed to delete planet:', error);
+          console.error('Failed to destroy planet:', error);
         } else {
           const result = await response.json();
-          console.log(`Destroyed planet: ${result.deleted_planet_name}`);
+          console.log(`Destroyed planet: ${result.planet_name}`);
         }
       } catch (err) {
         console.error('Error destroying planet:', err);
@@ -1670,7 +1683,7 @@ function App() {
     const currentEffects = getEffectsWithDefaults(currentShip.effects);
     const currentLevel = Math.floor(currentEffects.sizeBonus / 10); // Convert old percentage to level
 
-    if (currentLevel >= 5) return;
+    if (currentLevel >= 10) return;
     const cost = SIZE_COSTS[currentLevel];
     if (personalPoints < cost) return;
 
@@ -1684,18 +1697,38 @@ function App() {
     soundManager.playShipUpgrade();
   };
 
-  // Buy speed upgrade (max 5 levels)
+  // Buy speed upgrade (max 10 levels)
   const buySpeedUpgrade = () => {
     const currentShip = getCurrentUserShip();
     const currentEffects = getEffectsWithDefaults(currentShip.effects);
     const currentLevel = currentEffects.speedBonus;
 
-    if (currentLevel >= 5) return;
+    if (currentLevel >= 10) return;
     const cost = SPEED_COSTS[currentLevel];
     if (personalPoints < cost) return;
 
     const userId = state.currentUser || 'default';
     const newEffects = { ...currentEffects, speedBonus: currentLevel + 1 };
+
+    // Deduct personal points and sync to backend
+    setPersonalPoints(prev => prev - cost);
+    updateRemotePersonalPoints(-cost);
+    updateUserShipEffects(userId, currentShip, newEffects);
+    soundManager.playShipUpgrade();
+  };
+
+  // Buy landing speed upgrade (faster landing animation)
+  const buyLandingSpeedUpgrade = () => {
+    const currentShip = getCurrentUserShip();
+    const currentEffects = getEffectsWithDefaults(currentShip.effects);
+    const currentLevel = currentEffects.landingSpeedBonus;
+
+    if (currentLevel >= 5) return;
+    const cost = LANDING_SPEED_COSTS[currentLevel];
+    if (personalPoints < cost) return;
+
+    const userId = state.currentUser || 'default';
+    const newEffects = { ...currentEffects, landingSpeedBonus: currentLevel + 1 };
 
     // Deduct personal points and sync to backend
     setPersonalPoints(prev => prev - cost);
@@ -1814,6 +1847,7 @@ function App() {
     trailType: effects?.trailType ?? 'default',
     sizeBonus: effects?.sizeBonus ?? 0,
     speedBonus: effects?.speedBonus ?? 0,
+    landingSpeedBonus: effects?.landingSpeedBonus ?? 0,
     ownedGlows: effects?.ownedGlows ?? [],
     ownedTrails: effects?.ownedTrails ?? [],
     hasDestroyCanon: effects?.hasDestroyCanon ?? false,
@@ -2292,256 +2326,332 @@ function App() {
       {/* Shop Modal */}
       {showShop && (
         <div style={styles.modalOverlay} onClick={() => { if (!isUpgrading) { setShowShop(false); gameRef.current?.clearLandedState(); } }}>
-          <div style={{ ...styles.modal, maxWidth: 550 }} onClick={e => e.stopPropagation()}>
+          <div style={{ ...styles.modal, maxWidth: 480 }} onClick={e => e.stopPropagation()}>
             <h2 style={styles.modalTitle}>🛒 Upgrade Shop</h2>
             <p style={styles.shopPoints}>⭐ {personalPoints} Your Points Available</p>
 
-            {/* Current ship preview */}
-            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-              <img
-                src={getCurrentUserShip().currentImage}
-                alt="Your Ship"
-                style={{ width: 80, height: 80, borderRadius: 12, border: '2px solid #ffa500' }}
-              />
-              <p style={{ color: '#666', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-                {getCurrentUserShip().upgrades.length} visual upgrades
-              </p>
+            {/* Tab Navigation */}
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px' }}>
+              {(['stats', 'cosmetics', 'weapons'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setShopTab(tab)}
+                  style={{
+                    flex: 1,
+                    padding: '10px 12px',
+                    border: 'none',
+                    borderRadius: '6px',
+                    background: shopTab === tab ? 'rgba(255, 165, 0, 0.2)' : 'transparent',
+                    color: shopTab === tab ? '#ffa500' : '#888',
+                    fontWeight: shopTab === tab ? 600 : 400,
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {tab === 'stats' && '⚡ Stats'}
+                  {tab === 'cosmetics' && '🎨 Cosmetics'}
+                  {tab === 'weapons' && '🔫 Weapons'}
+                </button>
+              ))}
             </div>
 
-            {/* AI Visual Upgrade Section */}
-            <div style={styles.shopSection}>
-              <h3 style={styles.shopSectionTitle}>🎨 Visual Modification</h3>
-              <textarea
-                style={styles.upgradeInput}
-                value={upgradePrompt}
-                onChange={e => setUpgradePrompt(e.target.value)}
-                placeholder="Describe what you want to add..."
-                rows={2}
-              />
-              <button
-                style={{
-                  ...styles.saveButton,
-                  width: '100%',
-                  marginTop: '0.75rem',
-                  opacity: personalPoints >= VISUAL_UPGRADE_COST && upgradePrompt ? 1 : 0.5,
-                }}
-                onClick={buyVisualUpgrade}
-                disabled={!upgradePrompt || personalPoints < VISUAL_UPGRADE_COST || isUpgrading}
-              >
-                {isUpgrading ? 'Generating...' : `Modify Vessel (${VISUAL_UPGRADE_COST} ⭐)`}
-              </button>
-            </div>
-
-            {/* Instant Effects Section */}
-            <div style={styles.shopSection}>
-              <h3 style={styles.shopSectionTitle}>⚡ Instant Effects</h3>
-
-              {/* Size Upgrade with dots */}
-              {(() => {
-                const currentLevel = Math.floor(getEffectsWithDefaults(getCurrentUserShip().effects).sizeBonus / 10);
-                const nextCost = currentLevel < 5 ? SIZE_COSTS[currentLevel] : null;
-                const canBuy = nextCost !== null && personalPoints >= nextCost;
-                return (
-                  <div style={styles.effectLane}>
-                    <div style={styles.effectLaneLabel}>
-                      <span style={styles.effectLaneIcon}>📈</span>
-                      <span>Size</span>
-                    </div>
-                    <div style={styles.effectLaneContent}>
-                      <div style={styles.speedDots}>
-                        {[0, 1, 2, 3, 4].map(i => (
-                          <div
-                            key={i}
-                            style={{
-                              ...styles.speedDot,
-                              background: i < currentLevel ? '#ffa500' : 'rgba(255,255,255,0.15)',
-                            }}
-                          />
-                        ))}
+            {/* Stats Tab */}
+            {shopTab === 'stats' && (
+              <div style={styles.shopSection}>
+                {/* Size Upgrade with dots */}
+                {(() => {
+                  const currentLevel = Math.floor(getEffectsWithDefaults(getCurrentUserShip().effects).sizeBonus / 10);
+                  const nextCost = currentLevel < 10 ? SIZE_COSTS[currentLevel] : null;
+                  const canBuy = nextCost !== null && personalPoints >= nextCost;
+                  return (
+                    <div style={styles.effectLane}>
+                      <div style={styles.effectLaneLabel}>
+                        <span style={styles.effectLaneIcon}>📈</span>
+                        <span>Size</span>
                       </div>
-                      <span style={styles.effectLaneValue}>+{currentLevel * 10}%</span>
-                      {nextCost !== null ? (
-                        <button
-                          style={{
-                            ...styles.effectBuyButton,
-                            opacity: canBuy ? 1 : 0.5,
-                          }}
-                          onClick={buySizeUpgrade}
-                          disabled={!canBuy}
-                        >
-                          +10% ({nextCost} ⭐)
-                        </button>
-                      ) : (
-                        <span style={styles.effectMaxed}>MAX</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Speed Upgrade with dots */}
-              {(() => {
-                const currentLevel = getEffectsWithDefaults(getCurrentUserShip().effects).speedBonus;
-                const nextCost = currentLevel < 5 ? SPEED_COSTS[currentLevel] : null;
-                const canBuy = nextCost !== null && personalPoints >= nextCost;
-                return (
-                  <div style={styles.effectLane}>
-                    <div style={styles.effectLaneLabel}>
-                      <span style={styles.effectLaneIcon}>⚡</span>
-                      <span>Speed</span>
-                    </div>
-                    <div style={styles.effectLaneContent}>
-                      <div style={styles.speedDots}>
-                        {[0, 1, 2, 3, 4].map(i => (
-                          <div
-                            key={i}
+                      <div style={styles.effectLaneContent}>
+                        <div style={styles.speedDots}>
+                          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => (
+                            <div
+                              key={i}
+                              style={{
+                                ...styles.speedDot,
+                                background: i < currentLevel ? '#ffa500' : 'rgba(255,255,255,0.15)',
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <span style={styles.effectLaneValue}>+{currentLevel * 10}%</span>
+                        {nextCost !== null ? (
+                          <button
                             style={{
-                              ...styles.speedDot,
-                              background: i < currentLevel ? '#ffa500' : 'rgba(255,255,255,0.15)',
+                              ...styles.effectBuyButton,
+                              opacity: canBuy ? 1 : 0.5,
                             }}
-                          />
-                        ))}
+                            onClick={buySizeUpgrade}
+                            disabled={!canBuy}
+                          >
+                            +10% ({nextCost} ⭐)
+                          </button>
+                        ) : (
+                          <span style={styles.effectMaxed}>MAX</span>
+                        )}
                       </div>
-                      <span style={styles.effectLaneValue}>+{currentLevel * 10}%</span>
-                      {nextCost !== null ? (
-                        <button
-                          style={{
-                            ...styles.effectBuyButton,
-                            opacity: canBuy ? 1 : 0.5,
-                          }}
-                          onClick={buySpeedUpgrade}
-                          disabled={!canBuy}
-                        >
-                          +10% ({nextCost} ⭐)
-                        </button>
-                      ) : (
-                        <span style={styles.effectMaxed}>MAX</span>
-                      )}
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
 
-              {/* Shield Lane */}
-              <div style={styles.effectLane}>
-                <div style={styles.effectLaneLabel}>
-                  <span style={styles.effectLaneIcon}>🛡️</span>
-                  <span>Shield</span>
+                {/* Speed Upgrade with dots */}
+                {(() => {
+                  const currentLevel = getEffectsWithDefaults(getCurrentUserShip().effects).speedBonus;
+                  const nextCost = currentLevel < 10 ? SPEED_COSTS[currentLevel] : null;
+                  const canBuy = nextCost !== null && personalPoints >= nextCost;
+                  return (
+                    <div style={styles.effectLane}>
+                      <div style={styles.effectLaneLabel}>
+                        <span style={styles.effectLaneIcon}>⚡</span>
+                        <span>Speed</span>
+                      </div>
+                      <div style={styles.effectLaneContent}>
+                        <div style={styles.speedDots}>
+                          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => (
+                            <div
+                              key={i}
+                              style={{
+                                ...styles.speedDot,
+                                background: i < currentLevel ? '#ffa500' : 'rgba(255,255,255,0.15)',
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <span style={styles.effectLaneValue}>+{currentLevel * 10}%</span>
+                        {nextCost !== null ? (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              opacity: canBuy ? 1 : 0.5,
+                            }}
+                            onClick={buySpeedUpgrade}
+                            disabled={!canBuy}
+                          >
+                            +10% ({nextCost} ⭐)
+                          </button>
+                        ) : (
+                          <span style={styles.effectMaxed}>MAX</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Landing Speed Upgrade with dots */}
+                {(() => {
+                  const currentLevel = getEffectsWithDefaults(getCurrentUserShip().effects).landingSpeedBonus;
+                  const nextCost = currentLevel < 5 ? LANDING_SPEED_COSTS[currentLevel] : null;
+                  const canBuy = nextCost !== null && personalPoints >= nextCost;
+                  return (
+                    <div style={styles.effectLane}>
+                      <div style={styles.effectLaneLabel}>
+                        <span style={styles.effectLaneIcon}>🛬</span>
+                        <span>Landing</span>
+                      </div>
+                      <div style={styles.effectLaneContent}>
+                        <div style={styles.speedDots}>
+                          {[0, 1, 2, 3, 4].map(i => (
+                            <div
+                              key={i}
+                              style={{
+                                ...styles.speedDot,
+                                background: i < currentLevel ? '#ffa500' : 'rgba(255,255,255,0.15)',
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <span style={styles.effectLaneValue}>+{currentLevel * 15}%</span>
+                        {nextCost !== null ? (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              opacity: canBuy ? 1 : 0.5,
+                            }}
+                            onClick={buyLandingSpeedUpgrade}
+                            disabled={!canBuy}
+                          >
+                            +15% ({nextCost} ⭐)
+                          </button>
+                        ) : (
+                          <span style={styles.effectMaxed}>MAX</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Cosmetics Tab */}
+            {shopTab === 'cosmetics' && (
+              <div style={styles.shopSection}>
+                {/* Current ship preview */}
+                <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                  <img
+                    src={getCurrentUserShip().currentImage}
+                    alt="Your Ship"
+                    style={{ width: 70, height: 70, borderRadius: 10, border: '2px solid #ffa500' }}
+                  />
+                  <p style={{ color: '#666', fontSize: '0.7rem', marginTop: '0.4rem' }}>
+                    {getCurrentUserShip().upgrades.length} visual upgrades
+                  </p>
                 </div>
-                <div style={styles.effectLaneItems}>
-                  {GLOW_EFFECTS.map(glow => {
-                    const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
-                    const owned = effects.ownedGlows.includes(glow.value);
-                    const active = effects.glowColor === glow.value;
-                    return (
-                      <button
-                        key={glow.id}
-                        style={{
-                          ...styles.effectItemSmall,
-                          borderColor: active ? '#ffa500' : owned ? '#555' : '#333',
-                          background: active ? 'rgba(255, 165, 0, 0.15)' : owned ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
-                          opacity: owned || personalPoints >= glow.cost ? 1 : 0.5,
-                        }}
-                        onClick={() => handleGlow(glow.id)}
-                        disabled={!owned && personalPoints < glow.cost}
-                        title={owned ? (active ? 'Click to deactivate' : 'Click to activate') : `Buy for ${glow.cost} points`}
-                      >
-                        <span style={{ fontSize: '1.2rem' }}>{glow.icon}</span>
-                        <span style={{ fontSize: '0.65rem', color: '#aaa' }}>{glow.name}</span>
-                        {!owned && <span style={{ fontSize: '0.6rem', color: '#ffa500' }}>{glow.cost} ⭐</span>}
-                        {owned && active && <span style={{ fontSize: '0.55rem', color: '#ffa500' }}>ON</span>}
-                        {owned && !active && <span style={{ fontSize: '0.55rem', color: '#666' }}>owned</span>}
-                      </button>
-                    );
-                  })}
+
+                {/* AI Visual Upgrade */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <textarea
+                    style={{ ...styles.upgradeInput, fontSize: '0.85rem' }}
+                    value={upgradePrompt}
+                    onChange={e => setUpgradePrompt(e.target.value)}
+                    placeholder="Describe what you want to add..."
+                    rows={2}
+                  />
+                  <button
+                    style={{
+                      ...styles.saveButton,
+                      width: '100%',
+                      marginTop: '0.5rem',
+                      padding: '10px',
+                      fontSize: '0.85rem',
+                      opacity: personalPoints >= VISUAL_UPGRADE_COST && upgradePrompt ? 1 : 0.5,
+                    }}
+                    onClick={buyVisualUpgrade}
+                    disabled={!upgradePrompt || personalPoints < VISUAL_UPGRADE_COST || isUpgrading}
+                  >
+                    {isUpgrading ? 'Generating...' : `Modify Vessel (${VISUAL_UPGRADE_COST} ⭐)`}
+                  </button>
+                </div>
+
+                {/* Shield Lane */}
+                <div style={styles.effectLane}>
+                  <div style={styles.effectLaneLabel}>
+                    <span style={styles.effectLaneIcon}>🛡️</span>
+                    <span>Shield</span>
+                  </div>
+                  <div style={styles.effectLaneItems}>
+                    {GLOW_EFFECTS.map(glow => {
+                      const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
+                      const owned = effects.ownedGlows.includes(glow.value);
+                      const active = effects.glowColor === glow.value;
+                      return (
+                        <button
+                          key={glow.id}
+                          style={{
+                            ...styles.effectItemSmall,
+                            borderColor: active ? '#ffa500' : owned ? '#555' : '#333',
+                            background: active ? 'rgba(255, 165, 0, 0.15)' : owned ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
+                            opacity: owned || personalPoints >= glow.cost ? 1 : 0.5,
+                          }}
+                          onClick={() => handleGlow(glow.id)}
+                          disabled={!owned && personalPoints < glow.cost}
+                          title={owned ? (active ? 'Click to deactivate' : 'Click to activate') : `Buy for ${glow.cost} points`}
+                        >
+                          <span style={{ fontSize: '1.2rem' }}>{glow.icon}</span>
+                          <span style={{ fontSize: '0.65rem', color: '#aaa' }}>{glow.name}</span>
+                          {!owned && <span style={{ fontSize: '0.6rem', color: '#ffa500' }}>{glow.cost} ⭐</span>}
+                          {owned && active && <span style={{ fontSize: '0.55rem', color: '#ffa500' }}>ON</span>}
+                          {owned && !active && <span style={{ fontSize: '0.55rem', color: '#666' }}>owned</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Trails Lane */}
+                <div style={styles.effectLane}>
+                  <div style={styles.effectLaneLabel}>
+                    <span style={styles.effectLaneIcon}>💨</span>
+                    <span>Trail</span>
+                  </div>
+                  <div style={styles.effectLaneItems}>
+                    {TRAIL_EFFECTS.map(trail => {
+                      const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
+                      const owned = effects.ownedTrails.includes(trail.value);
+                      const active = effects.trailType === trail.value;
+                      return (
+                        <button
+                          key={trail.id}
+                          style={{
+                            ...styles.effectItemSmall,
+                            borderColor: active ? '#ffa500' : owned ? '#555' : '#333',
+                            background: active ? 'rgba(255, 165, 0, 0.15)' : owned ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
+                            opacity: owned || personalPoints >= trail.cost ? 1 : 0.5,
+                          }}
+                          onClick={() => handleTrail(trail.id)}
+                          disabled={!owned && personalPoints < trail.cost}
+                          title={owned ? (active ? 'Click to deactivate' : 'Click to activate') : `Buy for ${trail.cost} points`}
+                        >
+                          <span style={{ fontSize: '1.2rem' }}>{trail.icon}</span>
+                          <span style={{ fontSize: '0.65rem', color: '#aaa' }}>{trail.name}</span>
+                          {!owned && <span style={{ fontSize: '0.6rem', color: '#ffa500' }}>{trail.cost} ⭐</span>}
+                          {owned && active && <span style={{ fontSize: '0.55rem', color: '#ffa500' }}>ON</span>}
+                          {owned && !active && <span style={{ fontSize: '0.55rem', color: '#666' }}>owned</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Trails Lane */}
-              <div style={styles.effectLane}>
-                <div style={styles.effectLaneLabel}>
-                  <span style={styles.effectLaneIcon}>💨</span>
-                  <span>Trail</span>
-                </div>
-                <div style={styles.effectLaneItems}>
-                  {TRAIL_EFFECTS.map(trail => {
-                    const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
-                    const owned = effects.ownedTrails.includes(trail.value);
-                    const active = effects.trailType === trail.value;
-                    return (
-                      <button
-                        key={trail.id}
-                        style={{
-                          ...styles.effectItemSmall,
-                          borderColor: active ? '#ffa500' : owned ? '#555' : '#333',
-                          background: active ? 'rgba(255, 165, 0, 0.15)' : owned ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
-                          opacity: owned || personalPoints >= trail.cost ? 1 : 0.5,
-                        }}
-                        onClick={() => handleTrail(trail.id)}
-                        disabled={!owned && personalPoints < trail.cost}
-                        title={owned ? (active ? 'Click to deactivate' : 'Click to activate') : `Buy for ${trail.cost} points`}
-                      >
-                        <span style={{ fontSize: '1.2rem' }}>{trail.icon}</span>
-                        <span style={{ fontSize: '0.65rem', color: '#aaa' }}>{trail.name}</span>
-                        {!owned && <span style={{ fontSize: '0.6rem', color: '#ffa500' }}>{trail.cost} ⭐</span>}
-                        {owned && active && <span style={{ fontSize: '0.55rem', color: '#ffa500' }}>ON</span>}
-                        {owned && !active && <span style={{ fontSize: '0.55rem', color: '#666' }}>owned</span>}
-                      </button>
-                    );
-                  })}
-                </div>
+            {/* Weapons Tab */}
+            {shopTab === 'weapons' && (
+              <div style={styles.shopSection}>
+                {(() => {
+                  const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
+                  const owned = effects.hasDestroyCanon;
+                  const equipped = effects.destroyCanonEquipped;
+                  const canBuy = !owned && personalPoints >= DESTROY_CANON_COST;
+                  return (
+                    <div style={styles.effectLane}>
+                      <div style={styles.effectLaneLabel}>
+                        <span style={styles.effectLaneIcon}>💥</span>
+                        <span>Destroy Canon</span>
+                      </div>
+                      <div style={styles.effectLaneContent}>
+                        <span style={{ fontSize: '0.75rem', color: '#888', flex: 1 }}>
+                          Destroy completed Notion planets
+                        </span>
+                        {owned ? (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              background: equipped ? 'rgba(255, 165, 0, 0.2)' : 'rgba(255,255,255,0.05)',
+                              borderColor: equipped ? '#ffa500' : '#444',
+                              color: equipped ? '#ffa500' : '#888',
+                              minWidth: 80,
+                            }}
+                            onClick={toggleDestroyCanon}
+                          >
+                            {equipped ? 'EQUIPPED' : 'EQUIP'}
+                          </button>
+                        ) : (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              opacity: canBuy ? 1 : 0.5,
+                              minWidth: 100,
+                            }}
+                            onClick={buyDestroyCanon}
+                            disabled={!canBuy}
+                          >
+                            {DESTROY_CANON_COST} ⭐
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-            </div>
-
-            {/* Weapons Section */}
-            <div style={styles.shopSection}>
-              <h3 style={styles.shopSectionTitle}>🔫 Weapons</h3>
-              {(() => {
-                const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
-                const owned = effects.hasDestroyCanon;
-                const equipped = effects.destroyCanonEquipped;
-                const canBuy = !owned && personalPoints >= DESTROY_CANON_COST;
-                return (
-                  <div style={styles.effectLane}>
-                    <div style={styles.effectLaneLabel}>
-                      <span style={styles.effectLaneIcon}>💥</span>
-                      <span>Destroy Canon</span>
-                    </div>
-                    <div style={styles.effectLaneContent}>
-                      <span style={{ fontSize: '0.75rem', color: '#888', flex: 1 }}>
-                        Destroy completed Notion planets
-                      </span>
-                      {owned ? (
-                        <button
-                          style={{
-                            ...styles.effectBuyButton,
-                            background: equipped ? 'rgba(255, 165, 0, 0.2)' : 'rgba(255,255,255,0.05)',
-                            borderColor: equipped ? '#ffa500' : '#444',
-                            color: equipped ? '#ffa500' : '#888',
-                            minWidth: 80,
-                          }}
-                          onClick={toggleDestroyCanon}
-                        >
-                          {equipped ? 'EQUIPPED' : 'EQUIP'}
-                        </button>
-                      ) : (
-                        <button
-                          style={{
-                            ...styles.effectBuyButton,
-                            opacity: canBuy ? 1 : 0.5,
-                            minWidth: 100,
-                          }}
-                          onClick={buyDestroyCanon}
-                          disabled={!canBuy}
-                        >
-                          {DESTROY_CANON_COST} ⭐
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
+            )}
 
             <button style={{ ...styles.cancelButton, width: '100%', marginTop: '1rem' }} onClick={() => { setShowShop(false); gameRef.current?.clearLandedState(); }}>
               Close
@@ -2694,36 +2804,6 @@ function App() {
                     </div>
                   </div>
                 )}
-
-                {/* AI Image Generation */}
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>AI Planet Image (optional)</label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      style={{ ...styles.input, flex: 1 }}
-                      value={imagePrompt}
-                      onChange={e => setImagePrompt(e.target.value)}
-                      placeholder="Describe the planet look..."
-                    />
-                    <button
-                      style={{
-                        ...styles.generateButton,
-                        padding: '8px 16px',
-                        opacity: isGeneratingImage || !imagePrompt ? 0.5 : 1,
-                      }}
-                      onClick={generatePlanetImage}
-                      disabled={isGeneratingImage || !imagePrompt}
-                    >
-                      {isGeneratingImage ? 'Generating...' : 'Generate'}
-                    </button>
-                  </div>
-                  {planetImagePreview && (
-                    <div style={{ marginTop: '12px', textAlign: 'center' }}>
-                      <img src={planetImagePreview} alt="Preview" style={{ width: 80, height: 80, borderRadius: '50%', border: '2px solid #444' }} />
-                    </div>
-                  )}
-                </div>
 
                 <div style={styles.modalButtons}>
                   <button style={styles.cancelButton} onClick={() => { setShowPlanetCreator(false); gameRef.current?.clearLandedState(); }} disabled={isCreatingPlanet}>

@@ -127,6 +127,7 @@ export interface ShipEffects {
   trailType: 'default' | 'fire' | 'ice' | 'rainbow';
   sizeBonus: number;
   speedBonus: number;
+  landingSpeedBonus: number;
   ownedGlows: string[];
   ownedTrails: string[];
   hasDestroyCanon: boolean;

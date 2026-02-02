@@ -61,6 +61,7 @@ const defaultShipEffects: ShipEffects = {
   trailType: 'default',
   sizeBonus: 0,
   speedBonus: 0,
+  landingSpeedBonus: 0,
   ownedGlows: [],
   ownedTrails: [],
   hasDestroyCanon: false,
