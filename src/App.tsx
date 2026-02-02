@@ -246,10 +246,24 @@ interface SavedState {
 }
 
 // Storage helpers
+// Use sessionStorage for currentUser so each tab has its own user
+const SESSION_USER_KEY = 'mission-control-current-user';
+
 const loadState = (): SavedState => {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    const baseState = saved ? JSON.parse(saved) : {
+      completedPlanets: [],
+      robotImage: '/ship-base.png',
+      robotDescription: 'A small friendly spaceship',
+      upgradeCount: 0,
+    };
+    // Load currentUser from sessionStorage (per-tab) instead of localStorage
+    const sessionUser = sessionStorage.getItem(SESSION_USER_KEY);
+    return {
+      ...baseState,
+      currentUser: sessionUser || undefined, // Don't use localStorage value
+    };
   } catch (e) {
     console.error('Failed to load state:', e);
   }
@@ -263,7 +277,13 @@ const loadState = (): SavedState => {
 
 const saveState = (state: SavedState) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // Save currentUser to sessionStorage (per-tab)
+    if (state.currentUser) {
+      sessionStorage.setItem(SESSION_USER_KEY, state.currentUser);
+    }
+    // Save rest to localStorage (but exclude currentUser from localStorage)
+    const { currentUser, ...rest } = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(rest));
   } catch (e) {
     console.error('Failed to save state:', e);
   }
@@ -438,6 +458,7 @@ function App() {
   const [state, setState] = useState<SavedState>(loadState);
   const [customPlanets, setCustomPlanets] = useState<CustomPlanet[]>(loadCustomPlanets);
   const [teamPoints, setTeamPoints] = useState(loadTeamPoints);
+  const [gameReady, setGameReady] = useState(false); // Track when game is initialized
   const [personalPoints, setPersonalPoints] = useState(0);
   const [userShips, setUserShips] = useState<Record<string, UserShip>>(loadUserShips);
   const [mascotHistory, setMascotHistory] = useState<MascotHistoryEntry[]>(loadMascotHistory);
@@ -553,10 +574,15 @@ function App() {
   });
 
   // Memoize player data for positions hook to prevent infinite loops
-  const currentDbPlayerId = useMemo(() =>
-    teamPlayers.find(p => p.username === state.currentUser)?.id || null,
-    [teamPlayers, state.currentUser]
-  );
+  const currentDbPlayerId = useMemo(() => {
+    const found = teamPlayers.find(p => p.username === state.currentUser);
+    console.log('[Player ID Lookup]', {
+      currentUser: state.currentUser,
+      teamPlayersUsernames: teamPlayers.map(p => ({ username: p.username, id: p.id, isOnline: p.isOnline })),
+      foundPlayer: found ? { username: found.username, id: found.id } : null,
+    });
+    return found?.id || null;
+  }, [teamPlayers, state.currentUser]);
 
   const playersForPositions = useMemo(() =>
     teamPlayers.map(p => ({
@@ -645,8 +671,13 @@ function App() {
 
   // Broadcast position regularly when game is running
   useEffect(() => {
-    if (!team || !gameRef.current) return;
+    console.log('[Broadcast Effect] team:', !!team, 'gameReady:', gameReady);
+    if (!team || !gameReady) {
+      console.log('[Broadcast Effect] Skipping - missing team or game not ready');
+      return;
+    }
 
+    console.log('[Broadcast Effect] Starting broadcast loop');
     const broadcastLoop = () => {
       if (gameRef.current) {
         // Get fresh ship state directly from game (not stale React state)
@@ -663,7 +694,7 @@ function App() {
         cancelAnimationFrame(positionBroadcastRef.current);
       }
     };
-  }, [team, broadcastPosition]);
+  }, [team, gameReady, broadcastPosition]);
 
   // Sync local state to team when team is joined
   useEffect(() => {
@@ -2093,9 +2124,11 @@ function App() {
 
     state.completedPlanets.forEach(id => game.completePlanet(id));
     game.start();
+    setGameReady(true); // Signal that game is ready for broadcasting
 
     return () => {
       game.stop();
+      setGameReady(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showWelcome, showUserSelect, customPlanets, goals]);

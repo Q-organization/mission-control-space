@@ -131,6 +131,8 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
   const registerPlayer = useCallback(async () => {
     if (!teamId) return;
 
+    console.log('[registerPlayer] Starting with username:', username, 'teamId:', teamId);
+
     // Check if player already exists in this team
     const { data: existingPlayers } = await supabase
       .from('players')
@@ -140,6 +142,7 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
       .limit(1);
 
     const existing = existingPlayers?.[0];
+    console.log('[registerPlayer] Existing player:', existing ? { id: existing.id, username: existing.username } : 'none');
 
     if (existing) {
       // Update existing player

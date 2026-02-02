@@ -299,7 +299,6 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
             // Skip self (shouldn't receive due to server logic, but double-check)
             if (data.playerId === playerId) return;
 
-            console.log('[WS Position] Received from:', data.playerId);
             const now = Date.now();
             const cached = positionCacheRef.current.get(data.playerId);
 
