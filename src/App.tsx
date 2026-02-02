@@ -1310,7 +1310,7 @@ function App() {
       completeRemotePlanet(planet.id, pointsEarned);
     }
 
-  }, [state.completedPlanets, state.currentUser, team, completeRemotePlanet, completeNotionPlanet]);
+  }, [state.completedPlanets, state.currentUser, team, completeRemotePlanet, completeNotionPlanet, updateRemotePersonalPoints]);
 
   // Keep the ref updated with latest handleDock
   useEffect(() => {
@@ -1415,7 +1415,7 @@ function App() {
 
     // Clear landed state after colonizing
     setLandedPlanet(null);
-  }, [state.completedPlanets, state.currentUser, team, completeRemotePlanet, completeNotionPlanet, claimNotionPlanet]);
+  }, [state.completedPlanets, state.currentUser, team, completeRemotePlanet, completeNotionPlanet, claimNotionPlanet, updateRemotePersonalPoints]);
 
   // Handle opening Notion URL
   const handleOpenNotion = useCallback((url: string) => {
