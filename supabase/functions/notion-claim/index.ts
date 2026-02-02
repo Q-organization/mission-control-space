@@ -55,15 +55,23 @@ function findNonOverlappingPosition(
 
   const maxAttempts = 50;
 
+  // Tight rings around home planet
+  // Ring 1 at 380 units, Ring 2 at 480 units, etc.
+  // 9 planets per ring, offset so they don't line up
+  const baseRadius = 380;
+  const ringSpacing = 100;
+  const angleStep = 0.7; // ~40 degrees, fits ~9 planets per ring
+  const planetsPerRing = 9;
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const ring = Math.floor(attempt / 8);
-    const angleIndex = attempt % 8;
-    const baseRadius = 200 + ring * 150;
-    const angle = (angleIndex / 8) * Math.PI * 2 + (ring * 0.3);
+    const ring = Math.floor(attempt / planetsPerRing);
+    const slotInRing = attempt % planetsPerRing;
+    const radius = baseRadius + ring * ringSpacing;
+    const angle = slotInRing * angleStep + (ring * 0.35); // Offset each ring
 
     const candidate = {
-      x: baseZone.x + Math.cos(angle) * baseRadius,
-      y: baseZone.y + Math.sin(angle) * baseRadius,
+      x: baseZone.x + Math.cos(angle) * radius,
+      y: baseZone.y + Math.sin(angle) * radius,
     };
 
     let isValid = true;
@@ -79,7 +87,9 @@ function findNonOverlappingPosition(
     }
   }
 
-  const fallbackRadius = 600 + Math.random() * 400;
+  // Fallback: outer rings
+  const fallbackRing = 2 + Math.floor(Math.random() * 3);
+  const fallbackRadius = baseRadius + fallbackRing * ringSpacing;
   const fallbackAngle = Math.random() * Math.PI * 2;
   return {
     x: baseZone.x + Math.cos(fallbackAngle) * fallbackRadius,
