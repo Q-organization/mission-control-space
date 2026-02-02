@@ -29,6 +29,11 @@ interface ExistingPlanet {
 const CENTER_X = 5000;
 const CENTER_Y = 5000;
 const PLAYER_DISTANCE = 3000;
+const HUB_DISTANCE = 2800;
+
+// Mission Control position (bottom middle)
+const MISSION_CONTROL_X = CENTER_X;
+const MISSION_CONTROL_Y = CENTER_Y + HUB_DISTANCE * 1.1;
 
 const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
   'quentin': { x: CENTER_X + PLAYER_DISTANCE, y: CENTER_Y },
@@ -38,7 +43,8 @@ const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
   'hugues': { x: CENTER_X - PLAYER_DISTANCE, y: CENTER_Y },
 };
 
-const DEFAULT_ZONE = { x: CENTER_X, y: CENTER_Y + 500 };
+// Default zone for unassigned tasks - near Mission Control
+const DEFAULT_ZONE = { x: MISSION_CONTROL_X, y: MISSION_CONTROL_Y };
 
 // Points based on priority
 const PRIORITY_POINTS: Record<string, number> = {

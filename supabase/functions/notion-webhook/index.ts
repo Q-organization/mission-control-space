@@ -46,8 +46,8 @@ const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
   'hugues': { x: CENTER_X - PLAYER_DISTANCE, y: CENTER_Y },
 };
 
-// Default zone for unassigned tasks - consistent with notion-sync (center area, slightly below)
-const DEFAULT_ZONE = { x: CENTER_X, y: CENTER_Y + 500 };
+// Default zone for unassigned tasks - near Mission Control
+const DEFAULT_ZONE = { x: MISSION_CONTROL_X, y: MISSION_CONTROL_Y };
 
 // Points based on priority
 const PRIORITY_POINTS: Record<string, number> = {

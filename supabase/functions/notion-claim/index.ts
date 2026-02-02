@@ -22,6 +22,11 @@ interface ExistingPlanet {
 const CENTER_X = 5000;
 const CENTER_Y = 5000;
 const PLAYER_DISTANCE = 3000;
+const HUB_DISTANCE = 2800;
+
+// Mission Control position (bottom middle)
+const MISSION_CONTROL_X = CENTER_X;
+const MISSION_CONTROL_Y = CENTER_Y + HUB_DISTANCE * 1.1;
 
 const PLAYER_ZONES: Record<string, { x: number; y: number }> = {
   'quentin': { x: CENTER_X + PLAYER_DISTANCE, y: CENTER_Y },
@@ -44,8 +49,8 @@ function findNonOverlappingPosition(
 ): { x: number; y: number } {
   const baseZone = PLAYER_ZONES[assignedTo.toLowerCase()];
   if (!baseZone) {
-    // Unknown player, keep in center
-    return { x: CENTER_X, y: CENTER_Y + 500 };
+    // Unknown player, place near Mission Control
+    return { x: MISSION_CONTROL_X, y: MISSION_CONTROL_Y };
   }
 
   const allObstacles: ExistingPlanet[] = [
