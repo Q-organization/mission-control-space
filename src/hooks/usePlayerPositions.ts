@@ -18,14 +18,6 @@ interface UsePlayerPositionsOptions {
   teamId: string | null;
   playerId: string | null; // Database player ID (not local ID)
   players: PlayerInfo[]; // Player info from useMultiplayerSync
-  localShip: {
-    x: number;
-    y: number;
-    vx: number;
-    vy: number;
-    rotation: number;
-    thrusting: boolean;
-  };
 }
 
 // Callback type for direct position updates (bypasses React state)
@@ -45,9 +37,18 @@ type UpgradeUpdateCallback = (playerId: string, data: {
   targetPlanetId: string | null;
 }) => void;
 
+interface ShipState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  thrusting: boolean;
+}
+
 interface UsePlayerPositionsReturn {
   otherPlayers: OtherPlayer[];
-  broadcastPosition: () => void;
+  broadcastPosition: (shipState: ShipState) => void;
   broadcastUpgradeState: (isUpgrading: boolean, targetPlanetId?: string | null) => void;
   setPositionUpdateCallback: (callback: PositionUpdateCallback | null) => void;
   setUpgradeUpdateCallback: (callback: UpgradeUpdateCallback | null) => void;
@@ -77,7 +78,7 @@ const defaultShipEffects: ShipEffects = {
 };
 
 export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlayerPositionsReturn {
-  const { teamId, playerId, players, localShip } = options;
+  const { teamId, playerId, players } = options;
 
   const [otherPlayers, setOtherPlayers] = useState<OtherPlayer[]>([]);
 
@@ -108,21 +109,22 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
   }, [players]);
 
   // Broadcast position via realtime (fast, ephemeral)
-  const broadcastPosition = useCallback(() => {
+  // Takes ship state as parameter to get fresh data every call (not stale React state)
+  const broadcastPosition = useCallback((ship: ShipState) => {
     if (!channelRef.current || !playerId) return;
 
     const now = Date.now();
-    // Throttle broadcasts to 10Hz (100ms) - still smooth, 3x fewer messages than 30Hz
-    if (now - lastBroadcastRef.current < 100) return;
+    // Throttle broadcasts to 30Hz (33ms) - Pro plan supports 500 msg/sec
+    if (now - lastBroadcastRef.current < 33) return;
 
     // Only broadcast if actually moving or rotating
-    const speed = Math.sqrt(localShip.vx * localShip.vx + localShip.vy * localShip.vy);
-    const isMoving = speed > 0.1 || localShip.thrusting;
+    const speed = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy);
+    const isMoving = speed > 0.1 || ship.thrusting;
     const lastPos = lastBroadcastPositionRef.current;
-    const rotationChanged = lastPos && Math.abs(localShip.rotation - lastPos.rotation) > 0.01;
+    const rotationChanged = lastPos && Math.abs(ship.rotation - lastPos.rotation) > 0.01;
     const positionChanged = lastPos && (
-      Math.abs(localShip.x - lastPos.x) > 1 ||
-      Math.abs(localShip.y - lastPos.y) > 1
+      Math.abs(ship.x - lastPos.x) > 1 ||
+      Math.abs(ship.y - lastPos.y) > 1
     );
 
     // Skip broadcast if stationary and no significant change
@@ -131,19 +133,19 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
     }
 
     lastBroadcastRef.current = now;
-    lastBroadcastPositionRef.current = { x: localShip.x, y: localShip.y, rotation: localShip.rotation };
+    lastBroadcastPositionRef.current = { x: ship.x, y: ship.y, rotation: ship.rotation };
 
     channelRef.current.send({
       type: 'broadcast',
       event: 'position',
       payload: {
         player_id: playerId,
-        x: localShip.x,
-        y: localShip.y,
-        vx: localShip.vx,
-        vy: localShip.vy,
-        rotation: localShip.rotation,
-        thrusting: localShip.thrusting,
+        x: ship.x,
+        y: ship.y,
+        vx: ship.vx,
+        vy: ship.vy,
+        rotation: ship.rotation,
+        thrusting: ship.thrusting,
         timestamp: now,
       },
     });
@@ -154,23 +156,31 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
       supabase
         .from('ship_positions')
         .update({
-          x: localShip.x,
-          y: localShip.y,
-          vx: localShip.vx,
-          vy: localShip.vy,
-          rotation: localShip.rotation,
-          thrusting: localShip.thrusting,
+          x: ship.x,
+          y: ship.y,
+          vx: ship.vx,
+          vy: ship.vy,
+          rotation: ship.rotation,
+          thrusting: ship.thrusting,
           updated_at: new Date().toISOString(),
         })
         .eq('player_id', playerId)
         .then(() => {});
     }
-  }, [playerId, localShip]);
+  }, [playerId]);
 
   // Broadcast upgrade state (when player starts/stops upgrading)
   const broadcastUpgradeState = useCallback((isUpgrading: boolean, targetPlanetId: string | null = null) => {
-    if (!channelRef.current || !playerId) return;
+    if (!channelRef.current) {
+      console.warn('[Upgrade Broadcast] No channel - skipping');
+      return;
+    }
+    if (!playerId) {
+      console.warn('[Upgrade Broadcast] No playerId - skipping');
+      return;
+    }
 
+    console.log('[Upgrade Broadcast] Sending:', { playerId, isUpgrading, targetPlanetId });
     channelRef.current.send({
       type: 'broadcast',
       event: 'upgrade',
@@ -276,6 +286,17 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
       // Only update if this is newer than what we have
       if (cached && cached.receivedAt > data.timestamp) return;
 
+      // DEBUG: Count receives per second
+      if (!(window as any)._recvCount) (window as any)._recvCount = 0;
+      if (!(window as any)._recvStart) (window as any)._recvStart = Date.now();
+      (window as any)._recvCount++;
+      const elapsed = (Date.now() - (window as any)._recvStart) / 1000;
+      if (elapsed >= 5) {
+        console.log(`[RECV RATE] ${((window as any)._recvCount / elapsed).toFixed(1)} msg/sec`);
+        (window as any)._recvCount = 0;
+        (window as any)._recvStart = Date.now();
+      }
+
       // Update cache
       positionCacheRef.current.set(data.player_id, {
         player_id: data.player_id,
@@ -342,14 +363,22 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
         targetPlanetId: string | null;
       };
 
-      if (data.player_id === playerId) return; // Skip self
+      console.log('[Upgrade Received] From:', data.player_id, 'Self:', playerId, 'Data:', data);
+
+      if (data.player_id === playerId) {
+        console.log('[Upgrade Received] Skipping self');
+        return;
+      }
 
       // Call direct callback (bypasses React for smoother animation)
       if (upgradeUpdateCallbackRef.current) {
+        console.log('[Upgrade Received] Calling callback');
         upgradeUpdateCallbackRef.current(data.player_id, {
           isUpgrading: data.isUpgrading,
           targetPlanetId: data.targetPlanetId,
         });
+      } else {
+        console.warn('[Upgrade Received] No callback registered!');
       }
     });
 

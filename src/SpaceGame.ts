@@ -119,9 +119,7 @@ const PLANET_INFO_DISTANCE = 200;
 
 // Smooth multiplayer interpolation
 const SNAPSHOT_BUFFER_SIZE = 30;
-const INTERPOLATION_DELAY = 150;       // Render 150ms behind latest data for smooth interpolation
-const LERP_FACTOR = 0.08;              // 8% per frame - smoother catch-up when extrapolating
-const INTERPOLATION_LERP = 0.25;       // 25% per frame - faster when we have good interpolation data
+const LERP_FACTOR = 0.25;              // 25% per frame - faster catch-up for dropped messages
 
 interface BlackHole {
   x: number;
@@ -4412,109 +4410,62 @@ export class SpaceGame {
   }
 
   /**
-   * Render-behind interpolation for smooth multiplayer movement.
-   *
-   * Strategy: Render positions 150ms behind real-time. This means we're usually
-   * interpolating between two KNOWN snapshots rather than extrapolating into
-   * the unknown, which eliminates jitter from network latency variation.
-   *
-   * When we don't have enough data (new player, or snapshots are stale), we
-   * fall back to velocity-based prediction with gentle lerping.
+   * Lerp interpolation with velocity prediction.
+   * Predicts where the ship should be NOW based on last snapshot + velocity.
    */
   private updateOtherPlayersInterpolation() {
     const now = Date.now();
-    const renderTime = now - INTERPOLATION_DELAY; // Render 150ms behind
 
     for (const player of this.otherPlayers) {
       const renderState = this.renderStates.get(player.id);
       if (!renderState) continue;
 
       const snapshots = this.playerSnapshots.get(player.id) || [];
+      const latest = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
 
-      if (snapshots.length === 0) {
-        // No snapshots at all - use player's last known position
-        this.smoothTowardTarget(renderState, {
-          x: player.x,
-          y: player.y,
-          rotation: player.rotation,
-          vx: player.vx,
-          vy: player.vy,
-          thrusting: player.thrusting,
-        }, LERP_FACTOR);
-        renderState.lastUpdateTime = now;
-        continue;
-      }
+      let targetX: number;
+      let targetY: number;
+      let targetRotation: number;
+      let targetThrusting: boolean;
 
-      // Find snapshots that bracket our render time
-      const { before, after } = this.findBracketingSnapshots(snapshots, renderTime);
-      const latest = snapshots[snapshots.length - 1];
-
-      let target: { x: number; y: number; rotation: number; vx: number; vy: number; thrusting: boolean };
-      let lerpFactor: number;
-
-      if (before && after) {
-        // IDEAL CASE: We have snapshots on both sides of renderTime
-        // Interpolate between them for perfectly smooth movement
-        target = this.calculateInterpolatedTarget(before, after, renderTime);
-        lerpFactor = INTERPOLATION_LERP; // Faster lerp - we have good data
-      } else if (before && !after) {
-        // EXTRAPOLATION CASE: renderTime is past our latest snapshot
-        // This happens when network is slow or player stopped sending updates
-        const timeSinceSnapshot = (renderTime - before.receivedAt) / 1000;
-
-        if (timeSinceSnapshot < 0.3) {
-          // Recent enough - predict using velocity (capped at 200ms prediction)
-          const predictionTime = Math.min(timeSinceSnapshot, 0.2);
-          target = {
-            x: before.x + before.vx * predictionTime * 60,
-            y: before.y + before.vy * predictionTime * 60,
-            rotation: before.rotation,
-            vx: before.vx,
-            vy: before.vy,
-            thrusting: before.thrusting,
-          };
-          lerpFactor = LERP_FACTOR; // Slower lerp - extrapolating
-        } else {
-          // Snapshot is stale - just hold position, don't predict too far
-          target = {
-            x: before.x,
-            y: before.y,
-            rotation: before.rotation,
-            vx: 0,
-            vy: 0,
-            thrusting: false,
-          };
-          lerpFactor = LERP_FACTOR * 0.5; // Very slow lerp to hold position
-        }
-      } else if (!before && after) {
-        // RARE CASE: All snapshots are in the future (clock skew or first snapshot)
-        // Snap toward the earliest snapshot we have
-        target = {
-          x: after.x,
-          y: after.y,
-          rotation: after.rotation,
-          vx: after.vx,
-          vy: after.vy,
-          thrusting: after.thrusting,
-        };
-        lerpFactor = INTERPOLATION_LERP;
-      } else {
-        // Fallback to latest snapshot with prediction
-        const timeSinceSnapshot = (now - latest.receivedAt) / 1000;
+      if (latest) {
+        // Predict where the ship should be NOW based on snapshot + velocity
+        const timeSinceSnapshot = (now - latest.receivedAt) / 1000; // seconds
+        // Cap prediction to 200ms to avoid overshooting
         const predictionTime = Math.min(timeSinceSnapshot, 0.2);
-        target = {
-          x: latest.x + latest.vx * predictionTime * 60,
-          y: latest.y + latest.vy * predictionTime * 60,
-          rotation: latest.rotation,
-          vx: latest.vx,
-          vy: latest.vy,
-          thrusting: latest.thrusting,
-        };
-        lerpFactor = LERP_FACTOR;
+        // vx/vy are per-frame at 60fps, so multiply by 60 to get per-second
+        targetX = latest.x + latest.vx * predictionTime * 60;
+        targetY = latest.y + latest.vy * predictionTime * 60;
+        targetRotation = latest.rotation;
+        targetThrusting = latest.thrusting;
+      } else {
+        targetX = player.x;
+        targetY = player.y;
+        targetRotation = player.rotation;
+        targetThrusting = player.thrusting;
       }
 
-      // Apply smooth movement toward target
-      this.smoothTowardTarget(renderState, target, lerpFactor);
+      // Unwrap target for world wrapping
+      const unwrapped = this.unwrapPosition(renderState.renderX, renderState.renderY, targetX, targetY);
+
+      // Lerp toward predicted target
+      renderState.renderX += (unwrapped.x - renderState.renderX) * LERP_FACTOR;
+      renderState.renderY += (unwrapped.y - renderState.renderY) * LERP_FACTOR;
+
+      // Wrap back to world bounds
+      const wrapped = this.wrapPosition(renderState.renderX, renderState.renderY);
+      renderState.renderX = wrapped.x;
+      renderState.renderY = wrapped.y;
+
+      // Lerp rotation
+      let rotDiff = targetRotation - renderState.renderRotation;
+      while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
+      while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
+      renderState.renderRotation += rotDiff * LERP_FACTOR;
+
+      // Thrusting - direct
+      renderState.renderThrusting = targetThrusting;
+
       renderState.lastUpdateTime = now;
     }
   }

@@ -10,7 +10,7 @@ const supabaseAnonKey = (typeof import.meta !== 'undefined' && import.meta.env?.
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
   realtime: {
     params: {
-      eventsPerSecond: 20,
+      eventsPerSecond: 100, // Pro plan supports 500 msg/sec, allow client to receive more
     },
   },
 });

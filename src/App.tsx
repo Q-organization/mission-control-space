@@ -552,7 +552,6 @@ function App() {
     teamId: team?.id || null,
     playerId: currentDbPlayerId,
     players: playersForPositions,
-    localShip: gameRef.current?.getShipState() || { x: 5000, y: 5200, vx: 0, vy: 0, rotation: -1.5708, thrusting: false },
   });
 
   // Notion planets hook - fetches and syncs planets from Notion tasks
@@ -615,7 +614,9 @@ function App() {
 
     const broadcastLoop = () => {
       if (gameRef.current) {
-        broadcastPosition();
+        // Get fresh ship state directly from game (not stale React state)
+        const shipState = gameRef.current.getShipState();
+        broadcastPosition(shipState);
       }
       positionBroadcastRef.current = requestAnimationFrame(broadcastLoop);
     };

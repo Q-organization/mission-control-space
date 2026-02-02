@@ -124,6 +124,8 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const playerDbIdRef = useRef<string | null>(null);
+  // Track player ID we're switching away from (to suppress "Player left" for self)
+  const previousPlayerIdRef = useRef<string | null>(null);
 
   // Register/update player in the team
   const registerPlayer = useCallback(async () => {
@@ -489,7 +491,8 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
             if (player.id === playerDbIdRef.current && payload.new.personal_points !== undefined) {
               setPersonalPoints(payload.new.personal_points || 0);
             }
-            if (!player.isOnline && player.id !== playerDbIdRef.current) {
+            // Suppress "Player left" for current player or the player we just switched from
+            if (!player.isOnline && player.id !== playerDbIdRef.current && player.id !== previousPlayerIdRef.current) {
               onPlayerLeft?.(player.id);
             }
           } else if (payload.eventType === 'DELETE') {
@@ -539,6 +542,8 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
 
     // Cleanup
     return () => {
+      // Track the player we're switching away from (to suppress "Player left" for self)
+      previousPlayerIdRef.current = playerDbIdRef.current;
       updateOnlineStatus(false);
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
