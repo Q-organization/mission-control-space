@@ -14,7 +14,7 @@ The integration provides bidirectional sync between Notion and the game:
 ```
 ┌─────────────────┐     ┌─────────────────────────────────────┐
 │                 │     │        Supabase Edge Functions       │
-│     Notion      │────▶│  notion-webhook  (create/update)    │
+│     Notion      │────▶│  notion-webhook  (create/update/del) │
 │    Database     │     │  notion-sync     (full sync)        │
 │                 │     │  notion-create   (new planets)      │
 └─────────────────┘     │  notion-claim    (assign player)    │
@@ -220,7 +220,7 @@ VALUES (
 
 ### 6. notion-delete
 
-**Purpose**: Remove a planet from the game (bypasses RLS).
+**Purpose**: Remove a planet from the game.
 
 **Endpoint**: `POST /functions/v1/notion-delete`
 
@@ -231,7 +231,7 @@ VALUES (
 }
 ```
 
-**Why it exists**: Client-side deletes are blocked by Row Level Security. This function uses the service role key to bypass RLS.
+**Note**: A DELETE RLS policy now exists (`20250203120000_add_notion_planets_delete_policy.sql`), but this edge function is still used for in-game planet destruction (X key) to ensure consistent behavior with service role permissions.
 
 ## Player Zones
 
@@ -253,6 +253,7 @@ This ensures correct zone placement even when Notion names differ from game user
 const CENTER_X = 5000;
 const CENTER_Y = 5000;
 const PLAYER_DISTANCE = 3000;
+const HUB_DISTANCE = 2800;
 
 const PLAYER_ZONES = {
   'quentin': { x: 8000, y: 5000 },  // East
@@ -262,7 +263,9 @@ const PLAYER_ZONES = {
   'hugues':  { x: 2000, y: 5000 },  // West
 };
 
-const DEFAULT_ZONE = { x: 5000, y: 5500 }; // Unassigned tasks
+// Unassigned tasks go near Mission Control (bottom center)
+const MISSION_CONTROL_Y = CENTER_Y + HUB_DISTANCE * 1.1; // ~8080
+const DEFAULT_ZONE = { x: 5000, y: MISSION_CONTROL_Y };
 ```
 
 ### Position Algorithm
@@ -307,14 +310,23 @@ Location: `src/hooks/useNotionPlanets.ts`
 **Purpose**: Fetches and subscribes to Notion planets.
 
 **Features**:
-- Initial fetch of all non-completed planets
-- Realtime subscription for INSERT, UPDATE, DELETE
+- Initial fetch of all planets for the team
+- Realtime subscription for INSERT, UPDATE, DELETE events
 - Converts database records to game Planet format
+- Provides `completePlanet()` and `claimPlanet()` actions
 
 **Usage**:
 ```typescript
-const { planets, isLoading, error } = useNotionPlanets(teamId);
+const {
+  notionPlanets,  // Raw NotionPlanet[] from database
+  gamePlanets,    // Converted Planet[] for rendering
+  isLoading,
+  completePlanet, // (id: string) => Promise<void>
+  claimPlanet     // (id: string, username: string) => Promise<{x,y} | null>
+} = useNotionPlanets({ teamId, onPlanetCreated, onPlanetCompleted });
 ```
+
+**Important**: The `notion_planets` table must have `REPLICA IDENTITY FULL` set for DELETE events to work properly with realtime subscriptions. This is configured via migration `20250203130000_fix_notion_planets_replica_identity.sql`.
 
 ### Planet Visual Effects
 
@@ -435,12 +447,42 @@ Required in Supabase Edge Functions:
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (bypasses RLS) |
 
+## Database Configuration
+
+### Required Settings
+
+The `notion_planets` table requires specific configuration for full functionality:
+
+1. **REPLICA IDENTITY FULL** - Required for realtime DELETE events to include row data:
+   ```sql
+   ALTER TABLE notion_planets REPLICA IDENTITY FULL;
+   ```
+
+2. **Realtime Publication** - Table must be added to realtime:
+   ```sql
+   ALTER PUBLICATION supabase_realtime ADD TABLE notion_planets;
+   ```
+
+3. **RLS Policies** - All CRUD operations need policies:
+   - SELECT: `"Anyone can read notion planets"` - `USING (true)`
+   - INSERT: `"Service role can insert notion planets"` - `WITH CHECK (true)`
+   - UPDATE: `"Anyone can update notion planets"` - `USING (true)`
+   - DELETE: `"Enable delete for all users"` - `USING (true)`
+
+### Migrations
+
+| Migration | Purpose |
+|-----------|---------|
+| `20250131000000_create_notion_planets.sql` | Creates table, indexes, basic RLS |
+| `20250203120000_add_notion_planets_delete_policy.sql` | Adds DELETE RLS policy |
+| `20250203130000_fix_notion_planets_replica_identity.sql` | Enables REPLICA IDENTITY FULL |
+
 ## Error Handling
 
 ### Common Issues
 
 1. **Duplicate key errors**: Resolved by using upsert with `onConflict`
-2. **RLS blocking deletes**: Use `notion-delete` edge function
+2. **Realtime DELETE not working**: Ensure REPLICA IDENTITY FULL is set
 3. **UUID format mismatch**: Normalize with `.replace(/-/g, '')`
 4. **Notion rate limits**: Batch operations in sync function
 
