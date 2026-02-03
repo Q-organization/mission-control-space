@@ -439,9 +439,9 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
-// Save image locally via the save-image-server
-// originalUrl is used as fallback if server isn't running (avoids huge base64 strings)
-const saveImageLocally = async (
+// Save image to Supabase Storage
+// Returns the public URL of the uploaded image
+const saveImageToStorage = async (
   base64: string,
   type: 'ship' | 'planet',
   userId: string,
@@ -449,18 +449,45 @@ const saveImageLocally = async (
   originalUrl?: string
 ): Promise<string> => {
   try {
-    const response = await fetch('http://localhost:3456/save-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base64, type, userId, name })
-    });
-    const data = await response.json();
-    if (data.success) {
-      console.log(`Image saved to: ${data.fullPath}`);
-      return data.path; // Returns path like /ships/quentin-engine-123.png
+    // Extract base64 data (remove data:image/png;base64, prefix)
+    const base64Data = base64.replace(/^data:image\/\w+;base64,/, '');
+
+    // Convert base64 to blob
+    const byteCharacters = atob(base64Data);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'image/png' });
+
+    // Generate filename
+    const timestamp = Date.now();
+    const safeName = (name || 'image').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    const filename = `${type}s/${userId || 'unknown'}-${safeName}-${timestamp}.png`;
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('images')
+      .upload(filename, blob, {
+        contentType: 'image/png',
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Supabase storage upload error:', error);
+      throw error;
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('images')
+      .getPublicUrl(data.path);
+
+    console.log(`Image saved to Supabase Storage: ${urlData.publicUrl}`);
+    return urlData.publicUrl;
   } catch (err) {
-    console.warn('Local save server not running, using original URL as fallback');
+    console.warn('Failed to save to Supabase Storage, using original URL as fallback:', err);
   }
   // Fallback to original URL if provided (FAL.ai URLs are temporary but better than base64)
   // Base64 is huge and breaks localStorage/database storage
@@ -1111,7 +1138,7 @@ function App() {
 
         setUpgradeMessage('Saving...');
         const base64Image = await getImageAsBase64(bgRemovedUrl);
-        newImageUrl = await saveImageLocally(base64Image, 'planet', userId, 'base', bgRemovedUrl);
+        newImageUrl = await saveImageToStorage(base64Image, 'planet', userId, 'base', bgRemovedUrl);
 
         // Deduct personal points and sync to backend
         setPersonalPoints(prev => prev - 25);
@@ -1213,7 +1240,7 @@ function App() {
         // Save locally
         setUpgradeMessage('Saving...');
         const base64Image = await getImageAsBase64(bgRemovedUrl);
-        newImageUrl = await saveImageLocally(base64Image, 'planet', userId, 'terraform', bgRemovedUrl);
+        newImageUrl = await saveImageToStorage(base64Image, 'planet', userId, 'terraform', bgRemovedUrl);
 
         // Deduct personal points and sync to backend
         setPersonalPoints(prev => prev - 50);
@@ -1734,7 +1761,7 @@ function App() {
         setUpgradeMessage('Saving...');
         const base64Image = await getImageAsBase64(bgRemovedUrl);
         const userId = state.currentUser || 'default';
-        newImageUrl = await saveImageLocally(base64Image, 'ship', userId, 'visual-upgrade', bgRemovedUrl);
+        newImageUrl = await saveImageToStorage(base64Image, 'ship', userId, 'visual-upgrade', bgRemovedUrl);
       }
 
       if (newImageUrl) {
@@ -2049,7 +2076,7 @@ function App() {
 
         // Save to local filesystem
         const base64Image = await getImageAsBase64(finalUrl);
-        const localPath = await saveImageLocally(
+        const localPath = await saveImageToStorage(
           base64Image,
           'planet',
           state.currentUser || 'unknown',
