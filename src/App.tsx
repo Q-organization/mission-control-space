@@ -1529,15 +1529,39 @@ function App() {
     };
   };
 
-  // Get a user's planet
+  // Get a user's planet (checks local state first, then teamPlayers for multiplayer data)
   const getUserPlanet = (userId: string): UserPlanet => {
+    // First check local userPlanets (your own data with full history)
     const planet = userPlanets[userId];
+    if (planet?.imageUrl) {
+      return {
+        imageUrl: planet.imageUrl,
+        baseImage: planet.baseImage,
+        terraformCount: planet.terraformCount || 0,
+        history: planet.history || [],
+        sizeLevel: planet.sizeLevel || 0,
+      };
+    }
+
+    // For other players, check teamPlayers (synced from Supabase, no history)
+    const teamPlayer = teamPlayers.find(p => p.username === userId);
+    if (teamPlayer?.planetImageUrl) {
+      return {
+        imageUrl: teamPlayer.planetImageUrl,
+        baseImage: undefined, // Not synced via multiplayer
+        terraformCount: teamPlayer.planetTerraformCount || 0,
+        history: [], // Not synced via multiplayer
+        sizeLevel: teamPlayer.planetSizeLevel || 0,
+      };
+    }
+
+    // Default empty planet
     return {
-      imageUrl: planet?.imageUrl || DEFAULT_PLANET_IMAGE,
-      baseImage: planet?.baseImage,
-      terraformCount: planet?.terraformCount || 0,
-      history: planet?.history || [],
-      sizeLevel: planet?.sizeLevel || 0,
+      imageUrl: DEFAULT_PLANET_IMAGE,
+      baseImage: undefined,
+      terraformCount: 0,
+      history: [],
+      sizeLevel: 0,
     };
   };
 
