@@ -221,10 +221,15 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
     const playerIds = currentPlayers.map((p) => p.id);
     if (playerIds.length === 0) return;
 
+    // Only fetch positions updated in the last 10 seconds (staleness threshold)
+    // This prevents showing inactive players who haven't moved recently
+    const staleThreshold = new Date(Date.now() - 10000).toISOString();
+
     const { data: positions } = await supabase
       .from('ship_positions')
       .select()
-      .in('player_id', playerIds);
+      .in('player_id', playerIds)
+      .gte('updated_at', staleThreshold);
 
     if (positions) {
       const now = Date.now();
