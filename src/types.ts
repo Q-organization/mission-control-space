@@ -84,6 +84,18 @@ export interface Particle {
   color: string;
 }
 
+export interface Projectile {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  damage: number;
+  size: number;
+  color: string;
+}
+
 export interface Ship {
   x: number;
   y: number;
@@ -137,6 +149,8 @@ export interface ShipEffects {
   ownedTrails: string[];
   hasDestroyCanon: boolean;
   destroyCanonEquipped: boolean;
+  hasSpaceRifle: boolean;
+  spaceRifleEquipped: boolean;
 }
 
 export interface MultiplayerTeam {

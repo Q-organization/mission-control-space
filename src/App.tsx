@@ -111,8 +111,9 @@ const TRAIL_EFFECTS = [
   { id: 'trail_rainbow', name: 'Rainbow', icon: '🌈', cost: 60, value: 'rainbow' },
 ];
 
-// Destroy Canon cost (one-time purchase)
+// Weapon costs (one-time purchases)
 const DESTROY_CANON_COST = 400;
+const SPACE_RIFLE_COST = 300;
 
 // Default goals/milestones
 const DEFAULT_GOALS = {
@@ -278,6 +279,8 @@ interface ShipEffects {
   ownedTrails: string[]; // Owned trail types
   hasDestroyCanon: boolean; // Owns Destroy Canon weapon
   destroyCanonEquipped: boolean; // Canon is equipped and visible on ship
+  hasSpaceRifle: boolean; // Owns Space Rifle weapon
+  spaceRifleEquipped: boolean; // Space Rifle is equipped
 }
 
 interface UserShip {
@@ -629,7 +632,7 @@ function App() {
     baseImage: '/ship-base.png',
     upgrades: [],
     currentImage: '/ship-base.png',
-    effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false },
+    effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false },
   };
 
   // Multiplayer sync hook - handles team state sync
@@ -1043,7 +1046,7 @@ function App() {
           .from('players')
           .update({
             ship_current_image: '/ship-base.png',
-            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false },
+            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false },
             ship_upgrades: [],
           })
           .eq('team_id', team.id);
@@ -1168,7 +1171,7 @@ function App() {
           .update({
             personal_points: 0,
             ship_current_image: '/ship-base.png',
-            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false },
+            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false },
             ship_upgrades: [],
             planet_image_url: null,
             planet_terraform_count: 0,
@@ -1711,7 +1714,7 @@ function App() {
       baseImage: '/ship-base.png',
       upgrades: [],
       currentImage: '/ship-base.png',
-      effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false },
+      effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false },
     };
   };
 
@@ -1796,7 +1799,7 @@ function App() {
     setUserPlanets(prev => ({ ...prev, [userId]: updatedPlanet }));
     saveUserPlanetToSupabase(userId, updatedPlanet);
     gameRef.current?.updateUserPlanetImage(userId, imageUrl);
-    soundManager.playUIClick();
+    soundManager.playSelect();
   };
 
   // Buy planet size upgrade (max 5 levels)
@@ -2369,7 +2372,7 @@ function App() {
       const newGlow = currentEffects.glowColor === glow.value ? null : glow.value;
       const newEffects = { ...currentEffects, glowColor: newGlow };
       updateUserShipEffects(userId, currentShip, newEffects);
-      soundManager.playUIClick();
+      soundManager.playSelect();
     } else {
       // Buy it
       if (personalPoints < glow.cost) return;
@@ -2401,7 +2404,7 @@ function App() {
       const newTrail: ShipEffects['trailType'] = currentEffects.trailType === trail.value ? 'default' : trail.value as 'fire' | 'ice' | 'rainbow';
       const newEffects: ShipEffects = { ...currentEffects, trailType: newTrail };
       updateUserShipEffects(userId, currentShip, newEffects);
-      soundManager.playUIClick();
+      soundManager.playSelect();
     } else {
       // Buy it
       if (personalPoints < trail.cost) return;
@@ -2455,7 +2458,47 @@ function App() {
     };
 
     updateUserShipEffects(userId, currentShip, newEffects);
-    soundManager.playUIClick();
+    soundManager.playSelect();
+  };
+
+  // Buy Space Rifle (one-time purchase)
+  const buySpaceRifle = () => {
+    if (personalPoints < SPACE_RIFLE_COST) return;
+
+    const userId = state.currentUser || 'default';
+    const currentShip = getCurrentUserShip();
+    const currentEffects = getEffectsWithDefaults(currentShip.effects);
+
+    if (currentEffects.hasSpaceRifle) return; // Already owns it
+
+    const newEffects: ShipEffects = {
+      ...currentEffects,
+      hasSpaceRifle: true,
+      spaceRifleEquipped: true, // Auto-equip when purchased
+    };
+
+    // Deduct personal points and sync to backend
+    setPersonalPoints(prev => prev - SPACE_RIFLE_COST);
+    updateRemotePersonalPoints(-SPACE_RIFLE_COST, 'Space Rifle');
+    updateUserShipEffects(userId, currentShip, newEffects);
+    soundManager.playShipUpgrade();
+  };
+
+  // Toggle Space Rifle equip state
+  const toggleSpaceRifle = () => {
+    const userId = state.currentUser || 'default';
+    const currentShip = getCurrentUserShip();
+    const currentEffects = getEffectsWithDefaults(currentShip.effects);
+
+    if (!currentEffects.hasSpaceRifle) return; // Doesn't own it
+
+    const newEffects: ShipEffects = {
+      ...currentEffects,
+      spaceRifleEquipped: !currentEffects.spaceRifleEquipped,
+    };
+
+    updateUserShipEffects(userId, currentShip, newEffects);
+    soundManager.playSelect();
   };
 
   // Helper to get effects with defaults
@@ -2469,6 +2512,8 @@ function App() {
     ownedTrails: effects?.ownedTrails ?? [],
     hasDestroyCanon: effects?.hasDestroyCanon ?? false,
     destroyCanonEquipped: effects?.destroyCanonEquipped ?? false,
+    hasSpaceRifle: effects?.hasSpaceRifle ?? false,
+    spaceRifleEquipped: effects?.spaceRifleEquipped ?? false,
   });
 
   // Helper to update ship effects
@@ -2486,7 +2531,7 @@ function App() {
   // Select user
   const selectUser = (userId: string) => {
     soundManager.init();
-    soundManager.playUIClick();
+    soundManager.playSelect();
     setState(prev => ({ ...prev, currentUser: userId }));
     setShowUserSelect(false);
     // DO NOT initialize userShips with defaults here!
@@ -2731,7 +2776,7 @@ function App() {
 
         <button style={styles.startButton} onClick={() => {
           soundManager.init();
-          soundManager.playUIClick();
+          soundManager.playSelect();
           setShowWelcome(false);
         }}>
           Launch Mission
@@ -3407,6 +3452,53 @@ function App() {
             {/* Weapons Tab */}
             {shopTab === 'weapons' && (
               <div style={styles.shopSection}>
+                {/* Space Rifle */}
+                {(() => {
+                  const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
+                  const owned = effects.hasSpaceRifle;
+                  const equipped = effects.spaceRifleEquipped;
+                  const canBuy = !owned && personalPoints >= SPACE_RIFLE_COST;
+                  return (
+                    <div style={styles.effectLane}>
+                      <div style={styles.effectLaneLabel}>
+                        <span style={styles.effectLaneIcon}>🔫</span>
+                        <span>Space Rifle</span>
+                      </div>
+                      <div style={styles.effectLaneContent}>
+                        <span style={{ fontSize: '0.75rem', color: '#888', flex: 1 }}>
+                          Shoot bullets to destroy planets (X key)
+                        </span>
+                        {owned ? (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              background: equipped ? 'rgba(255, 204, 0, 0.2)' : 'rgba(255,255,255,0.05)',
+                              borderColor: equipped ? '#ffcc00' : '#444',
+                              color: equipped ? '#ffcc00' : '#888',
+                              minWidth: 80,
+                            }}
+                            onClick={toggleSpaceRifle}
+                          >
+                            {equipped ? 'EQUIPPED' : 'EQUIP'}
+                          </button>
+                        ) : (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              opacity: canBuy ? 1 : 0.5,
+                              minWidth: 100,
+                            }}
+                            onClick={buySpaceRifle}
+                            disabled={!canBuy}
+                          >
+                            {SPACE_RIFLE_COST} ⭐
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {/* Destroy Canon */}
                 {(() => {
                   const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
                   const owned = effects.hasDestroyCanon;

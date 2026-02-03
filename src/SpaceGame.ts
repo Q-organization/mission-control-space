@@ -1,4 +1,4 @@
-import { Vector2, Planet, Star, Particle, Ship, GameState, RewardType, OtherPlayer, ShipEffects as TypedShipEffects, PositionSnapshot, InterpolationState } from './types';
+import { Vector2, Planet, Star, Particle, Ship, GameState, RewardType, OtherPlayer, ShipEffects as TypedShipEffects, PositionSnapshot, InterpolationState, Projectile } from './types';
 import { soundManager } from './SoundManager';
 
 interface CustomPlanetData {
@@ -43,6 +43,8 @@ interface ShipEffects {
   ownedTrails: string[];
   hasDestroyCanon: boolean;
   destroyCanonEquipped: boolean;
+  hasSpaceRifle: boolean;
+  spaceRifleEquipped: boolean;
 }
 
 interface UpgradeSatellite {
@@ -143,7 +145,7 @@ export class SpaceGame {
   private hormoziPlanetImage: HTMLImageElement | null = null;
   private canonImage: HTMLImageElement | null = null; // Destroy Canon weapon image
   private shipLevel: number = 1;
-  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false };
+  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false };
   private blackHole: BlackHole;
   private shipBeingSucked: boolean = false;
   private suckProgress: number = 0;
@@ -222,6 +224,17 @@ export class SpaceGame {
   private renderStates: Map<string, InterpolationState> = new Map();
   // Other players' upgrade animations
   private otherPlayerUpgrading: Map<string, { targetPlanetId: string | null; satellites: UpgradeSatellite[] }> = new Map();
+
+  // Space Rifle projectile system
+  private projectiles: Projectile[] = [];
+  private planetHealth: Map<string, number> = new Map();
+  private planetDamageEffects: Map<string, { shakeOffset: number; cracks: number }> = new Map();
+  private lastShotTime: number = 0;
+  private readonly FIRE_COOLDOWN: number = 200; // ms between shots
+  private readonly BULLET_SPEED: number = 12;
+  private readonly BULLET_DAMAGE: number = 10;
+  private readonly BULLET_RANGE: number = 500; // max travel distance
+  private readonly PLANET_MAX_HEALTH: number = 100;
 
   constructor(canvas: HTMLCanvasElement, onDock: (planet: Planet) => void, customPlanets: CustomPlanetData[] = [], shipImageUrl?: string, goals?: GoalsData, upgradeCount: number = 0, userPlanets?: Record<string, UserPlanetData>, currentUser: string = 'quentin') {
     this.canvas = canvas;
@@ -1182,6 +1195,14 @@ export class SpaceGame {
       }
     }
 
+    // Space Rifle: Fire projectile with X key while flying (not landed)
+    if (this.keys.has('x') && this.shipEffects.spaceRifleEquipped && !this.shipBeingSucked) {
+      this.fireProjectile();
+    }
+
+    // Update projectiles (movement, collision, damage)
+    this.updateProjectiles();
+
     // World bounds (wrap around like classic arcade games)
     const wrapMargin = 50;
     if (ship.x < -wrapMargin) { ship.x = WORLD_SIZE + wrapMargin; }
@@ -2086,6 +2107,225 @@ export class SpaceGame {
     ctx.restore();
   }
 
+  // ==================== SPACE RIFLE SYSTEM ====================
+
+  // Fire a projectile from the ship
+  private fireProjectile() {
+    const now = Date.now();
+    if (now - this.lastShotTime < this.FIRE_COOLDOWN) return;
+
+    this.lastShotTime = now;
+    const { ship } = this.state;
+
+    // Spawn bullet at front of ship
+    const spawnDist = 25;
+    this.projectiles.push({
+      x: ship.x + Math.cos(ship.rotation) * spawnDist,
+      y: ship.y + Math.sin(ship.rotation) * spawnDist,
+      vx: Math.cos(ship.rotation) * this.BULLET_SPEED + ship.vx * 0.3,
+      vy: Math.sin(ship.rotation) * this.BULLET_SPEED + ship.vy * 0.3,
+      life: this.BULLET_RANGE / this.BULLET_SPEED,
+      maxLife: this.BULLET_RANGE / this.BULLET_SPEED,
+      damage: this.BULLET_DAMAGE,
+      size: 4,
+      color: '#ffcc00',
+    });
+
+    // Muzzle flash particles
+    this.emitMuzzleFlash(ship.x, ship.y, ship.rotation);
+
+    // Play sound
+    soundManager.playUIClick();
+  }
+
+  // Update all projectiles (movement, collision, cleanup)
+  private updateProjectiles() {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+
+      // Move
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+
+      // Check collision with planets
+      for (const planet of this.state.planets) {
+        // Only damage: completed planets that can be damaged
+        if (!this.canDamagePlanet(planet)) continue;
+
+        const dx = p.x - planet.x;
+        const dy = p.y - planet.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < planet.radius) {
+          // Hit! Apply damage
+          this.damagePlanet(planet, p.damage, p.x, p.y);
+          this.projectiles.splice(i, 1);
+          break;
+        }
+      }
+
+      // Remove if life expired
+      if (p.life <= 0) {
+        this.projectiles.splice(i, 1);
+      }
+    }
+  }
+
+  // Check if a planet can be damaged by the space rifle
+  private canDamagePlanet(planet: Planet): boolean {
+    // Only completed planets can be destroyed
+    if (!planet.completed) return false;
+
+    // Special planets cannot be destroyed
+    const specialPlanets = ['shop-station', 'planet-builder'];
+    if (specialPlanets.includes(planet.id)) return false;
+    if (planet.id.startsWith('user-planet-')) return false;
+
+    // Only Notion planets can be destroyed
+    if (!planet.id.startsWith('notion-')) return false;
+
+    return true;
+  }
+
+  // Apply damage to a planet
+  private damagePlanet(planet: Planet, damage: number, hitX: number, hitY: number) {
+    // Initialize health if not tracked
+    if (!this.planetHealth.has(planet.id)) {
+      this.planetHealth.set(planet.id, this.PLANET_MAX_HEALTH);
+    }
+
+    const currentHealth = this.planetHealth.get(planet.id)!;
+    const newHealth = Math.max(0, currentHealth - damage);
+    this.planetHealth.set(planet.id, newHealth);
+
+    // Update damage effects
+    const effects = this.planetDamageEffects.get(planet.id) || { shakeOffset: 0, cracks: 0 };
+    effects.shakeOffset = 8; // Will decay each frame in render
+    effects.cracks = Math.min(5, effects.cracks + 0.5); // More cracks with more damage
+    this.planetDamageEffects.set(planet.id, effects);
+
+    // Impact particles
+    this.emitImpactParticles(hitX, hitY, planet.color);
+
+    // Sound
+    soundManager.playCollision();
+
+    // If health depleted, trigger destruction
+    if (newHealth <= 0) {
+      this.planetHealth.delete(planet.id);
+      this.planetDamageEffects.delete(planet.id);
+      this.startDestroyAnimation(planet);
+    }
+  }
+
+  // Emit muzzle flash particles when firing
+  private emitMuzzleFlash(x: number, y: number, rotation: number) {
+    const colors = ['#ffcc00', '#ffaa00', '#ff8800', '#ffffff'];
+    for (let i = 0; i < 6; i++) {
+      const spread = (Math.random() - 0.5) * 0.8;
+      const speed = Math.random() * 4 + 2;
+      this.state.particles.push({
+        x: x + Math.cos(rotation) * 25,
+        y: y + Math.sin(rotation) * 25,
+        vx: Math.cos(rotation + spread) * speed,
+        vy: Math.sin(rotation + spread) * speed,
+        life: 10 + Math.random() * 5,
+        maxLife: 15,
+        size: Math.random() * 3 + 2,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+  }
+
+  // Emit impact particles when bullet hits planet
+  private emitImpactParticles(x: number, y: number, planetColor: string) {
+    const colors = [planetColor, '#ffffff', '#ffcc00', '#ff6600'];
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 5 + 2;
+      this.state.particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 20 + Math.random() * 10,
+        maxLife: 30,
+        size: Math.random() * 4 + 2,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+  }
+
+  // Render all projectiles
+  private renderProjectiles() {
+    const { ctx } = this;
+    const camera = this.state.camera;
+
+    for (const p of this.projectiles) {
+      const x = p.x - camera.x;
+      const y = p.y - camera.y;
+      const alpha = Math.min(1, p.life / p.maxLife + 0.3);
+
+      // Glow
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = p.color;
+
+      // Bullet
+      ctx.beginPath();
+      ctx.arc(x, y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha;
+      ctx.fill();
+
+      // Trail
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - p.vx * 2, y - p.vy * 2);
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = p.size * 0.6;
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.stroke();
+
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // Draw cracks on a damaged planet
+  private drawPlanetCracks(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, crackLevel: number) {
+    ctx.save();
+    ctx.strokeStyle = '#331100';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = Math.min(0.8, crackLevel * 0.2);
+
+    // Draw crack lines radiating from center
+    const numCracks = Math.floor(crackLevel * 2);
+    for (let i = 0; i < numCracks; i++) {
+      const angle = (i / numCracks) * Math.PI * 2 + Math.random() * 0.3;
+      const length = radius * (0.5 + Math.random() * 0.4);
+
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+
+      // Jagged line
+      let cx = x, cy = y;
+      const segments = 3 + Math.floor(Math.random() * 3);
+      for (let j = 0; j < segments; j++) {
+        const segAngle = angle + (Math.random() - 0.5) * 0.5;
+        const segLen = length / segments;
+        cx += Math.cos(segAngle) * segLen;
+        cy += Math.sin(segAngle) * segLen;
+        ctx.lineTo(cx, cy);
+      }
+
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // ==================== END SPACE RIFLE SYSTEM ====================
+
   // Start destroy animation (for cleaning up completed planets)
   private startDestroyAnimation(planet: Planet) {
     this.isDestroying = true;
@@ -2839,6 +3079,9 @@ export class SpaceGame {
       ctx.globalAlpha = 1;
     }
 
+    // Draw projectiles (space rifle bullets)
+    this.renderProjectiles();
+
     // Draw other players' ships (behind local ship)
     this.renderOtherPlayers();
 
@@ -2928,7 +3171,11 @@ export class SpaceGame {
       }
       ctx.fillText(hint, 20, canvas.height - 15);
     } else {
-      ctx.fillText('W/↑ Thrust  •  A/← D/→ Rotate  •  S/↓ Brake  •  SHIFT Boost  •  SPACE Dock', 20, canvas.height - 15);
+      let flightHint = 'W/↑ Thrust  •  A/← D/→ Rotate  •  S/↓ Brake  •  SHIFT Boost  •  SPACE Dock';
+      if (this.shipEffects.spaceRifleEquipped) {
+        flightHint += '  •  X Shoot';
+      }
+      ctx.fillText(flightHint, 20, canvas.height - 15);
     }
   }
 
@@ -3099,8 +3346,22 @@ export class SpaceGame {
     }
   }
 
-  private drawPlanetAt(planet: Planet, x: number, y: number) {
+  private drawPlanetAt(planet: Planet, origX: number, origY: number) {
     const { ctx } = this;
+
+    // Check for damage effects (shake and cracks from space rifle)
+    const damageEffects = this.planetDamageEffects.get(planet.id);
+    let x = origX;
+    let y = origY;
+
+    if (damageEffects) {
+      // Apply shake
+      if (damageEffects.shakeOffset > 0) {
+        x += (Math.random() - 0.5) * damageEffects.shakeOffset;
+        y += (Math.random() - 0.5) * damageEffects.shakeOffset;
+        damageEffects.shakeOffset *= 0.85; // Decay shake
+      }
+    }
 
     const style = (planet as any).style || { baseColor: planet.color, accent: planet.color };
 
@@ -3381,6 +3642,11 @@ export class SpaceGame {
         }
         ctx.restore();
       }
+    }
+
+    // Draw cracks on damaged planets (from space rifle)
+    if (damageEffects && damageEffects.cracks > 0) {
+      this.drawPlanetCracks(ctx, x, y, planet.radius, damageEffects.cracks);
     }
 
     // Flag if completed
