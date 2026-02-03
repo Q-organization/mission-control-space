@@ -170,6 +170,7 @@ export class SpaceGame {
   private onOpenNotion: ((url: string) => void) | null = null;
   private onTerraform: ((planet: Planet) => void) | null = null;
   private onDestroyPlanet: ((planet: Planet) => void) | null = null;
+  private onBlackHoleDeath: (() => void) | null = null;
 
   // Destroy animation state (explosion effect)
   private isDestroying: boolean = false;
@@ -765,6 +766,7 @@ export class SpaceGame {
     onOpenNotion?: (url: string) => void;
     onTerraform?: (planet: Planet) => void;
     onDestroyPlanet?: (planet: Planet) => void;
+    onBlackHoleDeath?: () => void;
   }) {
     this.onLand = callbacks.onLand || null;
     this.onTakeoff = callbacks.onTakeoff || null;
@@ -773,6 +775,7 @@ export class SpaceGame {
     this.onOpenNotion = callbacks.onOpenNotion || null;
     this.onTerraform = callbacks.onTerraform || null;
     this.onDestroyPlanet = callbacks.onDestroyPlanet || null;
+    this.onBlackHoleDeath = callbacks.onBlackHoleDeath || null;
   }
 
   public isPlayerLanded(): boolean {
@@ -1165,6 +1168,8 @@ export class SpaceGame {
       ship.rotation += 0.3; // Spin while being sucked
 
       if (this.suckProgress >= 1 || bhDist < 5) {
+        // Notify about black hole death
+        this.onBlackHoleDeath?.();
         // Rick roll time!
         window.open('https://www.youtube.com/watch?v=oHg5SJYRHA0', '_blank');
         // Reset ship position
