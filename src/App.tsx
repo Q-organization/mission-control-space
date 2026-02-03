@@ -542,6 +542,7 @@ function App() {
   const [showTerraform, setShowTerraform] = useState(false);
   const [terraformPrompt, setTerraformPrompt] = useState('');
   const [viewingPlanetOwner, setViewingPlanetOwner] = useState<string | null>(null);
+  const [viewingPlanetPreview, setViewingPlanetPreview] = useState<string | null>(null); // Preview image when browsing versions
 
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState('');
@@ -3409,7 +3410,7 @@ function App() {
 
       {/* View Other Player's Planet Modal */}
       {viewingPlanetOwner && (
-        <div style={styles.modalOverlay} onClick={() => { setViewingPlanetOwner(null); gameRef.current?.clearLandedState(); }}>
+        <div style={styles.modalOverlay} onClick={() => { setViewingPlanetOwner(null); setViewingPlanetPreview(null); gameRef.current?.clearLandedState(); }}>
           <div style={{ ...styles.modal, maxWidth: 500 }} onClick={e => e.stopPropagation()}>
             <h2 style={styles.modalTitle}>
               🌍 {viewingPlanetOwner.charAt(0).toUpperCase() + viewingPlanetOwner.slice(1)}'s World
@@ -3417,9 +3418,9 @@ function App() {
 
             {/* Planet preview */}
             <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-              {getUserPlanet(viewingPlanetOwner).imageUrl ? (
+              {(viewingPlanetPreview || getUserPlanet(viewingPlanetOwner).imageUrl) ? (
                 <img
-                  src={getUserPlanet(viewingPlanetOwner).imageUrl}
+                  src={viewingPlanetPreview || getUserPlanet(viewingPlanetOwner).imageUrl}
                   alt={`${viewingPlanetOwner}'s Planet`}
                   style={{ width: 150, height: 150, borderRadius: '50%', border: `3px solid ${USERS.find(u => u.id === viewingPlanetOwner)?.color || '#ffa500'}` }}
                 />
@@ -3460,17 +3461,21 @@ function App() {
                   {/* Base planet option */}
                   {getUserPlanet(viewingPlanetOwner).baseImage && (() => {
                     const isOwner = viewingPlanetOwner === state.currentUser;
-                    const isSelected = getUserPlanet(viewingPlanetOwner).imageUrl === getUserPlanet(viewingPlanetOwner).baseImage;
+                    const baseImg = getUserPlanet(viewingPlanetOwner).baseImage!;
+                    const isSelected = (viewingPlanetPreview || getUserPlanet(viewingPlanetOwner).imageUrl) === baseImg;
                     return (
                       <div
                         style={{
                           ...styles.historyItem,
-                          cursor: isOwner ? 'pointer' : 'default',
+                          cursor: 'pointer',
                           border: isSelected ? '2px solid #4ade80' : '2px solid transparent',
                         }}
-                        onClick={isOwner ? () => selectPlanetFromHistory(viewingPlanetOwner, getUserPlanet(viewingPlanetOwner).baseImage!) : undefined}
+                        onClick={() => {
+                          setViewingPlanetPreview(baseImg);
+                          if (isOwner) selectPlanetFromHistory(viewingPlanetOwner, baseImg);
+                        }}
                       >
-                        <img src={getUserPlanet(viewingPlanetOwner).baseImage} alt="" style={styles.historyThumb} />
+                        <img src={baseImg} alt="" style={styles.historyThumb} />
                         <div style={styles.historyInfo}>
                           <span style={styles.historyDesc}>Base Planet</span>
                           <span style={styles.historyDate}>Original</span>
@@ -3484,16 +3489,19 @@ function App() {
                   {/* Terraform history */}
                   {getUserPlanet(viewingPlanetOwner).history.map((entry, i) => {
                     const isOwner = viewingPlanetOwner === state.currentUser;
-                    const isSelected = getUserPlanet(viewingPlanetOwner).imageUrl === entry.imageUrl;
+                    const isSelected = (viewingPlanetPreview || getUserPlanet(viewingPlanetOwner).imageUrl) === entry.imageUrl;
                     return (
                       <div
                         key={i}
                         style={{
                           ...styles.historyItem,
-                          cursor: isOwner ? 'pointer' : 'default',
+                          cursor: 'pointer',
                           border: isSelected ? '2px solid #4ade80' : '2px solid transparent',
                         }}
-                        onClick={isOwner ? () => selectPlanetFromHistory(viewingPlanetOwner, entry.imageUrl) : undefined}
+                        onClick={() => {
+                          setViewingPlanetPreview(entry.imageUrl);
+                          if (isOwner) selectPlanetFromHistory(viewingPlanetOwner, entry.imageUrl);
+                        }}
                       >
                         <img src={entry.imageUrl} alt="" style={styles.historyThumb} />
                         <div style={styles.historyInfo}>
@@ -3505,13 +3513,15 @@ function App() {
                         {isSelected && (
                           <span style={{ color: '#4ade80', fontSize: '0.75rem' }}>✓</span>
                         )}
-                        <button
-                          style={{ ...styles.downloadButton, position: 'relative', top: 'auto', right: 'auto' }}
-                          onClick={(e) => { e.stopPropagation(); downloadImage(entry.imageUrl, `planet-${viewingPlanetOwner}-${i + 1}`); }}
-                          title="Download"
-                        >
-                          ⬇
-                        </button>
+                        {isOwner && (
+                          <button
+                            style={{ ...styles.downloadButton, position: 'relative', top: 'auto', right: 'auto' }}
+                            onClick={(e) => { e.stopPropagation(); downloadImage(entry.imageUrl, `planet-${viewingPlanetOwner}-${i + 1}`); }}
+                            title="Download"
+                          >
+                            ⬇
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -3519,7 +3529,7 @@ function App() {
               </div>
             )}
 
-            <button style={styles.cancelButton} onClick={() => { setViewingPlanetOwner(null); gameRef.current?.clearLandedState(); }}>
+            <button style={styles.cancelButton} onClick={() => { setViewingPlanetOwner(null); setViewingPlanetPreview(null); gameRef.current?.clearLandedState(); }}>
               Close
             </button>
           </div>
