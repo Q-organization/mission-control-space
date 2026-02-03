@@ -115,31 +115,63 @@ const DESTROY_CANON_COST = 400;
 // Default goals/milestones
 const DEFAULT_GOALS = {
   business: [
-    { id: 'b1', name: 'First Customer', size: 'medium', description: 'Land your very first paying customer', realWorldReward: 'Celebrate with the team!' },
-    { id: 'b2', name: '$1k MRR', size: 'small', description: 'Reach $1,000 monthly recurring revenue' },
-    { id: 'b3', name: '$5k MRR', size: 'medium', description: 'Hit $5,000 monthly recurring revenue', realWorldReward: '+$500/month salary increase' },
-    { id: 'b4', name: 'Break Even', size: 'big', description: 'Revenue covers all expenses - sustainable!', realWorldReward: 'Team dinner at a fancy restaurant' },
-    { id: 'b5', name: '$10k MRR', size: 'medium', description: 'Double digits! $10,000 MRR milestone', realWorldReward: '+$1,000/month salary increase' },
-    { id: 'b6', name: '$25k MRR', size: 'medium', description: 'Quarter way to $100k MRR', realWorldReward: 'New MacBook Pro' },
-    { id: 'b7', name: '100 Customers', size: 'big', description: 'Triple digit customer base achieved', realWorldReward: 'Weekend trip anywhere in Europe' },
-    { id: 'b8', name: '$50k MRR', size: 'big', description: 'Half way to the $100k MRR goal', realWorldReward: '+$2,500/month salary increase' },
-    { id: 'b9', name: '$100k MRR', size: 'big', description: 'The big one! $100,000 monthly recurring', realWorldReward: '10% equity bonus + $5k/month raise' },
-    { id: 'b10', name: '$5M ARR', size: 'big', description: 'Five million annual recurring revenue!', realWorldReward: 'Lambo or Tesla of your choice' },
+    { id: 'b1', name: 'First Organic Signup', size: 'small', points: 20 },
+    { id: 'b2', name: 'First Paying Customer', size: 'small', points: 30, realWorldReward: 'Team dinner' },
+    { id: 'b3', name: 'First Referral', size: 'small', points: 40 },
+    { id: 'b4', name: '5 Customers', size: 'small', points: 50 },
+    { id: 'b5', name: '10 Customers', size: 'medium', points: 75 },
+    { id: 'b6', name: '$5k MRR', size: 'medium', points: 100, realWorldReward: 'Team lunch (covers dev salaries)' },
+    { id: 'b7', name: '10 Referrals', size: 'medium', points: 125 },
+    { id: 'b8', name: '25 Customers', size: 'medium', points: 150 },
+    { id: 'b9', name: '$10k MRR', size: 'medium', points: 200, realWorldReward: 'Owners start getting paid' },
+    { id: 'b10', name: '50 Customers', size: 'medium', points: 250 },
+    { id: 'b11', name: '$20k MRR', size: 'big', points: 400, realWorldReward: '+$1k/month everyone' },
+    { id: 'b12', name: '100 Customers', size: 'big', points: 500 },
+    { id: 'b13', name: '$50k MRR', size: 'big', points: 750, realWorldReward: 'Weekend trip for team' },
+    { id: 'b14', name: '$55k MRR', size: 'big', points: 1000, realWorldReward: 'Owners at $10k — fancy dinner' },
+    { id: 'b15', name: '200 Customers', size: 'big', points: 1250 },
+    { id: 'b16', name: '$100k MRR', size: 'big', points: 2000, realWorldReward: '€5k bonus + equity for key people' },
+    { id: 'b17', name: '500 Customers', size: 'big', points: 3000 },
+    { id: 'b18', name: '$250k MRR', size: 'big', points: 5000, realWorldReward: 'Team trip anywhere in the world' },
+    { id: 'b19', name: '$1M MRR', size: 'big', points: 10000, realWorldReward: 'Dream car or equivalent' },
   ],
   product: [
-    { id: 'p1', name: 'Ship v1', size: 'big', description: 'Launch the first version of the product', realWorldReward: 'Launch party!' },
-    { id: 'p2', name: 'Case Study', size: 'medium', description: 'Publish first customer success story' },
-    { id: 'p3', name: 'Onboarding v2', size: 'medium', description: 'Revamped onboarding with better activation' },
-    { id: 'p4', name: 'Self-Serve', size: 'big', description: 'Customers can sign up without sales call', realWorldReward: '+$1,500/month salary increase' },
-    { id: 'p5', name: 'API Launch', size: 'big', description: 'Public API for integrations and developers', realWorldReward: 'Conference trip to speak about it' },
-    { id: 'p6', name: 'Enterprise', size: 'big', description: 'Enterprise tier with SSO, SLA, dedicated support', realWorldReward: '+$3,000/month salary increase' },
+    { id: 'p1', name: '100 Videos Processed', size: 'small', points: 20 },
+    { id: 'p2', name: 'Educational Videos', size: 'small', points: 30 },
+    { id: 'p3', name: 'Templates Ready', size: 'small', points: 40 },
+    { id: 'p4', name: 'Onboarding Wizard', size: 'medium', points: 60 },
+    { id: 'p5', name: 'Public Launch', size: 'medium', points: 80 },
+    { id: 'p6', name: 'Analytics Functioning', size: 'medium', points: 100 },
+    { id: 'p7', name: '1,000 Videos Processed', size: 'medium', points: 150 },
+    { id: 'p8', name: '50 Templates', size: 'medium', points: 200 },
+    { id: 'p9', name: 'Smooth UX Achieved', size: 'big', points: 300 },
+    { id: 'p10', name: '"Where Are The Bugs?"', size: 'big', points: 500 },
+    { id: 'p11', name: '100,000 Videos Processed', size: 'big', points: 750 },
+    { id: 'p12', name: 'AI Agent Builds Funnels', size: 'big', points: 1500 },
+    { id: 'p13', name: 'Desktop Version', size: 'big', points: 2000 },
+    { id: 'p14', name: '1,000,000 Videos Processed', size: 'big', points: 5000 },
   ],
   achievement: [
-    { id: 'a1', name: 'Alex Hormozi', size: 'big', description: 'Get noticed by Alex Hormozi', realWorldReward: 'Lifetime bragging rights + framed tweet' },
-    { id: 'a2', name: 'Gary Vee', size: 'big', description: 'Get a shoutout from Gary Vaynerchuk', realWorldReward: 'VIP tickets to VeeCon' },
-    { id: 'a3', name: 'Viral Post', size: 'medium', description: 'A post goes viral (1M+ impressions)', realWorldReward: 'Professional photoshoot' },
-    { id: 'a4', name: '$10k Day', size: 'big', description: 'Make $10,000 in a single day', realWorldReward: 'Rolex or luxury watch' },
-    { id: 'a5', name: 'First Hire', size: 'medium', description: 'Hire the first team member', realWorldReward: 'CEO title officially earned' },
+    { id: 'a1', name: 'First Week Streak', size: 'small', points: 50 },
+    { id: 'a2', name: 'Customers in 10+ Countries', size: 'medium', points: 75 },
+    { id: 'a3', name: 'First Podcast Appearance', size: 'medium', points: 100 },
+    { id: 'a4', name: 'First $10k Day', size: 'medium', points: 150 },
+    { id: 'a5', name: 'Big Podcast (100k+ audience)', size: 'medium', points: 250 },
+    { id: 'a6', name: 'Customers in 50+ Countries', size: 'big', points: 300 },
+    { id: 'a7', name: 'Competitor Copies Us', size: 'big', points: 400 },
+    { id: 'a8', name: 'Product Hunt Top 5', size: 'big', points: 500 },
+    { id: 'a9', name: 'Hacker News Front Page', size: 'big', points: 600 },
+    { id: 'a10', name: 'TechCrunch/Forbes Mention', size: 'big', points: 750 },
+    { id: 'a11', name: 'Product Hunt #1 of Day', size: 'big', points: 1000 },
+    { id: 'a12', name: 'Remy Jupille Uses Us', size: 'big', points: 1000 },
+    { id: 'a13', name: 'Yomi Denzel Uses Us', size: 'big', points: 1250 },
+    { id: 'a14', name: 'Iman Gadzhi Uses Us', size: 'big', points: 1500 },
+    { id: 'a15', name: 'Charlie Morgan Uses Us', size: 'big', points: 1500 },
+    { id: 'a16', name: 'Viral Video (1M+ views)', size: 'big', points: 2000 },
+    { id: 'a17', name: 'Gary Vee Notice', size: 'big', points: 3000 },
+    { id: 'a18', name: 'Alex Hormozi Notice', size: 'big', points: 3000 },
+    { id: 'a19', name: 'Wikipedia Page', size: 'big', points: 5000 },
+    { id: 'a20', name: 'Customer Tattoos Logo', size: 'big', points: 10000 },
   ],
 };
 
@@ -147,8 +179,9 @@ interface Goal {
   id: string;
   name: string;
   size: 'small' | 'medium' | 'big';
-  description: string;
+  description?: string;
   realWorldReward?: string;
+  points?: number;
 }
 
 interface Goals {

@@ -352,33 +352,65 @@ export class SpaceGame {
 
     // Use provided goals or fallback to defaults
     const businessMilestones = goals?.business || [
-      { id: 'b1', name: 'First Customer', size: 'medium' as const, description: 'Land your very first paying customer', realWorldReward: 'Celebrate with the team!' },
-      { id: 'b2', name: '$1k MRR', size: 'small' as const, description: 'Reach $1,000 monthly recurring revenue' },
-      { id: 'b3', name: '$5k MRR', size: 'medium' as const, description: 'Hit $5,000 monthly recurring revenue', realWorldReward: '+$500/month salary increase' },
-      { id: 'b4', name: 'Break Even', size: 'big' as const, description: 'Revenue covers all expenses - sustainable!', realWorldReward: 'Team dinner at a fancy restaurant' },
-      { id: 'b5', name: '$10k MRR', size: 'medium' as const, description: 'Double digits! $10,000 MRR milestone', realWorldReward: '+$1,000/month salary increase' },
-      { id: 'b6', name: '$25k MRR', size: 'medium' as const, description: 'Quarter way to $100k MRR', realWorldReward: 'New MacBook Pro' },
-      { id: 'b7', name: '100 Customers', size: 'big' as const, description: 'Triple digit customer base achieved', realWorldReward: 'Weekend trip anywhere in Europe' },
-      { id: 'b8', name: '$50k MRR', size: 'big' as const, description: 'Half way to the $100k MRR goal', realWorldReward: '+$2,500/month salary increase' },
-      { id: 'b9', name: '$100k MRR', size: 'big' as const, description: 'The big one! $100,000 monthly recurring', realWorldReward: '10% equity bonus + $5k/month raise' },
-      { id: 'b10', name: '$5M ARR', size: 'big' as const, description: 'Five million annual recurring revenue!', realWorldReward: 'Lambo or Tesla of your choice' },
+      { id: 'b1', name: 'First Organic Signup', size: 'small' as const, points: 20 },
+      { id: 'b2', name: 'First Paying Customer', size: 'small' as const, points: 30, realWorldReward: 'Team dinner' },
+      { id: 'b3', name: 'First Referral', size: 'small' as const, points: 40 },
+      { id: 'b4', name: '5 Customers', size: 'small' as const, points: 50 },
+      { id: 'b5', name: '10 Customers', size: 'medium' as const, points: 75 },
+      { id: 'b6', name: '$5k MRR', size: 'medium' as const, points: 100, realWorldReward: 'Team lunch (covers dev salaries)' },
+      { id: 'b7', name: '10 Referrals', size: 'medium' as const, points: 125 },
+      { id: 'b8', name: '25 Customers', size: 'medium' as const, points: 150 },
+      { id: 'b9', name: '$10k MRR', size: 'medium' as const, points: 200, realWorldReward: 'Owners start getting paid' },
+      { id: 'b10', name: '50 Customers', size: 'medium' as const, points: 250 },
+      { id: 'b11', name: '$20k MRR', size: 'big' as const, points: 400, realWorldReward: '+$1k/month everyone' },
+      { id: 'b12', name: '100 Customers', size: 'big' as const, points: 500 },
+      { id: 'b13', name: '$50k MRR', size: 'big' as const, points: 750, realWorldReward: 'Weekend trip for team' },
+      { id: 'b14', name: '$55k MRR', size: 'big' as const, points: 1000, realWorldReward: 'Owners at $10k — fancy dinner' },
+      { id: 'b15', name: '200 Customers', size: 'big' as const, points: 1250 },
+      { id: 'b16', name: '$100k MRR', size: 'big' as const, points: 2000, realWorldReward: '€5k bonus + equity for key people' },
+      { id: 'b17', name: '500 Customers', size: 'big' as const, points: 3000 },
+      { id: 'b18', name: '$250k MRR', size: 'big' as const, points: 5000, realWorldReward: 'Team trip anywhere in the world' },
+      { id: 'b19', name: '$1M MRR', size: 'big' as const, points: 10000, realWorldReward: 'Dream car or equivalent' },
     ];
 
     const productMilestones = goals?.product || [
-      { id: 'p1', name: 'Ship v1', size: 'big' as const, description: 'Launch the first version of the product', realWorldReward: 'Launch party!' },
-      { id: 'p2', name: 'Case Study', size: 'medium' as const, description: 'Publish first customer success story' },
-      { id: 'p3', name: 'Onboarding v2', size: 'medium' as const, description: 'Revamped onboarding with better activation' },
-      { id: 'p4', name: 'Self-Serve', size: 'big' as const, description: 'Customers can sign up without sales call', realWorldReward: '+$1,500/month salary increase' },
-      { id: 'p5', name: 'API Launch', size: 'big' as const, description: 'Public API for integrations and developers', realWorldReward: 'Conference trip to speak about it' },
-      { id: 'p6', name: 'Enterprise', size: 'big' as const, description: 'Enterprise tier with SSO, SLA, dedicated support', realWorldReward: '+$3,000/month salary increase' },
+      { id: 'p1', name: '100 Videos Processed', size: 'small' as const, points: 20 },
+      { id: 'p2', name: 'Educational Videos', size: 'small' as const, points: 30 },
+      { id: 'p3', name: 'Templates Ready', size: 'small' as const, points: 40 },
+      { id: 'p4', name: 'Onboarding Wizard', size: 'medium' as const, points: 60 },
+      { id: 'p5', name: 'Public Launch', size: 'medium' as const, points: 80 },
+      { id: 'p6', name: 'Analytics Functioning', size: 'medium' as const, points: 100 },
+      { id: 'p7', name: '1,000 Videos Processed', size: 'medium' as const, points: 150 },
+      { id: 'p8', name: '50 Templates', size: 'medium' as const, points: 200 },
+      { id: 'p9', name: 'Smooth UX Achieved', size: 'big' as const, points: 300 },
+      { id: 'p10', name: '"Where Are The Bugs?"', size: 'big' as const, points: 500 },
+      { id: 'p11', name: '100,000 Videos Processed', size: 'big' as const, points: 750 },
+      { id: 'p12', name: 'AI Agent Builds Funnels', size: 'big' as const, points: 1500 },
+      { id: 'p13', name: 'Desktop Version', size: 'big' as const, points: 2000 },
+      { id: 'p14', name: '1,000,000 Videos Processed', size: 'big' as const, points: 5000 },
     ];
 
     const achievements = goals?.achievement || [
-      { id: 'a1', name: 'Alex Hormozi', size: 'big' as const, description: 'Get noticed by Alex Hormozi', realWorldReward: 'Lifetime bragging rights + framed tweet' },
-      { id: 'a2', name: 'Gary Vee', size: 'big' as const, description: 'Get a shoutout from Gary Vaynerchuk', realWorldReward: 'VIP tickets to VeeCon' },
-      { id: 'a3', name: 'Viral Post', size: 'medium' as const, description: 'A post goes viral (1M+ impressions)', realWorldReward: 'Professional photoshoot' },
-      { id: 'a4', name: '$10k Day', size: 'big' as const, description: 'Make $10,000 in a single day', realWorldReward: 'Rolex or luxury watch' },
-      { id: 'a5', name: 'First Hire', size: 'medium' as const, description: 'Hire the first team member', realWorldReward: 'CEO title officially earned' },
+      { id: 'a1', name: 'First Week Streak', size: 'small' as const, points: 50 },
+      { id: 'a2', name: 'Customers in 10+ Countries', size: 'medium' as const, points: 75 },
+      { id: 'a3', name: 'First Podcast Appearance', size: 'medium' as const, points: 100 },
+      { id: 'a4', name: 'First $10k Day', size: 'medium' as const, points: 150 },
+      { id: 'a5', name: 'Big Podcast (100k+ audience)', size: 'medium' as const, points: 250 },
+      { id: 'a6', name: 'Customers in 50+ Countries', size: 'big' as const, points: 300 },
+      { id: 'a7', name: 'Competitor Copies Us', size: 'big' as const, points: 400 },
+      { id: 'a8', name: 'Product Hunt Top 5', size: 'big' as const, points: 500 },
+      { id: 'a9', name: 'Hacker News Front Page', size: 'big' as const, points: 600 },
+      { id: 'a10', name: 'TechCrunch/Forbes Mention', size: 'big' as const, points: 750 },
+      { id: 'a11', name: 'Product Hunt #1 of Day', size: 'big' as const, points: 1000 },
+      { id: 'a12', name: 'Remy Jupille Uses Us', size: 'big' as const, points: 1000 },
+      { id: 'a13', name: 'Yomi Denzel Uses Us', size: 'big' as const, points: 1250 },
+      { id: 'a14', name: 'Iman Gadzhi Uses Us', size: 'big' as const, points: 1500 },
+      { id: 'a15', name: 'Charlie Morgan Uses Us', size: 'big' as const, points: 1500 },
+      { id: 'a16', name: 'Viral Video (1M+ views)', size: 'big' as const, points: 2000 },
+      { id: 'a17', name: 'Gary Vee Notice', size: 'big' as const, points: 3000 },
+      { id: 'a18', name: 'Alex Hormozi Notice', size: 'big' as const, points: 3000 },
+      { id: 'a19', name: 'Wikipedia Page', size: 'big' as const, points: 5000 },
+      { id: 'a20', name: 'Customer Tattoos Logo', size: 'big' as const, points: 10000 },
     ];
 
     const sizeRadius = { small: 35, medium: 50, big: 70 };
@@ -388,29 +420,31 @@ export class SpaceGame {
     const productHub = ZONES.find(z => z.id === 'hub-product')!;
 
     // Place BUSINESS planets in the Business Hub (bottom-left)
-    // Arrange in a proper spiral pattern - starts tight, expands outward
+    // True Archimedean spiral: r = a + b*θ
     businessMilestones.forEach((m, i) => {
-      // Spiral: angle increases with each planet, distance grows gradually
       const totalPlanets = businessMilestones.length;
-      const spiralTurns = 1.5; // How many times the spiral wraps around
-      const angle = (i / totalPlanets) * Math.PI * 2 * spiralTurns - Math.PI / 2; // Start from top
-      const minDistance = 200;
-      const maxDistance = 800;
-      const distance = minDistance + (i / (totalPlanets - 1)) * (maxDistance - minDistance);
+      // Archimedean spiral parameters
+      const startRadius = 150;
+      const radiusGrowth = 45; // How much radius increases per radian
+      const startAngle = -Math.PI / 2; // Start from top
+      // Each planet is evenly spaced along the spiral
+      const theta = (i / (totalPlanets - 1)) * Math.PI * 5; // ~2.5 full rotations
+      const radius = startRadius + radiusGrowth * theta;
+      const angle = startAngle + theta;
       // Override style to use green tones for business
       const businessStyle = { baseColor: '#4ade80', accent: '#22c55e', type: 'business' };
       planets.push({
         ...m,
-        x: businessHub.centerX + Math.cos(angle) * distance,
-        y: businessHub.centerY + Math.sin(angle) * distance * 0.7,
+        x: businessHub.centerX + Math.cos(angle) * radius,
+        y: businessHub.centerY + Math.sin(angle) * radius,
         radius: sizeRadius[m.size],
         color: businessStyle.baseColor,
         glowColor: 'rgba(74, 222, 128, 0.4)',
         completed: false,
         type: 'business',
         style: businessStyle,
-        hasRing: i === 3 || i === 7,
-        hasMoon: i === 4 || i === 9,
+        hasRing: i === 5 || i === 10 || i === 15,
+        hasMoon: i === 8 || i === 13 || i === 18,
         description: m.description,
         realWorldReward: m.realWorldReward,
         ownerId: null, // Shared planet
@@ -418,51 +452,64 @@ export class SpaceGame {
     });
 
     // Place PRODUCT planets in the Product Hub (bottom-right)
-    // Arrange in a proper spiral pattern - starts tight, expands outward
+    // True Archimedean spiral: r = a + b*θ
     productMilestones.forEach((m, i) => {
-      // Spiral: angle increases with each planet, distance grows gradually
       const totalPlanets = productMilestones.length;
-      const spiralTurns = 1.2; // How many times the spiral wraps around
-      const angle = (i / totalPlanets) * Math.PI * 2 * spiralTurns - Math.PI / 2; // Start from top
-      const minDistance = 200;
-      const maxDistance = 700;
-      const distance = minDistance + (i / Math.max(totalPlanets - 1, 1)) * (maxDistance - minDistance);
+      // Archimedean spiral parameters
+      const startRadius = 150;
+      const radiusGrowth = 50; // How much radius increases per radian
+      const startAngle = -Math.PI / 2; // Start from top
+      // Each planet is evenly spaced along the spiral
+      const theta = (i / (totalPlanets - 1)) * Math.PI * 4; // ~2 full rotations
+      const radius = startRadius + radiusGrowth * theta;
+      const angle = startAngle + theta;
       // Use blue tones for product
       const productStyle = { baseColor: '#5490ff', accent: '#3b82f6', type: 'product' };
       planets.push({
         ...m,
-        x: productHub.centerX + Math.cos(angle) * distance,
-        y: productHub.centerY + Math.sin(angle) * distance * 0.7,
+        x: productHub.centerX + Math.cos(angle) * radius,
+        y: productHub.centerY + Math.sin(angle) * radius,
         radius: sizeRadius[m.size],
         color: productStyle.baseColor,
         glowColor: 'rgba(84, 144, 255, 0.4)',
         completed: false,
         type: 'product',
         style: productStyle,
-        hasRing: i === 2 || i === 5,
-        hasMoon: i === 1,
+        hasRing: i === 4 || i === 9 || i === 13,
+        hasMoon: i === 6 || i === 11,
         description: m.description,
         realWorldReward: m.realWorldReward,
         ownerId: null, // Shared planet
       });
     });
 
-    // Place ACHIEVEMENTS as golden planets orbiting the central zone
+    // Place ACHIEVEMENTS as golden planets spiraling around the BLACK HOLE
+    // Black hole is at CENTER_X + 150, CENTER_Y - 250
+    const blackHoleX = CENTER_X + 150;
+    const blackHoleY = CENTER_Y - 250;
+    // True Archimedean spiral: r = a + b*θ
     achievements.forEach((m, i) => {
-      const angle = (i / achievements.length) * Math.PI * 2 - Math.PI / 2;
-      const distance = 500 + i * 100;
+      const totalPlanets = achievements.length;
+      // Archimedean spiral parameters
+      const startRadius = 200; // Start outside black hole pull radius (350)
+      const radiusGrowth = 40; // How much radius increases per radian
+      const startAngle = -Math.PI / 2; // Start from top
+      // Each planet is evenly spaced along the spiral
+      const theta = (i / (totalPlanets - 1)) * Math.PI * 5; // ~2.5 full rotations
+      const radius = startRadius + radiusGrowth * theta;
+      const angle = startAngle + theta;
       planets.push({
         ...m,
-        x: CENTER_X + Math.cos(angle) * distance,
-        y: CENTER_Y + Math.sin(angle) * distance * 0.5,
+        x: blackHoleX + Math.cos(angle) * radius,
+        y: blackHoleY + Math.sin(angle) * radius,
         radius: sizeRadius[m.size],
         color: '#ffd700',
         glowColor: 'rgba(255, 215, 0, 0.5)',
         completed: false,
         type: 'achievement',
         style: { baseColor: '#ffd700', accent: '#ffa500', type: 'golden' },
-        hasRing: true,
-        hasMoon: false,
+        hasRing: i === 7 || i === 14 || i === 19,
+        hasMoon: i === 4 || i === 11 || i === 17,
         description: m.description,
         realWorldReward: m.realWorldReward,
         ownerId: null, // Shared planet
