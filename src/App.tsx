@@ -201,7 +201,21 @@ interface UserPlanet {
 const loadUserPlanets = (): Record<string, UserPlanet> => {
   try {
     const saved = localStorage.getItem(USER_PLANETS_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const planets = JSON.parse(saved);
+      // Migrate existing planets: if no baseImage but planet hasn't been terraformed,
+      // the current imageUrl is the base
+      for (const userId of Object.keys(planets)) {
+        const planet = planets[userId];
+        if (planet && planet.imageUrl && !planet.baseImage) {
+          // Only set base if never terraformed (otherwise we don't know the original)
+          if (!planet.terraformCount || planet.terraformCount === 0) {
+            planet.baseImage = planet.imageUrl;
+          }
+        }
+      }
+      return planets;
+    }
   } catch (e) {
     console.error('Failed to load user planets:', e);
   }
