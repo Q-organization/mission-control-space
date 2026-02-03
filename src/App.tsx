@@ -3450,8 +3450,8 @@ function App() {
               })()}
             </div>
 
-            {/* Planet versions */}
-            {(getUserPlanet(viewingPlanetOwner).baseImage || getUserPlanet(viewingPlanetOwner).history.length > 0) ? (
+            {/* Planet versions - only show if we have history data (your own planet) */}
+            {(getUserPlanet(viewingPlanetOwner).baseImage || getUserPlanet(viewingPlanetOwner).history.length > 0) && (
               <div style={{ marginBottom: '1rem' }}>
                 <h4 style={{ color: '#888', fontSize: '0.8rem', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
                   Planet Versions
@@ -3517,10 +3517,6 @@ function App() {
                   })}
                 </div>
               </div>
-            ) : (
-              <p style={{ color: '#666', textAlign: 'center', marginBottom: '1rem' }}>
-                This planet hasn't been terraformed yet.
-              </p>
             )}
 
             <button style={styles.cancelButton} onClick={() => { setViewingPlanetOwner(null); gameRef.current?.clearLandedState(); }}>
