@@ -159,6 +159,7 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
     if (existing) {
       // Update existing player - only online status and display info, NOT ship data
       playerDbIdRef.current = existing.id;
+      console.log('[registerPlayer] Set playerDbIdRef.current =', existing.id);
       const updateData: Record<string, unknown> = {
         display_name: displayName,
         color,
@@ -258,11 +259,13 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
       .eq('team_id', teamId);
 
     // Fetch total earned per player (sum of all positive transactions)
-    const { data: earnedData } = await supabase
+    const { data: earnedData, error: earnedError } = await supabase
       .from('point_transactions')
       .select('player_id, points')
       .eq('team_id', teamId)
       .gt('points', 0);
+
+    console.log('[fetchTeamData] earnedData query:', { earnedData, earnedError, teamId });
 
     // Build a map of player_id -> total earned
     const earnedByPlayer: Record<string, number> = {};
@@ -273,12 +276,17 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
         }
       }
     }
+    console.log('[fetchTeamData] earnedByPlayer:', earnedByPlayer);
 
     if (playersData) {
       // Map to PlayerData, but ensure current player is always marked online
       // (the fetch might return stale data due to replication lag)
       const mappedPlayers = playersData.map((row) => {
-        const totalEarned = earnedByPlayer[row.id] || 0;
+        const earnedFromTx = earnedByPlayer[row.id] || 0;
+        const currentBalance = row.personal_points || 0;
+        // Use the higher of: transactions total OR current balance
+        // (current balance can't exceed what was earned, so if it's higher, transactions are incomplete)
+        const totalEarned = Math.max(earnedFromTx, currentBalance);
         const player = playerRowToData(row, totalEarned);
         // Force current player to be online - we just registered them
         if (playerDbIdRef.current && player.id === playerDbIdRef.current) {
@@ -372,7 +380,7 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
 
     // Insert transaction
     if (playerDbIdRef.current) {
-      await supabase.from('point_transactions').insert({
+      console.log('[completePlanet] Inserting transaction:', {
         team_id: teamId,
         player_id: playerDbIdRef.current,
         source: 'planet',
@@ -380,6 +388,19 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
         points,
         point_type: 'team',
       });
+      const { error: txError } = await supabase.from('point_transactions').insert({
+        team_id: teamId,
+        player_id: playerDbIdRef.current,
+        source: 'planet',
+        task_name: `Completed planet: ${planetId}`,
+        points,
+        point_type: 'team',
+      });
+      if (txError) {
+        console.error('[completePlanet] Transaction insert failed:', txError);
+      } else {
+        console.log('[completePlanet] Transaction inserted successfully');
+      }
     }
   }, [teamId]);
 
@@ -519,14 +540,25 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (payload: any) => {
           if (payload.eventType === 'INSERT') {
-            const player = playerRowToData(payload.new);
+            // For new players, use personal_points as initial totalEarned
+            const newPersonalPoints = payload.new.personal_points || 0;
+            const player = playerRowToData(payload.new, newPersonalPoints);
             setPlayers((prev) => [...prev.filter((p) => p.id !== player.id), player]);
             if (player.id !== playerDbIdRef.current) {
               onPlayerJoined?.(player);
             }
           } else if (payload.eventType === 'UPDATE') {
-            const player = playerRowToData(payload.new);
             setPlayers((prev) => {
+              const existing = prev.find((p) => p.id === payload.new.id);
+              // Preserve existing totalEarned, but if personal_points increased, add the difference
+              const oldPersonalPoints = existing?.personalPoints || 0;
+              const newPersonalPoints = payload.new.personal_points || 0;
+              const pointsGained = Math.max(0, newPersonalPoints - oldPersonalPoints);
+              const newTotalEarned = (existing?.totalEarned || 0) + pointsGained;
+              // Ensure totalEarned is at least the current balance
+              const totalEarned = Math.max(newTotalEarned, newPersonalPoints);
+              const player = playerRowToData(payload.new, totalEarned);
+
               const existingIndex = prev.findIndex((p) => p.id === player.id);
               if (existingIndex >= 0) {
                 // Update existing player
@@ -537,13 +569,17 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
               }
             });
             // Update personal points if this is the current player
-            if (player.id === playerDbIdRef.current && payload.new.personal_points !== undefined) {
+            if (payload.new.id === playerDbIdRef.current && payload.new.personal_points !== undefined) {
               setPersonalPoints(payload.new.personal_points || 0);
             }
             // Suppress "Player left" for current player or the player we just switched from
-            if (!player.isOnline && player.id !== playerDbIdRef.current && player.id !== previousPlayerIdRef.current) {
-              onPlayerLeft?.(player.id);
-            }
+            setPlayers((prev) => {
+              const player = prev.find((p) => p.id === payload.new.id);
+              if (player && !player.isOnline && player.id !== playerDbIdRef.current && player.id !== previousPlayerIdRef.current) {
+                onPlayerLeft?.(player.id);
+              }
+              return prev;
+            });
           } else if (payload.eventType === 'DELETE') {
             const oldPlayer = payload.old as { id: string };
             setPlayers((prev) => prev.filter((p) => p.id !== oldPlayer.id));

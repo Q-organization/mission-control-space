@@ -166,8 +166,10 @@ Deno.serve(async (req) => {
         .single();
 
       if (player) {
+        console.log('Found player:', { id: player.id, username: player.username, personal_points: player.personal_points });
+
         // Check if points were already awarded for this task (avoid duplicates)
-        const { data: existingTransaction } = await supabase
+        const { data: existingTransaction, error: checkError } = await supabase
           .from('point_transactions')
           .select('id')
           .eq('notion_task_id', planet.notion_task_id)
@@ -175,9 +177,11 @@ Deno.serve(async (req) => {
           .ilike('task_name', `Completed:%`)
           .single();
 
+        console.log('Duplicate check result:', { existingTransaction, checkError });
+
         if (!existingTransaction) {
           // Create point transaction
-          await supabase.from('point_transactions').insert({
+          const txData = {
             team_id: planet.team_id,
             player_id: player.id,
             source: 'notion',
@@ -185,15 +189,28 @@ Deno.serve(async (req) => {
             task_name: `Completed: ${planet.name}`,
             points: points,
             point_type: 'personal',
-          });
+          };
+          console.log('Inserting transaction:', txData);
+
+          const { error: txError } = await supabase.from('point_transactions').insert(txData);
+
+          if (txError) {
+            console.error('Failed to insert point transaction:', JSON.stringify(txError));
+          } else {
+            console.log(`Transaction created for ${player.username}: +${points} pts for "${planet.name}"`);
+          }
 
           // Update player's personal points
-          await supabase
+          const { error: updateError } = await supabase
             .from('players')
             .update({ personal_points: (player.personal_points || 0) + points })
             .eq('id', player.id);
 
-          console.log(`Awarded ${points} personal points to ${player.username} for completing "${planet.name}"`);
+          if (updateError) {
+            console.error('Failed to update player points:', updateError);
+          } else {
+            console.log(`Awarded ${points} personal points to ${player.username} for completing "${planet.name}"`);
+          }
         } else {
           console.log(`Points already awarded to ${player.username} for "${planet.name}" - skipping duplicate`);
         }
