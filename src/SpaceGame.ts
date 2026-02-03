@@ -179,6 +179,7 @@ export class SpaceGame {
   private destroyProgress: number = 0;
   private destroyPlanet: Planet | null = null;
   private destroyParticles: { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }[] = [];
+  private destroyFromRifle: boolean = false; // True if destroyed by rifle (skip ship effects)
 
   // Claim animation state (teleport ship + planet to home base)
   private isClaiming: boolean = false;
@@ -2135,7 +2136,7 @@ export class SpaceGame {
     this.emitMuzzleFlash(ship.x, ship.y, ship.rotation);
 
     // Play sound
-    soundManager.playUIClick();
+    soundManager.playLaserShoot();
   }
 
   // Update all projectiles (movement, collision, cleanup)
@@ -2215,7 +2216,7 @@ export class SpaceGame {
     if (newHealth <= 0) {
       this.planetHealth.delete(planet.id);
       this.planetDamageEffects.delete(planet.id);
-      this.startDestroyAnimation(planet);
+      this.startDestroyAnimation(planet, true); // From rifle - skip ship effects
     }
   }
 
@@ -2327,15 +2328,18 @@ export class SpaceGame {
   // ==================== END SPACE RIFLE SYSTEM ====================
 
   // Start destroy animation (for cleaning up completed planets)
-  private startDestroyAnimation(planet: Planet) {
+  private startDestroyAnimation(planet: Planet, fromRifle: boolean = false) {
     this.isDestroying = true;
-    this.destroyProgress = 0;
+    this.destroyProgress = fromRifle ? 0.6 : 0; // Skip charging phase for rifle
     this.destroyPlanet = planet;
     this.destroyParticles = [];
+    this.destroyFromRifle = fromRifle;
 
-    // Clear landed state
-    this.isLanded = false;
-    this.landedPlanet = null;
+    // Clear landed state (only relevant for canon)
+    if (!fromRifle) {
+      this.isLanded = false;
+      this.landedPlanet = null;
+    }
 
     // Play sound
     soundManager.playDockingSound();
@@ -2346,19 +2350,23 @@ export class SpaceGame {
     if (!this.isDestroying || !this.destroyPlanet) return;
 
     const planet = this.destroyPlanet;
-    this.destroyProgress += 0.025; // ~2 second animation
-
     const { ship } = this.state;
 
-    // Keep ship in position
-    ship.x = planet.x;
-    ship.y = planet.y - planet.radius - 25;
-    ship.vx = 0;
-    ship.vy = 0;
-    ship.rotation = -Math.PI / 2;
+    // Rifle destruction is faster and starts at explosion phase
+    const animSpeed = this.destroyFromRifle ? 0.04 : 0.025;
+    this.destroyProgress += animSpeed;
 
-    // Phase 1: Charging red laser (0-0.3)
-    if (this.destroyProgress < 0.3) {
+    // Only position ship for canon destruction (not rifle)
+    if (!this.destroyFromRifle) {
+      ship.x = planet.x;
+      ship.y = planet.y - planet.radius - 25;
+      ship.vx = 0;
+      ship.vy = 0;
+      ship.rotation = -Math.PI / 2;
+    }
+
+    // Phase 1: Charging red laser (0-0.3) - Canon only
+    if (!this.destroyFromRifle && this.destroyProgress < 0.3) {
       if (Math.random() < 0.4) {
         const angle = Math.random() * Math.PI * 2;
         const dist = 60 + Math.random() * 30;
@@ -2373,8 +2381,8 @@ export class SpaceGame {
         });
       }
     }
-    // Phase 2: Red beam hits planet, planet cracks (0.3-0.6)
-    else if (this.destroyProgress < 0.6) {
+    // Phase 2: Red beam hits planet, planet cracks (0.3-0.6) - Canon only
+    else if (!this.destroyFromRifle && this.destroyProgress < 0.6) {
       for (let i = 0; i < 4; i++) {
         const angle = Math.random() * Math.PI * 2;
         this.destroyParticles.push({
@@ -2390,18 +2398,22 @@ export class SpaceGame {
     }
     // Phase 3: Massive explosion (0.6-0.85)
     else if (this.destroyProgress < 0.85) {
-      if (this.destroyProgress < 0.7) {
-        for (let i = 0; i < 20; i++) {
+      // Rifle destruction has more intense explosion
+      const particleCount = this.destroyFromRifle ? 35 : 20;
+      const burstWindow = this.destroyFromRifle ? 0.75 : 0.7;
+
+      if (this.destroyProgress < burstWindow) {
+        for (let i = 0; i < particleCount; i++) {
           const angle = Math.random() * Math.PI * 2;
-          const speed = 4 + Math.random() * 8;
+          const speed = this.destroyFromRifle ? (6 + Math.random() * 12) : (4 + Math.random() * 8);
           this.destroyParticles.push({
             x: planet.x + (Math.random() - 0.5) * planet.radius,
             y: planet.y + (Math.random() - 0.5) * planet.radius,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            life: 50 + Math.random() * 40,
-            color: ['#ff4444', '#ff8800', '#ffcc00', '#ffffff'][Math.floor(Math.random() * 4)],
-            size: 4 + Math.random() * 6,
+            life: this.destroyFromRifle ? (60 + Math.random() * 50) : (50 + Math.random() * 40),
+            color: ['#ff4444', '#ff8800', '#ffcc00', '#ffffff', '#ff2200'][Math.floor(Math.random() * 5)],
+            size: this.destroyFromRifle ? (5 + Math.random() * 8) : (4 + Math.random() * 6),
           });
         }
       }
@@ -2448,8 +2460,8 @@ export class SpaceGame {
     // Transform to world coordinates (same as getWrappedPositions)
     ctx.translate(-this.state.camera.x, -this.state.camera.y);
 
-    // Phase 1: Red charging glow
-    if (this.destroyProgress < 0.3) {
+    // Phase 1: Red charging glow - Canon only
+    if (!this.destroyFromRifle && this.destroyProgress < 0.3) {
       const chargeIntensity = this.destroyProgress / 0.3;
       ctx.beginPath();
       ctx.arc(ship.x, ship.y, 25 + chargeIntensity * 25, 0, Math.PI * 2);
@@ -2460,8 +2472,8 @@ export class SpaceGame {
       ctx.fill();
     }
 
-    // Phase 2: Red destruction beam
-    if (this.destroyProgress >= 0.3 && this.destroyProgress < 0.6) {
+    // Phase 2: Red destruction beam - Canon only
+    if (!this.destroyFromRifle && this.destroyProgress >= 0.3 && this.destroyProgress < 0.6) {
       const beamProgress = (this.destroyProgress - 0.3) / 0.3;
       const beamWidth = 12 + Math.sin(this.destroyProgress * 60) * 3;
 
@@ -2511,12 +2523,14 @@ export class SpaceGame {
     // Phase 3: Massive flash and explosion
     if (this.destroyProgress >= 0.6 && this.destroyProgress < 0.8) {
       const flashIntensity = 1 - (this.destroyProgress - 0.6) / 0.2;
-      ctx.fillStyle = `rgba(255, 200, 100, ${flashIntensity * 0.9})`;
+      // Rifle destruction has bigger flash
+      const flashSize = this.destroyFromRifle ? 400 : 300;
+      ctx.fillStyle = `rgba(255, 200, 100, ${flashIntensity * (this.destroyFromRifle ? 1 : 0.9)})`;
       ctx.fillRect(
-        planet.x - 300,
-        planet.y - 300,
-        600,
-        600
+        planet.x - flashSize,
+        planet.y - flashSize,
+        flashSize * 2,
+        flashSize * 2
       );
     }
 
@@ -2527,7 +2541,7 @@ export class SpaceGame {
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fillStyle = p.color;
       ctx.globalAlpha = Math.min(1, alpha);
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = this.destroyFromRifle ? 12 : 8;
       ctx.shadowColor = p.color;
       ctx.fill();
     }

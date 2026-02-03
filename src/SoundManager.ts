@@ -67,6 +67,17 @@ const SOUND_CONFIGS: Record<string, SoundConfig> = {
     src: [`${SOUNDS_PATH}click.ogg`],
     volume: 0.3,
   },
+  select: {
+    src: [`${SOUNDS_PATH}select.ogg`],
+    volume: 0.4,
+  },
+
+  // Weapons
+  laserShoot: {
+    src: [`${SOUNDS_PATH}collision.ogg`], // Using collision sound with higher pitch
+    volume: 0.25,
+    rate: 2.5, // Higher pitch for laser effect
+  },
 
   // Black hole
   blackHoleAmbient: {
@@ -213,6 +224,15 @@ export class SoundManager {
   // UI sounds
   public playUIClick() {
     this.play('click');
+  }
+
+  public playSelect() {
+    this.play('select');
+  }
+
+  // Weapon sounds
+  public playLaserShoot() {
+    this.play('laserShoot');
   }
 
   // Upgrade sounds
