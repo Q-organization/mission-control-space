@@ -40,7 +40,7 @@ interface UseMultiplayerSyncReturn {
   recentTransactions: PointTx[];
   isConnected: boolean;
   updateTeamPoints: (points: number, source: 'planet' | 'notion' | 'manual', taskName?: string) => Promise<void>;
-  updatePersonalPoints: (amount: number) => Promise<void>;
+  updatePersonalPoints: (amount: number, taskName?: string) => Promise<void>;
   completePlanet: (planetId: string, points: number) => Promise<void>;
   updatePlayerData: (updates: Record<string, unknown>) => Promise<void>;
   syncLocalState: (completedPlanets: string[], customPlanets: unknown[], goals: unknown) => Promise<void>;
@@ -373,6 +373,7 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
         source: 'planet',
         task_name: `Completed planet: ${planetId}`,
         points,
+        point_type: 'team',
       });
     }
   }, [teamId]);
@@ -388,9 +389,9 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
   }, []);
 
   // Update personal points (for spending on upgrades)
-  const updatePersonalPoints = useCallback(async (amount: number) => {
-    if (!playerDbIdRef.current) {
-      console.error('updatePersonalPoints: No player ID available');
+  const updatePersonalPoints = useCallback(async (amount: number, taskName?: string) => {
+    if (!playerDbIdRef.current || !teamId) {
+      console.error('updatePersonalPoints: No player ID or team ID available');
       return;
     }
 
@@ -419,13 +420,23 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
           return;
         }
 
+        // Log transaction for tracking
+        await supabase.from('point_transactions').insert({
+          team_id: teamId,
+          player_id: playerDbIdRef.current,
+          source: 'manual',
+          task_name: taskName || (amount < 0 ? 'Ship upgrade purchase' : 'Points earned'),
+          points: amount,
+          point_type: 'personal',
+        });
+
         console.log(`Personal points updated: ${currentPlayer.personal_points || 0} + ${amount} = ${newPoints}`);
         setPersonalPoints(newPoints);
       }
     } catch (err) {
       console.error('updatePersonalPoints: Exception', err);
     }
-  }, []);
+  }, [teamId]);
 
   // Sync local state to team (for initial setup or migration)
   const syncLocalState = useCallback(async (

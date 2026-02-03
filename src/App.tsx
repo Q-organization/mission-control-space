@@ -751,7 +751,18 @@ function App() {
 
   // Fetch full points history when modal opens
   const fetchPointsHistory = useCallback(async (type: 'personal' | 'team') => {
-    if (!team?.id || !currentDbPlayerId) return;
+    if (!team?.id) {
+      console.log('[fetchPointsHistory] No team ID');
+      return;
+    }
+
+    // For personal view, we need the player ID
+    if (type === 'personal' && !currentDbPlayerId) {
+      console.log('[fetchPointsHistory] No player ID for personal view');
+      return;
+    }
+
+    console.log('[fetchPointsHistory] Fetching', type, 'history. teamId:', team.id, 'playerId:', currentDbPlayerId);
 
     setIsLoadingHistory(true);
     try {
@@ -762,13 +773,15 @@ function App() {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (type === 'personal') {
-        // Get current player's personal transactions
+      if (type === 'personal' && currentDbPlayerId) {
+        // Get current player's transactions (they performed or earned)
         query = query.eq('player_id', currentDbPlayerId);
       }
       // For team, get all transactions (no filter on player_id)
 
       const { data, error } = await query;
+
+      console.log('[fetchPointsHistory] Result:', { data, error, count: data?.length });
 
       if (error) {
         console.error('Failed to fetch points history:', error);
@@ -1524,7 +1537,7 @@ function App() {
 
         // Deduct personal points and sync to backend
         setPersonalPoints(prev => prev - 25);
-        updateRemotePersonalPoints(-25);
+        updateRemotePersonalPoints(-25, 'Planet generation');
 
         const newPlanet = {
           imageUrl: newImageUrl,
@@ -1630,7 +1643,7 @@ function App() {
 
         // Deduct personal points and sync to backend
         setPersonalPoints(prev => prev - 50);
-        updateRemotePersonalPoints(-50);
+        updateRemotePersonalPoints(-50, 'Planet terraforming');
 
         // Update user's planet
         const newTerraformCount = currentPlanet.terraformCount + 1;
@@ -1799,7 +1812,7 @@ function App() {
     const newLevel = currentLevel + 1;
     // Deduct personal points and sync to backend
     setPersonalPoints(prev => prev - cost);
-    updateRemotePersonalPoints(-cost);
+    updateRemotePersonalPoints(-cost, `Planet size upgrade (level ${newLevel})`);
 
     const updatedPlanet = {
       ...currentPlanet,
@@ -2221,7 +2234,7 @@ function App() {
       if (newImageUrl) {
         // Deduct personal points and sync to backend
         setPersonalPoints(prev => prev - VISUAL_UPGRADE_COST);
-        updateRemotePersonalPoints(-VISUAL_UPGRADE_COST);
+        updateRemotePersonalPoints(-VISUAL_UPGRADE_COST, 'Ship visual upgrade');
 
         // Update user's ship
         const userId = state.currentUser || 'default';
@@ -2296,7 +2309,7 @@ function App() {
 
     // Deduct personal points and sync to backend
     setPersonalPoints(prev => prev - cost);
-    updateRemotePersonalPoints(-cost);
+    updateRemotePersonalPoints(-cost, `Ship size upgrade (level ${currentLevel + 1})`);
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
   };
@@ -2316,7 +2329,7 @@ function App() {
 
     // Deduct personal points and sync to backend
     setPersonalPoints(prev => prev - cost);
-    updateRemotePersonalPoints(-cost);
+    updateRemotePersonalPoints(-cost, `Ship speed upgrade (level ${currentLevel + 1})`);
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
   };
@@ -2336,7 +2349,7 @@ function App() {
 
     // Deduct personal points and sync to backend
     setPersonalPoints(prev => prev - cost);
-    updateRemotePersonalPoints(-cost);
+    updateRemotePersonalPoints(-cost, `Landing speed upgrade (level ${currentLevel + 1})`);
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
   };
@@ -2367,7 +2380,7 @@ function App() {
       };
       // Deduct personal points and sync to backend
       setPersonalPoints(prev => prev - glow.cost);
-      updateRemotePersonalPoints(-glow.cost);
+      updateRemotePersonalPoints(-glow.cost, `Ship glow: ${glow.name}`);
       updateUserShipEffects(userId, currentShip, newEffects);
       soundManager.playShipUpgrade();
     }
@@ -2399,7 +2412,7 @@ function App() {
       };
       // Deduct personal points and sync to backend
       setPersonalPoints(prev => prev - trail.cost);
-      updateRemotePersonalPoints(-trail.cost);
+      updateRemotePersonalPoints(-trail.cost, `Ship trail: ${trail.name}`);
       updateUserShipEffects(userId, currentShip, newEffects);
       soundManager.playShipUpgrade();
     }
@@ -2423,7 +2436,7 @@ function App() {
 
     // Deduct personal points and sync to backend
     setPersonalPoints(prev => prev - DESTROY_CANON_COST);
-    updateRemotePersonalPoints(-DESTROY_CANON_COST);
+    updateRemotePersonalPoints(-DESTROY_CANON_COST, 'Destroy Canon');
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
   };
