@@ -3178,6 +3178,15 @@ function App() {
                   ? 'Not terraformed yet'
                   : `Terraformed ${getUserPlanet(viewingPlanetOwner).terraformCount} times`}
               </p>
+              {(() => {
+                const planet = getUserPlanet(viewingPlanetOwner);
+                const population = getPlanetPopulation(planet.terraformCount, planet.sizeLevel);
+                return population > 0 ? (
+                  <p style={{ color: '#4ade80', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                    🏘️ Population: {formatPopulation(population)} inhabitants
+                  </p>
+                ) : null;
+              })()}
             </div>
 
             {/* Terraform history */}
