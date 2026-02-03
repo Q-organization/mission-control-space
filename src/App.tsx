@@ -1416,13 +1416,8 @@ function App() {
       fireConfetti(planet.size);
       soundManager.playDockingSound();
 
-      // Mark as completed in database (this triggers webhook which awards personal points)
+      // Mark as completed in database - backend awards points to assigned player
       completeNotionPlanet(planet.id);
-
-      // Award personal points (use notion task points if available, fallback to size-based)
-      const pointsEarned = planet.points || POINTS_PER_SIZE[planet.size];
-      setPersonalPoints(prev => prev + pointsEarned);
-      updateRemotePersonalPoints(pointsEarned);
 
       gameRef.current?.completePlanet(planet.id);
       return;
@@ -1523,13 +1518,8 @@ function App() {
       fireConfetti(planet.size);
       soundManager.playDockingSound();
 
-      // Mark as completed in database (this triggers webhook which awards personal points)
+      // Mark as completed in database - backend awards points to assigned player
       completeNotionPlanet(planet.id);
-
-      // Award personal points
-      const pointsEarned = planet.points || POINTS_PER_SIZE[planet.size];
-      setPersonalPoints(prev => prev + pointsEarned);
-      updateRemotePersonalPoints(pointsEarned);
 
       gameRef.current?.completePlanet(planet.id);
 

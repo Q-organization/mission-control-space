@@ -36,10 +36,10 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get the notion task ID from our database
+    // Get the notion task ID and other data from our database
     const { data: planet, error: fetchError } = await supabase
       .from('notion_planets')
-      .select('notion_task_id, name, completed')
+      .select('notion_task_id, name, completed, assigned_to, points, team_id')
       .eq('id', notion_planet_id)
       .single();
 
@@ -53,6 +53,8 @@ Deno.serve(async (req) => {
 
     console.log('Found planet:', planet.name);
     console.log('Notion task ID:', planet.notion_task_id);
+    console.log('Assigned to:', planet.assigned_to);
+    console.log('Points:', planet.points);
     console.log('Already completed:', planet.completed);
 
     if (planet.completed) {
@@ -152,6 +154,56 @@ Deno.serve(async (req) => {
       console.error('Failed to update local database:', updateError);
     }
 
+    // Award points to the assigned player
+    const points = planet.points || 30; // Default to 30 if not set
+    if (planet.assigned_to && planet.team_id) {
+      // Find player by username (case-insensitive)
+      const { data: player } = await supabase
+        .from('players')
+        .select('id, username, personal_points')
+        .eq('team_id', planet.team_id)
+        .ilike('username', planet.assigned_to)
+        .single();
+
+      if (player) {
+        // Check if points were already awarded for this task (avoid duplicates)
+        const { data: existingTransaction } = await supabase
+          .from('point_transactions')
+          .select('id')
+          .eq('notion_task_id', planet.notion_task_id)
+          .eq('player_id', player.id)
+          .ilike('task_name', `Completed:%`)
+          .single();
+
+        if (!existingTransaction) {
+          // Create point transaction
+          await supabase.from('point_transactions').insert({
+            team_id: planet.team_id,
+            player_id: player.id,
+            source: 'notion',
+            notion_task_id: planet.notion_task_id,
+            task_name: `Completed: ${planet.name}`,
+            points: points,
+            point_type: 'personal',
+          });
+
+          // Update player's personal points
+          await supabase
+            .from('players')
+            .update({ personal_points: (player.personal_points || 0) + points })
+            .eq('id', player.id);
+
+          console.log(`Awarded ${points} personal points to ${player.username} for completing "${planet.name}"`);
+        } else {
+          console.log(`Points already awarded to ${player.username} for "${planet.name}" - skipping duplicate`);
+        }
+      } else {
+        console.log(`Could not find player "${planet.assigned_to}" in team ${planet.team_id} - skipping point award`);
+      }
+    } else {
+      console.log(`No assigned player or team_id for planet "${planet.name}" - skipping point award`);
+    }
+
     console.log(`Completed planet "${planet.name}" and updated Notion status to Archived`);
 
     return new Response(
@@ -160,6 +212,8 @@ Deno.serve(async (req) => {
         notion_task_id: planet.notion_task_id,
         planet_name: planet.name,
         notion_status: 'Archived',
+        points_awarded: points,
+        awarded_to: planet.assigned_to || null,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
