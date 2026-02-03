@@ -25,9 +25,7 @@ interface UseMultiplayerSyncOptions {
   username: string;
   displayName: string;
   color: string;
-  shipImage?: string; // Current ship image URL
-  shipEffects?: ShipEffects; // Current ship effects (size, glow, etc.)
-  shipUpgrades?: string[]; // Ship upgrade IDs
+  // Ship data is no longer passed here - it's loaded FROM Supabase, not written TO it on login
   onTeamUpdate?: (team: MultiplayerTeam) => void;
   onPlayerJoined?: (player: PlayerData) => void;
   onPlayerLeft?: (playerId: string) => void;
@@ -108,9 +106,6 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
     username,
     displayName,
     color,
-    shipImage,
-    shipEffects,
-    shipUpgrades,
     onTeamUpdate,
     onPlayerJoined,
     onPlayerLeft,
@@ -130,8 +125,17 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
   const previousPlayerIdRef = useRef<string | null>(null);
 
   // Register/update player in the team
+  // IMPORTANT: This function only updates online status and display info.
+  // Ship data is NEVER written here - it's only written when the user actually purchases upgrades.
+  // This prevents overwriting existing ship data when a user logs back in.
   const registerPlayer = useCallback(async () => {
     if (!teamId) return;
+
+    // Don't register anonymous users - wait for real user selection
+    if (username === 'anonymous') {
+      console.log('[registerPlayer] Skipping registration for anonymous user');
+      return;
+    }
 
     console.log('[registerPlayer] Starting with username:', username, 'teamId:', teamId);
 
@@ -147,7 +151,7 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
     console.log('[registerPlayer] Existing player:', existing ? { id: existing.id, username: existing.username } : 'none');
 
     if (existing) {
-      // Update existing player
+      // Update existing player - only online status and display info, NOT ship data
       playerDbIdRef.current = existing.id;
       const updateData: Record<string, unknown> = {
         display_name: displayName,
@@ -155,16 +159,8 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
         is_online: true,
         last_seen: new Date().toISOString(),
       };
-      // Sync ship data if provided
-      if (shipImage) {
-        updateData.ship_current_image = shipImage;
-      }
-      if (shipEffects) {
-        updateData.ship_effects = shipEffects;
-      }
-      if (shipUpgrades) {
-        updateData.ship_upgrades = shipUpgrades;
-      }
+      // DO NOT update ship_current_image, ship_effects, or ship_upgrades here!
+      // Those are only updated when the user actually makes purchases via updatePlayerData()
       await supabase
         .from('players')
         .update(updateData)
@@ -183,25 +179,19 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
         });
       }
     } else {
-      // Create new player
+      // Create new player with default ship (no upgrades yet)
       const newPlayer: Record<string, unknown> = {
         team_id: teamId,
         username,
         display_name: displayName,
         color,
         is_online: true,
-        last_seen: new Date().toISOString(), // Required for isOnline check in playerRowToData
+        last_seen: new Date().toISOString(),
+        // New players start with defaults - these will be updated when they purchase upgrades
+        ship_current_image: '/ship-base.png',
+        ship_effects: defaultShipEffects,
+        ship_upgrades: [],
       };
-      // Include ship data if provided
-      if (shipImage) {
-        newPlayer.ship_current_image = shipImage;
-      }
-      if (shipEffects) {
-        newPlayer.ship_effects = shipEffects;
-      }
-      if (shipUpgrades) {
-        newPlayer.ship_upgrades = shipUpgrades;
-      }
 
       const { data: created, error } = await supabase
         .from('players')
@@ -217,7 +207,7 @@ export function useMultiplayerSync(options: UseMultiplayerSyncOptions): UseMulti
         });
       }
     }
-  }, [teamId, username, displayName, color, shipImage, shipEffects, shipUpgrades]);
+  }, [teamId, username, displayName, color]);
 
   // Update player online status
   const updateOnlineStatus = useCallback(async (isOnline: boolean) => {

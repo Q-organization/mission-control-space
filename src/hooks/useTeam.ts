@@ -32,13 +32,13 @@ export function useTeam(): UseTeamReturn {
     setError(null);
 
     try {
-      // Try to get the default team (there should only be one)
+      // Try to get the default team (fetch all in case of duplicates from race condition)
       console.log('[useTeam] Fetching existing team...');
       const { data: existingTeams, error: fetchError } = await supabase
         .from('teams')
         .select()
         .eq('name', DEFAULT_TEAM_NAME)
-        .limit(1);
+        .order('created_at', { ascending: true });
 
       console.log('[useTeam] Fetch result:', { existingTeams, fetchError });
 
@@ -50,8 +50,11 @@ export function useTeam(): UseTeamReturn {
       }
 
       if (existingTeams && existingTeams.length > 0) {
-        // Join existing team
+        // Join existing team - use oldest one (already sorted by created_at ascending)
         const existingTeam = existingTeams[0];
+        if (existingTeams.length > 1) {
+          console.warn('[useTeam] Multiple teams with same name found, using oldest:', existingTeam.id);
+        }
         const multiplayerTeam = teamRowToMultiplayer(existingTeam);
         setTeam(multiplayerTeam);
         setStoredTeamId(existingTeam.id);
@@ -73,9 +76,10 @@ export function useTeam(): UseTeamReturn {
             .from('teams')
             .select()
             .eq('name', DEFAULT_TEAM_NAME)
-            .limit(1);
+            .order('created_at', { ascending: true });
 
           if (retryTeams && retryTeams.length > 0) {
+            // Use oldest team (first after sorting)
             const multiplayerTeam = teamRowToMultiplayer(retryTeams[0]);
             setTeam(multiplayerTeam);
             setStoredTeamId(retryTeams[0].id);
@@ -85,10 +89,22 @@ export function useTeam(): UseTeamReturn {
             setError(createError.message);
           }
         } else if (newTeam) {
-          const multiplayerTeam = teamRowToMultiplayer(newTeam);
+          // After creating, check if another was created at same time (race condition)
+          const { data: allTeams } = await supabase
+            .from('teams')
+            .select()
+            .eq('name', DEFAULT_TEAM_NAME)
+            .order('created_at', { ascending: true });
+
+          // Use the oldest team (might be ours or another concurrent creation)
+          const teamToUse = allTeams && allTeams.length > 0 ? allTeams[0] : newTeam;
+          if (allTeams && allTeams.length > 1) {
+            console.warn('[useTeam] Race condition detected - multiple teams created, using oldest:', teamToUse.id);
+          }
+          const multiplayerTeam = teamRowToMultiplayer(teamToUse);
           setTeam(multiplayerTeam);
-          setStoredTeamId(newTeam.id);
-          console.log('Created new team:', newTeam.id);
+          setStoredTeamId(teamToUse.id);
+          console.log('Created/joined team:', teamToUse.id);
         }
       }
     } catch (err) {

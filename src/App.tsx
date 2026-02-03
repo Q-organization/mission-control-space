@@ -634,9 +634,8 @@ function App() {
     username: state.currentUser || 'anonymous',
     displayName: currentUserInfo?.name || 'Anonymous',
     color: currentUserInfo?.color || '#ffa500',
-    shipImage: currentShipInfo.currentImage,
-    shipEffects: currentShipInfo.effects,
-    shipUpgrades: currentShipInfo.upgrades,
+    // Ship data is no longer passed here - it's loaded FROM Supabase via teamPlayers
+    // and only written TO Supabase when the user actually purchases upgrades
     onTeamUpdate: (t) => {
       // Sync team state to local
       if (t.teamPoints !== teamPoints) {
@@ -1454,11 +1453,12 @@ function App() {
 
         gameRef.current?.updateUserPlanetImage(userId, newImageUrl, 0, 0);
 
-        // Sync planet to backend for multiplayer
+        // Sync planet to backend for multiplayer (including empty history for new planet)
         updatePlayerData({
           planet_image_url: newImageUrl,
           planet_terraform_count: 0,
           planet_size_level: 0,
+          planet_history: [], // New planet starts with empty history
         });
 
         // Record prompt for history
@@ -1573,10 +1573,16 @@ function App() {
         gameRef.current?.updateUserPlanetImage(userId, newImageUrl, newTerraformCount, currentPlanet.sizeLevel);
         soundManager.playPlanetUpgrade();
 
-        // Sync planet to backend for multiplayer
+        // Sync planet to backend for multiplayer (including history with prompts)
+        const newHistory = [...currentPlanet.history, {
+          imageUrl: newImageUrl,
+          description: promptText,
+          timestamp: Date.now(),
+        }];
         updatePlayerData({
           planet_image_url: newImageUrl,
           planet_terraform_count: newTerraformCount,
+          planet_history: newHistory,
         });
 
         // Record prompt for history
@@ -1621,7 +1627,7 @@ function App() {
       baseImage: '/ship-base.png',
       upgrades: [],
       currentImage: '/ship-base.png',
-      effects: { glowColor: null, trailType: 'default', sizeBonus: 0 },
+      effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false },
     };
   };
 
@@ -1694,6 +1700,11 @@ function App() {
     }));
     gameRef.current?.updateUserPlanetImage(userId, imageUrl);
     soundManager.playUIClick();
+
+    // Sync selected planet image to backend (only if selecting for current user)
+    if (userId === state.currentUser) {
+      updatePlayerData({ planet_image_url: imageUrl });
+    }
   };
 
   // Buy planet size upgrade (max 5 levels)
@@ -2377,19 +2388,10 @@ function App() {
     soundManager.playUIClick();
     setState(prev => ({ ...prev, currentUser: userId }));
     setShowUserSelect(false);
-
-    // Initialize ship for user if not exists
-    if (!userShips[userId]) {
-      setUserShips(prev => ({
-        ...prev,
-        [userId]: {
-          baseImage: '/ship-base.png',
-          upgrades: [],
-          currentImage: '/ship-base.png',
-          effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false },
-        }
-      }));
-    }
+    // DO NOT initialize userShips with defaults here!
+    // Ship data is loaded from Supabase via teamPlayers in the effect at line ~845
+    // Initializing with defaults here would cause a race condition that overwrites
+    // the user's existing upgrades when useMultiplayerSync runs
   };
 
   // Handle image file selection
