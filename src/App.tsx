@@ -557,6 +557,10 @@ function App() {
   const [upgradePrompt, setUpgradePrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showPointsHistory, setShowPointsHistory] = useState(false);
+  const [pointsHistoryTab, setPointsHistoryTab] = useState<'personal' | 'team'>('personal');
+  const [pointsHistory, setPointsHistory] = useState<PointTx[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [editingGoal, setEditingGoal] = useState<any | null>(null);
   const [landedPlanet, setLandedPlanet] = useState<Planet | null>(null);
 
@@ -725,6 +729,52 @@ function App() {
     teamId: team?.id || null,
     playerId: currentDbPlayerId,
   });
+
+  // Fetch full points history when modal opens
+  const fetchPointsHistory = useCallback(async (type: 'personal' | 'team') => {
+    if (!team?.id || !currentDbPlayerId) return;
+
+    setIsLoadingHistory(true);
+    try {
+      let query = supabase
+        .from('point_transactions')
+        .select('*, players(display_name)')
+        .eq('team_id', team.id)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (type === 'personal') {
+        // Get current player's personal transactions
+        query = query.eq('player_id', currentDbPlayerId);
+      }
+      // For team, get all transactions (no filter on player_id)
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Failed to fetch points history:', error);
+        return;
+      }
+
+      if (data) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapped = data.map((t: any) => ({
+          id: t.id,
+          teamId: t.team_id,
+          playerId: t.player_id,
+          playerName: t.players?.display_name || undefined,
+          source: t.source,
+          notionTaskId: t.notion_task_id,
+          taskName: t.task_name,
+          points: t.points,
+          createdAt: t.created_at,
+        }));
+        setPointsHistory(mapped);
+      }
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [team?.id, currentDbPlayerId]);
 
   // Sync notion planets to game (store ref for immediate sync on game init)
   const notionPlanetsRef = useRef(notionGamePlanets);
@@ -923,6 +973,12 @@ function App() {
           .from('teams')
           .update({ team_points: 0 })
           .eq('id', team.id);
+
+        // Reset all players' personal points to 0
+        await supabase
+          .from('players')
+          .update({ personal_points: 0 })
+          .eq('team_id', team.id);
       }
 
       // Reset local state
@@ -1008,6 +1064,7 @@ function App() {
             planet_image_url: null,
             planet_terraform_count: 0,
             planet_size_level: 0,
+            planet_history: [],
           })
           .eq('team_id', team.id);
       }
@@ -1069,12 +1126,14 @@ function App() {
         await supabase
           .from('players')
           .update({
+            personal_points: 0,
             ship_current_image: '/ship-base.png',
             ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false },
             ship_upgrades: [],
             planet_image_url: null,
             planet_terraform_count: 0,
             planet_size_level: 0,
+            planet_history: [],
           })
           .eq('team_id', team.id);
       }
@@ -2740,11 +2799,27 @@ function App() {
           <span style={styles.statValue}>{state.completedPlanets.length}</span>
           <span style={styles.statLabel}>Planets</span>
         </div>
-        <div style={styles.statItem}>
+        <div
+          style={{ ...styles.statItem, cursor: 'pointer' }}
+          onClick={() => {
+            setPointsHistoryTab('team');
+            fetchPointsHistory('team');
+            setShowPointsHistory(true);
+          }}
+          title="Click to view team points history"
+        >
           <span style={{ ...styles.statValue, color: '#5490ff' }}>💎 {teamPoints}</span>
           <span style={styles.statLabel}>Team Points</span>
         </div>
-        <div style={styles.statItem}>
+        <div
+          style={{ ...styles.statItem, cursor: 'pointer' }}
+          onClick={() => {
+            setPointsHistoryTab('personal');
+            fetchPointsHistory('personal');
+            setShowPointsHistory(true);
+          }}
+          title="Click to view your points history"
+        >
           <span style={{ ...styles.statValue, color: '#ffa500' }}>⭐ {personalPoints}</span>
           <span style={styles.statLabel}>Your Points</span>
         </div>
@@ -2830,6 +2905,150 @@ function App() {
             <button
               style={{ ...styles.closeButton, marginTop: '1.5rem' }}
               onClick={() => setShowLeaderboard(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Points History Modal */}
+      {showPointsHistory && (
+        <div style={styles.modalOverlay} onClick={() => setShowPointsHistory(false)}>
+          <div style={{ ...styles.modal, maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>
+              {pointsHistoryTab === 'personal' ? '⭐ Your Points History' : '💎 Team Points History'}
+            </h2>
+
+            {/* Tab Navigation */}
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px' }}>
+              <button
+                style={{
+                  flex: 1, padding: '0.5rem', border: 'none', borderRadius: '6px', cursor: 'pointer',
+                  background: pointsHistoryTab === 'personal' ? 'rgba(255, 165, 0, 0.3)' : 'transparent',
+                  color: pointsHistoryTab === 'personal' ? '#ffa500' : '#888',
+                  fontWeight: pointsHistoryTab === 'personal' ? 600 : 400,
+                }}
+                onClick={() => {
+                  setPointsHistoryTab('personal');
+                  fetchPointsHistory('personal');
+                }}
+              >
+                ⭐ Your Points
+              </button>
+              <button
+                style={{
+                  flex: 1, padding: '0.5rem', border: 'none', borderRadius: '6px', cursor: 'pointer',
+                  background: pointsHistoryTab === 'team' ? 'rgba(84, 144, 255, 0.3)' : 'transparent',
+                  color: pointsHistoryTab === 'team' ? '#5490ff' : '#888',
+                  fontWeight: pointsHistoryTab === 'team' ? 600 : 400,
+                }}
+                onClick={() => {
+                  setPointsHistoryTab('team');
+                  fetchPointsHistory('team');
+                }}
+              >
+                💎 Team Points
+              </button>
+            </div>
+
+            {/* Current Balance */}
+            <div style={{
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: '10px',
+              padding: '1rem',
+              marginBottom: '1rem',
+              textAlign: 'center',
+            }}>
+              <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '0.25rem' }}>
+                {pointsHistoryTab === 'personal' ? 'Available Balance' : 'Total Team Points'}
+              </div>
+              <div style={{
+                fontSize: '1.8rem',
+                fontWeight: 700,
+                color: pointsHistoryTab === 'personal' ? '#ffa500' : '#5490ff',
+              }}>
+                {pointsHistoryTab === 'personal' ? `⭐ ${personalPoints}` : `💎 ${teamPoints}`}
+              </div>
+            </div>
+
+            {/* Transaction List */}
+            <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
+              {isLoadingHistory ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#888' }}>
+                  Loading history...
+                </div>
+              ) : pointsHistory.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#888' }}>
+                  No transactions yet
+                </div>
+              ) : (
+                pointsHistory.map((tx) => (
+                  <div
+                    key={tx.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '12px 14px',
+                      background: 'rgba(255,255,255,0.03)',
+                      borderRadius: '8px',
+                      marginBottom: '8px',
+                      borderLeft: `3px solid ${tx.points > 0 ? '#4ade80' : '#ff6b6b'}`,
+                    }}
+                  >
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      background: tx.source === 'notion' ? 'rgba(100, 100, 255, 0.2)' : tx.source === 'planet' ? 'rgba(255, 165, 0, 0.2)' : 'rgba(128, 128, 128, 0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1rem',
+                      flexShrink: 0,
+                    }}>
+                      {tx.source === 'notion' ? '📋' : tx.source === 'planet' ? '🪐' : '⚙️'}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        color: '#fff',
+                        fontSize: '0.9rem',
+                        fontWeight: 500,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}>
+                        {tx.taskName || (tx.source === 'notion' ? 'Notion task' : tx.source === 'planet' ? 'Planet completed' : 'Manual adjustment')}
+                      </div>
+                      <div style={{ color: '#666', fontSize: '0.75rem', marginTop: '2px' }}>
+                        {pointsHistoryTab === 'team' && tx.playerName && (
+                          <span style={{ color: '#888' }}>{tx.playerName} · </span>
+                        )}
+                        {new Date(tx.createdAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontWeight: 700,
+                      fontSize: '1rem',
+                      color: tx.points > 0 ? '#4ade80' : '#ff6b6b',
+                      flexShrink: 0,
+                    }}>
+                      {tx.points > 0 ? '+' : ''}{tx.points}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <button
+              style={{ ...styles.closeButton, marginTop: '1.5rem', width: '100%' }}
+              onClick={() => setShowPointsHistory(false)}
             >
               Close
             </button>
@@ -4524,6 +4743,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   onlinePlayerDot: {
     width: 8, height: 8, borderRadius: '50%',
+  },
+  closeButton: {
+    padding: '0.75rem 1.5rem', background: 'transparent', border: '1px solid #444',
+    borderRadius: 8, color: '#888', cursor: 'pointer', fontSize: '1rem',
   },
 };
 
