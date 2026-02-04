@@ -8,6 +8,23 @@ interface SoundConfig {
   rate?: number;
 }
 
+// Audio preferences storage key
+const AUDIO_PREFS_KEY = 'mission-control-audio-prefs';
+
+export interface AudioPreferences {
+  musicEnabled: boolean;
+  sfxEnabled: boolean;
+  musicVolume: number;
+  sfxVolume: number;
+}
+
+const DEFAULT_PREFS: AudioPreferences = {
+  musicEnabled: true,
+  sfxEnabled: true,
+  musicVolume: 0.3,
+  sfxVolume: 0.5,
+};
+
 const SOUNDS_PATH = '/sounds/';
 
 // Sound definitions - using Kenney.nl Sci-Fi Sounds (CC0)
@@ -86,27 +103,70 @@ const SOUND_CONFIGS: Record<string, SoundConfig> = {
     loop: true,
   },
   blackHoleSuck: {
-    src: [`${SOUNDS_PATH}blackhole-suck.ogg`],
+    src: [`${SOUNDS_PATH}blackhole-suck.mp3`, `${SOUNDS_PATH}blackhole-suck.ogg`],
     volume: 0.7,
+  },
+};
+
+// Background music configs (separate from SFX)
+const MUSIC_CONFIGS: Record<string, SoundConfig> = {
+  // Intro music - plays once on first login
+  intro: {
+    src: [`${SOUNDS_PATH}intro-music.mp3`, `${SOUNDS_PATH}intro-music.ogg`],
+    volume: 0.4,
+    loop: false,
+  },
+  // Ambient space background - loops during gameplay
+  ambient: {
+    src: [`${SOUNDS_PATH}space-ambient.mp3`, `${SOUNDS_PATH}space-ambient.ogg`],
+    volume: 0.25,
+    loop: true,
   },
 };
 
 export class SoundManager {
   private sounds: Map<string, Howl> = new Map();
+  private music: Map<string, Howl> = new Map();
   private muted = false;
   private masterVolume = 0.5;
   private initialized = false;
+
+  // Audio preferences
+  private prefs: AudioPreferences = { ...DEFAULT_PREFS };
 
   // Track playing instances for looping sounds
   private thrustId: number | null = null;
   private blackHoleId: number | null = null;
   private shopAmbientId: number | null = null;
   private loadingId: number | null = null;
+  private ambientMusicId: number | null = null;
+  private introMusicId: number | null = null;
   private isThrusting = false;
   private isBoosting = false;
+  private introPlayed = false;
 
   constructor() {
-    // Sounds will be initialized on first user interaction
+    // Load saved preferences
+    this.loadPreferences();
+  }
+
+  private loadPreferences() {
+    try {
+      const saved = localStorage.getItem(AUDIO_PREFS_KEY);
+      if (saved) {
+        this.prefs = { ...DEFAULT_PREFS, ...JSON.parse(saved) };
+      }
+    } catch (e) {
+      console.warn('Failed to load audio preferences:', e);
+    }
+  }
+
+  private savePreferences() {
+    try {
+      localStorage.setItem(AUDIO_PREFS_KEY, JSON.stringify(this.prefs));
+    } catch (e) {
+      console.warn('Failed to save audio preferences:', e);
+    }
   }
 
   public init() {
@@ -115,7 +175,7 @@ export class SoundManager {
     // Set global volume
     Howler.volume(this.masterVolume);
 
-    // Load all sounds
+    // Load all SFX sounds
     Object.entries(SOUND_CONFIGS).forEach(([name, config]) => {
       const sound = new Howl({
         src: config.src,
@@ -128,6 +188,25 @@ export class SoundManager {
         },
       });
       this.sounds.set(name, sound);
+    });
+
+    // Load background music
+    Object.entries(MUSIC_CONFIGS).forEach(([name, config]) => {
+      const music = new Howl({
+        src: config.src,
+        volume: config.volume ?? 0.3,
+        loop: config.loop ?? false,
+        preload: true,
+        onloaderror: (_id, error) => {
+          // Music files are optional - don't warn if missing
+          console.log(`Music file "${name}" not found - add ${config.src[0]} to enable`);
+        },
+        onend: name === 'intro' ? () => {
+          // When intro ends, start ambient music
+          this.startAmbientMusic();
+        } : undefined,
+      });
+      this.music.set(name, music);
     });
 
     // Start black hole ambient (at 0 volume initially)
@@ -147,7 +226,7 @@ export class SoundManager {
 
   // Engine sounds
   public startThrust(boosting: boolean = false) {
-    if (!this.initialized || this.isThrusting) return;
+    if (!this.initialized || this.isThrusting || !this.prefs.sfxEnabled) return;
 
     this.isThrusting = true;
     this.isBoosting = boosting;
@@ -246,7 +325,7 @@ export class SoundManager {
 
   // Loading/processing sound (for upgrade animations)
   public startLoadingSound() {
-    if (!this.initialized || this.loadingId !== null) return;
+    if (!this.initialized || this.loadingId !== null || !this.prefs.sfxEnabled) return;
 
     const sound = this.sounds.get('upgradeLoading');
     if (sound) {
@@ -278,7 +357,7 @@ export class SoundManager {
 
   // Generic play method
   private play(name: string) {
-    if (!this.initialized) return;
+    if (!this.initialized || !this.prefs.sfxEnabled) return;
 
     const sound = this.sounds.get(name);
     if (sound) {
@@ -302,10 +381,153 @@ export class SoundManager {
     return this.muted;
   }
 
+  // Background music controls
+  public playIntroMusic() {
+    if (!this.initialized || this.introPlayed || !this.prefs.musicEnabled) return;
+
+    const intro = this.music.get('intro');
+    if (!intro) {
+      // No intro music configured, start ambient directly
+      this.startAmbientMusic();
+      return;
+    }
+
+    this.introPlayed = true;
+
+    // If already loaded, play immediately
+    if (intro.state() === 'loaded') {
+      intro.volume(this.prefs.musicVolume);
+      this.introMusicId = intro.play();
+    } else {
+      // Wait for load, then play
+      intro.once('load', () => {
+        if (this.prefs.musicEnabled) {
+          intro.volume(this.prefs.musicVolume);
+          this.introMusicId = intro.play();
+        }
+      });
+      // If load fails, start ambient instead
+      intro.once('loaderror', () => {
+        this.startAmbientMusic();
+      });
+    }
+  }
+
+  public startAmbientMusic() {
+    if (!this.initialized || !this.prefs.musicEnabled) return;
+    if (this.ambientMusicId !== null) return; // Already playing
+
+    const ambient = this.music.get('ambient');
+    if (!ambient) return;
+
+    // If already loaded, play immediately
+    if (ambient.state() === 'loaded') {
+      ambient.volume(this.prefs.musicVolume);
+      this.ambientMusicId = ambient.play();
+    } else {
+      // Wait for load, then play
+      ambient.once('load', () => {
+        if (this.prefs.musicEnabled && this.ambientMusicId === null) {
+          ambient.volume(this.prefs.musicVolume);
+          this.ambientMusicId = ambient.play();
+        }
+      });
+    }
+  }
+
+  public stopAmbientMusic() {
+    const ambient = this.music.get('ambient');
+    if (ambient && this.ambientMusicId !== null) {
+      ambient.fade(this.prefs.musicVolume, 0, 500, this.ambientMusicId);
+      const id = this.ambientMusicId;
+      setTimeout(() => ambient.stop(id), 500);
+      this.ambientMusicId = null;
+    }
+  }
+
+  public stopAllMusic() {
+    const intro = this.music.get('intro');
+    if (intro && this.introMusicId !== null) {
+      intro.stop(this.introMusicId);
+      this.introMusicId = null;
+    }
+    this.stopAmbientMusic();
+  }
+
+  // Preference getters/setters
+  public isMusicEnabled(): boolean {
+    return this.prefs.musicEnabled;
+  }
+
+  public setMusicEnabled(enabled: boolean) {
+    this.prefs.musicEnabled = enabled;
+    this.savePreferences();
+
+    if (enabled) {
+      // Start ambient music if not playing intro
+      if (!this.introMusicId) {
+        this.startAmbientMusic();
+      }
+    } else {
+      this.stopAllMusic();
+    }
+  }
+
+  public isSfxEnabled(): boolean {
+    return this.prefs.sfxEnabled;
+  }
+
+  public setSfxEnabled(enabled: boolean) {
+    this.prefs.sfxEnabled = enabled;
+    this.savePreferences();
+
+    // Update mute state based on SFX preference
+    // Note: This affects all non-music sounds
+    if (!enabled) {
+      // Stop any currently playing SFX loops
+      this.stopThrust();
+      this.stopLoadingSound();
+    }
+  }
+
+  public getMusicVolume(): number {
+    return this.prefs.musicVolume;
+  }
+
+  public setMusicVolume(volume: number) {
+    this.prefs.musicVolume = Math.max(0, Math.min(1, volume));
+    this.savePreferences();
+
+    // Update currently playing music
+    this.music.forEach((music, name) => {
+      if (name === 'ambient' && this.ambientMusicId !== null) {
+        music.volume(this.prefs.musicVolume, this.ambientMusicId);
+      }
+      if (name === 'intro' && this.introMusicId !== null) {
+        music.volume(this.prefs.musicVolume, this.introMusicId);
+      }
+    });
+  }
+
+  public getSfxVolume(): number {
+    return this.prefs.sfxVolume;
+  }
+
+  public setSfxVolume(volume: number) {
+    this.prefs.sfxVolume = Math.max(0, Math.min(1, volume));
+    this.savePreferences();
+  }
+
+  public getPreferences(): AudioPreferences {
+    return { ...this.prefs };
+  }
+
   // Cleanup
   public destroy() {
     this.sounds.forEach((sound) => sound.unload());
+    this.music.forEach((m) => m.unload());
     this.sounds.clear();
+    this.music.clear();
     this.initialized = false;
   }
 }

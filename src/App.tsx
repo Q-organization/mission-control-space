@@ -564,7 +564,8 @@ function App() {
   const [showPlanetCreator, setShowPlanetCreator] = useState(false);
   const [showShop, setShowShop] = useState(false);
   const [shopTab, setShopTab] = useState<'stats' | 'cosmetics' | 'weapons'>('stats');
-  const [isMuted, setIsMuted] = useState(false);
+  const [musicEnabled, setMusicEnabled] = useState(soundManager.isMusicEnabled());
+  const [sfxEnabled, setSfxEnabled] = useState(soundManager.isSfxEnabled());
   const [upgradePrompt, setUpgradePrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -599,9 +600,10 @@ function App() {
   const [showSyncDetails, setShowSyncDetails] = useState(false);
 
   // Admin panel state
-  const [adminTab, setAdminTab] = useState<'goals' | 'players' | 'notion' | 'reset'>('goals');
+  const [adminTab, setAdminTab] = useState<'goals' | 'players' | 'notion' | 'reset' | 'debug'>('goals');
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [playerPointsInput, setPlayerPointsInput] = useState('');
+  const [debugShipLevel, setDebugShipLevel] = useState(1);
 
   // Prompt configs (loaded from JSON)
   const [shipPrompts, setShipPrompts] = useState<ShipPrompts>(DEFAULT_SHIP_PROMPTS);
@@ -2683,6 +2685,7 @@ function App() {
   const selectUser = (userId: string) => {
     soundManager.init();
     soundManager.playSelect();
+    soundManager.playIntroMusic(); // Start intro music on first interaction
     setState(prev => ({ ...prev, currentUser: userId }));
     setShowUserSelect(false);
     // DO NOT initialize userShips with defaults here!
@@ -2902,8 +2905,14 @@ function App() {
     const currentUser = USERS.find(u => u.id === state.currentUser);
     const currentShip = getCurrentUserShip();
 
+    // Initialize audio and play intro on first interaction with welcome screen
+    const handleWelcomeClick = () => {
+      soundManager.init();
+      soundManager.playIntroMusic();
+    };
+
     return (
-      <div style={styles.welcome}>
+      <div style={styles.welcome} onClick={handleWelcomeClick}>
         <img src="/logo.png" alt="Custom One" style={styles.logo} />
         <h1 style={styles.title}>Mission Control</h1>
         <p style={styles.subtitle}>Space Edition</p>
@@ -2928,6 +2937,8 @@ function App() {
         <button style={styles.startButton} onClick={() => {
           soundManager.init();
           soundManager.playSelect();
+          soundManager.stopAllMusic(); // Stop intro music
+          soundManager.startAmbientMusic(); // Start ambient music for gameplay
           setShowWelcome(false);
         }}>
           Launch Mission
@@ -3095,15 +3106,38 @@ function App() {
         <img src={currentShip.currentImage} alt="Ship" style={styles.robotImage} />
       </div>
 
-      {/* Sound toggle */}
+      {/* Audio toggles - bottom right above ship */}
       <button
-        style={styles.muteButton}
-        onClick={() => {
-          const muted = soundManager.toggleMute();
-          setIsMuted(muted);
+        style={{
+          ...styles.audioToggleIcon,
+          bottom: 150,
+          borderColor: musicEnabled ? 'rgba(74, 222, 128, 0.5)' : 'rgba(255, 255, 255, 0.2)',
+          opacity: musicEnabled ? 1 : 0.5,
         }}
+        onClick={() => {
+          const newValue = !musicEnabled;
+          setMusicEnabled(newValue);
+          soundManager.setMusicEnabled(newValue);
+        }}
+        title={musicEnabled ? 'Music ON' : 'Music OFF'}
       >
-        {isMuted ? '🔇' : '🔊'}
+        🎵
+      </button>
+      <button
+        style={{
+          ...styles.audioToggleIcon,
+          bottom: 110,
+          borderColor: sfxEnabled ? 'rgba(74, 222, 128, 0.5)' : 'rgba(255, 255, 255, 0.2)',
+          opacity: sfxEnabled ? 1 : 0.5,
+        }}
+        onClick={() => {
+          const newValue = !sfxEnabled;
+          setSfxEnabled(newValue);
+          soundManager.setSfxEnabled(newValue);
+        }}
+        title={sfxEnabled ? 'Sound Effects ON' : 'Sound Effects OFF'}
+      >
+        🔊
       </button>
 
       {/* Leaderboard Modal */}
@@ -4305,6 +4339,7 @@ function App() {
                     { id: 'players', label: '👥 Players' },
                     { id: 'notion', label: '📋 Notion' },
                     { id: 'reset', label: '🗑️ Reset' },
+                    { id: 'debug', label: '🔧 Debug' },
                   ] as const).map(tab => (
                     <button
                       key={tab.id}
@@ -4674,6 +4709,90 @@ function App() {
                   </div>
                 )}
 
+                {/* Debug Tab */}
+                {adminTab === 'debug' && (
+                  <div style={{ ...styles.resetSection, borderColor: '#f59e0b' }}>
+                    <h3 style={{ ...styles.resetSectionTitle, color: '#f59e0b' }}>🔧 Debug Tools</h3>
+                    <p style={{ color: '#888', fontSize: '12px', marginBottom: '16px' }}>
+                      Testing tools for development. Changes are local only (visual).
+                    </p>
+
+                    {/* Ship Level Tester */}
+                    <div style={{
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      borderRadius: '8px',
+                      padding: '1rem',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      marginBottom: '1rem',
+                    }}>
+                      <label style={{ ...styles.label, marginBottom: '12px', display: 'block' }}>
+                        🚀 Ship Level (for Escort Drones)
+                      </label>
+                      <p style={{ color: '#888', fontSize: '11px', marginBottom: '12px' }}>
+                        Drones unlock every 5 levels: Lv.5 = 1 drone, Lv.10 = 2 drones, etc.
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                        <input
+                          type="range"
+                          min="1"
+                          max="30"
+                          value={debugShipLevel}
+                          onChange={e => setDebugShipLevel(parseInt(e.target.value))}
+                          style={{ flex: 1, accentColor: '#f59e0b' }}
+                        />
+                        <span style={{
+                          color: '#f59e0b',
+                          fontWeight: 'bold',
+                          fontSize: '1.2rem',
+                          minWidth: '40px',
+                          textAlign: 'center',
+                        }}>
+                          {debugShipLevel}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          style={{
+                            ...styles.resetButtonSmall,
+                            flex: 1,
+                            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                          }}
+                          onClick={() => {
+                            if (gameRef.current) {
+                              // Directly set ship level for testing
+                              (gameRef.current as any).shipLevel = debugShipLevel;
+                              (gameRef.current as any).updateEscortDrones();
+                            }
+                          }}
+                        >
+                          Apply Ship Level
+                        </button>
+                        <button
+                          style={{
+                            ...styles.resetButtonSmall,
+                            flex: 1,
+                            background: 'linear-gradient(135deg, #6b7280, #4b5563)',
+                          }}
+                          onClick={() => {
+                            if (gameRef.current) {
+                              // Reset to actual level
+                              const actualLevel = 1 + state.upgradeCount;
+                              (gameRef.current as any).shipLevel = actualLevel;
+                              (gameRef.current as any).updateEscortDrones();
+                              setDebugShipLevel(actualLevel);
+                            }
+                          }}
+                        >
+                          Reset to Actual
+                        </button>
+                      </div>
+                      <p style={{ color: '#666', fontSize: '10px', marginTop: '8px', textAlign: 'center' }}>
+                        Current drones: {Math.floor(debugShipLevel / 5)} | Actual ship level: {1 + state.upgradeCount}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <button style={styles.cancelButton} onClick={() => setShowSettings(false)}>
                   Close
                 </button>
@@ -4836,11 +4955,11 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden', border: '2px solid rgba(255,165,0,0.3)', background: 'rgba(0,0,0,0.5)',
     cursor: 'pointer', transition: 'border-color 0.2s',
   },
-  muteButton: {
-    position: 'absolute', bottom: 110, right: 20, width: 40, height: 40, borderRadius: '50%',
+  audioToggleIcon: {
+    position: 'absolute', right: 20, width: 36, height: 36, borderRadius: '50%',
     border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.5)',
-    color: '#fff', fontSize: '1.2rem', cursor: 'pointer', display: 'flex',
-    alignItems: 'center', justifyContent: 'center',
+    color: '#fff', fontSize: '1rem', cursor: 'pointer', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s',
   },
   robotImage: { width: '100%', height: '100%', objectFit: 'cover' },
   upgradeOverlay: { position: 'absolute', bottom: 110, right: 20, zIndex: 100 },
