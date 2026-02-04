@@ -2310,12 +2310,26 @@ function App() {
   const handleReassign = useCallback(async (newOwner: string) => {
     if (!reassignPlanet) return;
 
+    // Start the rocket animation immediately (revving up phase)
+    gameRef.current?.startSendAnimation(reassignPlanet);
+    soundManager.playDockingSound(); // Rocket rev sound
+
+    // Show notification
+    const ownerName = newOwner.charAt(0).toUpperCase() + newOwner.slice(1);
+    setEventNotification({ message: `Sending task to ${ownerName}...`, type: 'mission' });
+
+    // Call API in parallel (animation waits in revving phase)
     const newPosition = await reassignNotionPlanet(reassignPlanet.id, newOwner);
 
     if (newPosition) {
-      soundManager.playTeleport();
-      const ownerName = newOwner.charAt(0).toUpperCase() + newOwner.slice(1);
-      setEventNotification({ message: `Task sent to ${ownerName}`, type: 'mission' });
+      // Set target - this triggers the rocket to fly!
+      gameRef.current?.setSendTarget(newPosition.x, newPosition.y);
+      soundManager.playSendVoiceLine(); // "Ok boss!" / "On it!"
+      soundManager.playTeleport(); // Whoosh!
+      setEventNotification({ message: `🚀 Task sent to ${ownerName}!`, type: 'mission' });
+      setTimeout(() => setEventNotification(null), 3000);
+    } else {
+      setEventNotification({ message: `Failed to send task`, type: 'blackhole' });
       setTimeout(() => setEventNotification(null), 3000);
     }
 
@@ -3172,6 +3186,9 @@ function App() {
     if (currentShip.effects) {
       game.updateShipEffects(currentShip.effects);
     }
+
+    // Load rocket image for send animation
+    game.setSendRocketImage('/rocket-push.png');
 
     state.completedPlanets.forEach(id => game.completePlanet(id));
     game.start();

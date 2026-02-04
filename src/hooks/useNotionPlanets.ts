@@ -91,6 +91,7 @@ interface UseNotionPlanetsReturn {
   isLoading: boolean;
   completePlanet: (notionPlanetId: string) => Promise<void>;
   claimPlanet: (notionPlanetId: string, playerUsername: string) => Promise<{ x: number; y: number } | null>;
+  reassignPlanet: (notionPlanetId: string, newOwnerUsername: string) => Promise<{ x: number; y: number } | null>;
 }
 
 export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPlanetsReturn {
@@ -162,6 +163,36 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
       return data?.new_position || null;
     } catch (error) {
       console.error('Error claiming notion planet:', error);
+      return null;
+    }
+  }, [teamId]);
+
+  // Reassign a notion planet to a different user (moves it to their zone)
+  // Returns the new position if successful, null if failed
+  const reassignPlanet = useCallback(async (notionPlanetId: string, newOwnerUsername: string): Promise<{ x: number; y: number } | null> => {
+    if (!teamId) return null;
+
+    // Extract the actual ID (remove 'notion-' prefix if present)
+    const actualId = notionPlanetId.startsWith('notion-')
+      ? notionPlanetId.slice(7)
+      : notionPlanetId;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('notion-reassign', {
+        body: {
+          notion_planet_id: actualId,
+          new_owner_username: newOwnerUsername,
+        },
+      });
+
+      if (error) {
+        console.error('Error reassigning notion planet:', error);
+        return null;
+      }
+
+      return data?.new_position || null;
+    } catch (error) {
+      console.error('Error reassigning notion planet:', error);
       return null;
     }
   }, [teamId]);
@@ -258,5 +289,6 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
     isLoading,
     completePlanet,
     claimPlanet,
+    reassignPlanet,
   };
 }

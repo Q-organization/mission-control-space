@@ -206,6 +206,7 @@ export class SpaceGame {
   private onTerraform: ((planet: Planet) => void) | null = null;
   private onDestroyPlanet: ((planet: Planet) => void) | null = null;
   private onBlackHoleDeath: (() => void) | null = null;
+  private onReassignRequest: ((planet: Planet) => void) | null = null; // Called when user wants to reassign task to another user
 
   // Destroy animation state (explosion effect)
   private isDestroying: boolean = false;
@@ -250,6 +251,18 @@ export class SpaceGame {
   private portalParticles: { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }[] = [];
   private portalTrailPoints: { x: number; y: number; alpha: number }[] = [];
   private portalAngle: number = 0; // Portal rotation animation
+
+  // Send/Reassign animation state (rocket pushing planet across map)
+  private isSending: boolean = false;
+  private sendPlanetId: string | null = null;
+  private sendTargetX: number = 0;
+  private sendTargetY: number = 0;
+  private sendTargetReady: boolean = false;
+  private sendVelocityX: number = 0;
+  private sendVelocityY: number = 0;
+  private sendRocketFlame: number = 0;
+  private sendTrailPoints: { x: number; y: number; size: number; alpha: number }[] = [];
+  private sendRocketImage: HTMLImageElement | null = null;
 
   // Upgrading animation state (orbiting satellites/robots)
   private isUpgrading: boolean = false;
@@ -905,6 +918,7 @@ export class SpaceGame {
     onTerraform?: (planet: Planet) => void;
     onDestroyPlanet?: (planet: Planet) => void;
     onBlackHoleDeath?: () => void;
+    onReassignRequest?: (planet: Planet) => void;
   }) {
     this.onLand = callbacks.onLand || null;
     this.onTakeoff = callbacks.onTakeoff || null;
@@ -914,6 +928,7 @@ export class SpaceGame {
     this.onTerraform = callbacks.onTerraform || null;
     this.onDestroyPlanet = callbacks.onDestroyPlanet || null;
     this.onBlackHoleDeath = callbacks.onBlackHoleDeath || null;
+    this.onReassignRequest = callbacks.onReassignRequest || null;
   }
 
   public isPlayerLanded(): boolean {
@@ -1179,6 +1194,11 @@ export class SpaceGame {
       this.updateCamera();
       this.updateParticles();
       return;
+    }
+
+    // Handle send/reassign animation (doesn't block - planet just moves with rocket)
+    if (this.isSending) {
+      this.updateSendAnimation();
     }
 
     // Handle rotation
@@ -1729,6 +1749,16 @@ export class SpaceGame {
       return;
     }
 
+    // Handle R key - reassign task to another user
+    if (this.keys.has('r')) {
+      this.keys.delete('r');
+      const isNotionPlanet = planet.id.startsWith('notion-');
+      if (isNotionPlanet && !planet.completed && this.onReassignRequest) {
+        this.onReassignRequest(planet);
+      }
+      return;
+    }
+
     // Handle T key - terraform (for user planets)
     if (this.keys.has('t')) {
       this.keys.delete('t');
@@ -1923,6 +1953,238 @@ export class SpaceGame {
     this.claimTrailPoints = [];
     this.claimTargetReady = false;
     this.claimPendingPlanet = null;
+  }
+
+  // Public method to start send/reassign animation (rocket pushing planet)
+  public startSendAnimation(planet: Planet) {
+    this.sendPlanetId = planet.id;
+    this.sendTargetReady = false;
+    this.sendTrailPoints = [];
+    this.sendRocketFlame = 0;
+
+    // Start flying immediately in a random direction
+    const randomAngle = Math.random() * Math.PI * 2;
+    const speed = 8; // Similar to ship speed
+    this.sendVelocityX = Math.cos(randomAngle) * speed;
+    this.sendVelocityY = Math.sin(randomAngle) * speed;
+
+    // Clear landed state
+    this.isLanded = false;
+    this.landedPlanet = null;
+
+    this.isSending = true;
+  }
+
+  // Public method to set target position when API returns
+  public setSendTarget(targetX: number, targetY: number) {
+    if (!this.isSending) return;
+    this.sendTargetX = targetX;
+    this.sendTargetY = targetY;
+    this.sendTargetReady = true;
+  }
+
+  // Public method to load custom rocket image
+  public setSendRocketImage(imageUrl: string) {
+    const img = new Image();
+    img.src = imageUrl;
+    img.onload = () => {
+      this.sendRocketImage = img;
+    };
+  }
+
+  // Update send/reassign animation - rocket pushing planet across map
+  private updateSendAnimation() {
+    if (!this.isSending || !this.sendPlanetId) return;
+
+    // Find the planet in state
+    const planet = this.state.planets.find(p => p.id === this.sendPlanetId);
+    if (!planet) {
+      this.isSending = false;
+      return;
+    }
+
+    const speed = 8; // Constant speed like ships
+
+    if (this.sendTargetReady) {
+      // Steer toward target
+      const dx = this.sendTargetX - planet.x;
+      const dy = this.sendTargetY - planet.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < 50) {
+        // Arrived! Remove planet
+        this.isSending = false;
+        this.sendTrailPoints = [];
+        this.state.planets = this.state.planets.filter(p => p.id !== this.sendPlanetId);
+        this.sendPlanetId = null;
+        return;
+      }
+
+      // Smoothly turn toward target (steering behavior)
+      const targetAngle = Math.atan2(dy, dx);
+      const currentAngle = Math.atan2(this.sendVelocityY, this.sendVelocityX);
+      let angleDiff = targetAngle - currentAngle;
+
+      // Normalize angle difference
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+      // Gradual turn (max 3 degrees per frame)
+      const maxTurn = 0.05;
+      const turn = Math.max(-maxTurn, Math.min(maxTurn, angleDiff));
+      const newAngle = currentAngle + turn;
+
+      this.sendVelocityX = Math.cos(newAngle) * speed;
+      this.sendVelocityY = Math.sin(newAngle) * speed;
+    }
+
+    // Move the planet
+    planet.x += this.sendVelocityX;
+    planet.y += this.sendVelocityY;
+
+    // Rocket flame flicker
+    this.sendRocketFlame = 0.7 + Math.random() * 0.3;
+
+    // Add trail points (rocket exhaust)
+    const angle = Math.atan2(this.sendVelocityY, this.sendVelocityX);
+    if (Math.random() < 0.6) {
+      const spread = (Math.random() - 0.5) * 0.5;
+      this.sendTrailPoints.push({
+        x: planet.x - Math.cos(angle) * (planet.radius + 20) + (Math.random() - 0.5) * 10,
+        y: planet.y - Math.sin(angle) * (planet.radius + 20) + (Math.random() - 0.5) * 10,
+        size: 6 + Math.random() * 10,
+        alpha: 1,
+      });
+    }
+
+    // Update trail points (fade out)
+    for (let i = this.sendTrailPoints.length - 1; i >= 0; i--) {
+      const p = this.sendTrailPoints[i];
+      p.alpha -= 0.03;
+      p.size *= 0.94;
+      if (p.alpha <= 0 || p.size < 1) {
+        this.sendTrailPoints.splice(i, 1);
+      }
+    }
+  }
+
+  // Render send/reassign animation effects (just the rocket, planet renders normally)
+  private renderSendAnimation() {
+    if (!this.isSending || !this.sendPlanetId) return;
+
+    const planet = this.state.planets.find(p => p.id === this.sendPlanetId);
+    if (!planet) return;
+
+    const { ctx } = this;
+
+    ctx.save();
+    ctx.translate(-this.state.camera.x, -this.state.camera.y);
+
+    // Draw trail points (rocket exhaust smoke)
+    for (const p of this.sendTrailPoints) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+      gradient.addColorStop(0, `rgba(255, 200, 50, ${p.alpha * 0.8})`);
+      gradient.addColorStop(0.4, `rgba(255, 100, 20, ${p.alpha * 0.6})`);
+      gradient.addColorStop(1, `rgba(100, 50, 20, ${p.alpha * 0.2})`);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
+
+    // Calculate rocket angle from velocity
+    const rocketAngle = Math.atan2(this.sendVelocityY, this.sendVelocityX);
+
+    // Draw the rocket pushing the planet
+    ctx.save();
+    ctx.translate(planet.x, planet.y);
+    ctx.rotate(rocketAngle + Math.PI); // Rocket on the back, pushing
+
+    const rocketX = planet.radius + 10;
+
+    if (this.sendRocketImage) {
+      // Draw custom rocket image
+      const imgSize = 40;
+      ctx.drawImage(
+        this.sendRocketImage,
+        rocketX - imgSize * 0.3,
+        -imgSize / 2,
+        imgSize,
+        imgSize
+      );
+
+      // Still draw flame behind it
+      const flameLength = 12 + this.sendRocketFlame * 15;
+      ctx.beginPath();
+      ctx.moveTo(rocketX + 15, 0);
+      ctx.lineTo(rocketX + 15 + flameLength, -4 - Math.random() * 2);
+      ctx.lineTo(rocketX + 15 + flameLength * 0.6, 0);
+      ctx.lineTo(rocketX + 15 + flameLength, 4 + Math.random() * 2);
+      ctx.closePath();
+      const flameGradient = ctx.createLinearGradient(rocketX + 15, 0, rocketX + 15 + flameLength, 0);
+      flameGradient.addColorStop(0, '#ffff00');
+      flameGradient.addColorStop(0.4, '#ff8800');
+      flameGradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
+      ctx.fillStyle = flameGradient;
+      ctx.fill();
+    } else {
+      // Draw cartoon rocket (fallback)
+      const rocketSize = 16;
+
+      // Rocket flame
+      const flameLength = 12 + this.sendRocketFlame * 18;
+      ctx.beginPath();
+      ctx.moveTo(rocketX + rocketSize * 0.7, 0);
+      ctx.lineTo(rocketX + rocketSize * 0.7 + flameLength, -4 - Math.random() * 2);
+      ctx.lineTo(rocketX + rocketSize * 0.7 + flameLength * 0.6, 0);
+      ctx.lineTo(rocketX + rocketSize * 0.7 + flameLength, 4 + Math.random() * 2);
+      ctx.closePath();
+      const flameGradient = ctx.createLinearGradient(rocketX + rocketSize, 0, rocketX + rocketSize + flameLength, 0);
+      flameGradient.addColorStop(0, '#ffff00');
+      flameGradient.addColorStop(0.4, '#ff8800');
+      flameGradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
+      ctx.fillStyle = flameGradient;
+      ctx.fill();
+
+      // Rocket body
+      ctx.fillStyle = '#e74c3c';
+      ctx.beginPath();
+      ctx.ellipse(rocketX, 0, rocketSize, rocketSize * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Nose cone
+      ctx.fillStyle = '#c0392b';
+      ctx.beginPath();
+      ctx.moveTo(rocketX - rocketSize, 0);
+      ctx.lineTo(rocketX - rocketSize - 8, -3);
+      ctx.lineTo(rocketX - rocketSize - 8, 3);
+      ctx.closePath();
+      ctx.fill();
+
+      // Window
+      ctx.fillStyle = '#85c1e9';
+      ctx.beginPath();
+      ctx.arc(rocketX - 2, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Fins
+      ctx.fillStyle = '#c0392b';
+      ctx.beginPath();
+      ctx.moveTo(rocketX + rocketSize * 0.4, -rocketSize * 0.35);
+      ctx.lineTo(rocketX + rocketSize * 0.9, -rocketSize * 0.7);
+      ctx.lineTo(rocketX + rocketSize * 0.7, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(rocketX + rocketSize * 0.4, rocketSize * 0.35);
+      ctx.lineTo(rocketX + rocketSize * 0.9, rocketSize * 0.7);
+      ctx.lineTo(rocketX + rocketSize * 0.7, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.restore();
+    ctx.restore();
   }
 
   // Update claim animation - teleport ship + planet together to home base
@@ -4978,6 +5240,11 @@ export class SpaceGame {
       this.renderDestroyAnimation();
     }
 
+    // Draw send/reassign animation (balloon deflate effect)
+    if (this.isSending) {
+      this.renderSendAnimation();
+    }
+
     // Draw planet info panel when nearby OR landed panel when on planet
     // Station planets (shop-station, planet-builder, user-planet-*) don't show the landed panel - they only have shop functionality
     if (this.isLanded && this.landedPlanet) {
@@ -6178,12 +6445,23 @@ export class SpaceGame {
       const isUnassignedNotion = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
 
       if (isViewOnlyPlanet) {
-        // View-only mode: only show Notion button, no claim/complete
+        // View-only mode: show Send and Notion buttons
+        ctx.textAlign = 'left';
+        const leftX = boxX + 30;
+
+        // Send hint (reassign)
+        ctx.fillStyle = '#f59e0b';
+        ctx.font = 'bold 14px Space Grotesk';
+        ctx.fillText('[ R ] Send', leftX, currentY);
+
+        // Notion hint on the right
         if (hasNotionUrl) {
+          ctx.textAlign = 'right';
           ctx.fillStyle = '#5490ff';
-          ctx.font = 'bold 14px Space Grotesk';
-          ctx.fillText('[ N ] Open Notion', boxX + boxWidth / 2, currentY);
+          ctx.fillText('[ N ] Notion', boxX + boxWidth - 30, currentY);
         }
+
+        ctx.textAlign = 'center';
       } else {
         // Claim or Complete hint
         ctx.fillStyle = isUnassignedNotion ? '#ffd700' : '#4ade80';
@@ -6191,17 +6469,21 @@ export class SpaceGame {
         const actionText = isUnassignedNotion ? '[ C ] Claim Mission' : '[ C ] Complete';
 
         if (isUnassignedNotion) {
-          // For unassigned: Claim and Delete stacked on left, Notion on right
+          // For unassigned: Claim, Delete, Send on left column, Notion on right
           ctx.textAlign = 'left';
           const leftX = boxX + 30;
 
           // Line 1: Claim Mission
           ctx.fillStyle = '#ffd700';
-          ctx.fillText('[ C ] Claim Mission', leftX, currentY - 8);
+          ctx.fillText('[ C ] Claim Mission', leftX, currentY - 16);
 
-          // Line 2: Delete
+          // Line 2: Send (reassign)
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillText('[ R ] Send', leftX, currentY + 2);
+
+          // Line 3: Delete
           ctx.fillStyle = '#ff4444';
-          ctx.fillText('[ X ] Delete', leftX, currentY + 10);
+          ctx.fillText('[ X ] Delete', leftX, currentY + 20);
 
           // Notion hint on the right
           if (hasNotionUrl) {
@@ -6212,13 +6494,27 @@ export class SpaceGame {
 
           ctx.textAlign = 'center';
         } else {
-          ctx.fillText(actionText, boxX + boxWidth / 2 - (hasNotionUrl ? 80 : 0), currentY);
+          // For assigned tasks: Complete, Send, and Notion
+          ctx.textAlign = 'left';
+          const leftX = boxX + 30;
 
-          // Notion hint
+          // Complete hint
+          ctx.fillStyle = '#4ade80';
+          ctx.font = 'bold 14px Space Grotesk';
+          ctx.fillText('[ C ] Complete', leftX, currentY - 8);
+
+          // Send hint (reassign)
+          ctx.fillStyle = '#f59e0b';
+          ctx.fillText('[ R ] Send', leftX, currentY + 10);
+
+          // Notion hint on the right
           if (hasNotionUrl) {
+            ctx.textAlign = 'right';
             ctx.fillStyle = '#5490ff';
-            ctx.fillText('[ N ] Open Notion', boxX + boxWidth / 2 + 80, currentY);
+            ctx.fillText('[ N ] Notion', boxX + boxWidth - 30, currentY);
           }
+
+          ctx.textAlign = 'center';
         }
       }
     } else if (planet.completed && !isSpecialPlanet && planet.type === 'notion') {

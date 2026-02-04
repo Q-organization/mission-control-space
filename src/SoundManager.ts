@@ -162,6 +162,13 @@ const TASK_VOICE_LINES = [
   `${SOUNDS_PATH}tasks/vcWj8PPN9-U6V3BZHV73p_music_generated.mp3`,
 ];
 
+// Voice lines for sending/reassigning tasks ("ok boss", "on it", etc.)
+// Add mp3 files to public/sounds/send/ folder to enable
+const SEND_VOICE_LINES: string[] = [
+  // `${SOUNDS_PATH}send/ok-boss.mp3`,
+  // `${SOUNDS_PATH}send/on-it.mp3`,
+];
+
 export class SoundManager {
   private sounds: Map<string, Howl> = new Map();
   private music: Map<string, Howl> = new Map();
@@ -176,9 +183,11 @@ export class SoundManager {
   private shipVoiceLines: Howl[] = [];
   private planetVoiceLines: Howl[] = [];
   private taskVoiceLines: Howl[] = [];
+  private sendVoiceLines: Howl[] = [];
   private shipVoiceIndex = 0;
   private planetVoiceIndex = 0;
   private taskVoiceIndex = 0;
+  private sendVoiceIndex = 0;
 
   // Track playing instances for looping sounds
   private thrustId: number | null = null;
@@ -291,10 +300,18 @@ export class SoundManager {
       preload: true,
     }));
 
+    // Send voice lines (for reassigning tasks)
+    this.sendVoiceLines = SEND_VOICE_LINES.map(src => new Howl({
+      src: [src],
+      volume: 0.8,
+      preload: true,
+    }));
+
     // Shuffle indices for variety
     this.shipVoiceIndex = Math.floor(Math.random() * SHIP_VOICE_LINES.length);
     this.planetVoiceIndex = Math.floor(Math.random() * PLANET_VOICE_LINES.length);
     this.taskVoiceIndex = Math.floor(Math.random() * TASK_VOICE_LINES.length);
+    this.sendVoiceIndex = Math.floor(Math.random() * Math.max(1, SEND_VOICE_LINES.length));
 
     this.initialized = true;
   }
@@ -424,6 +441,13 @@ export class SoundManager {
     const voice = this.taskVoiceLines[this.taskVoiceIndex];
     if (voice) voice.play();
     this.taskVoiceIndex = (this.taskVoiceIndex + 1) % this.taskVoiceLines.length;
+  }
+
+  public playSendVoiceLine() {
+    if (!this.initialized || !this.prefs.sfxEnabled || this.sendVoiceLines.length === 0) return;
+    const voice = this.sendVoiceLines[this.sendVoiceIndex];
+    if (voice) voice.play();
+    this.sendVoiceIndex = (this.sendVoiceIndex + 1) % this.sendVoiceLines.length;
   }
 
   // Teleport/claim sound
