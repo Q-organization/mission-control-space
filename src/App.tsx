@@ -86,6 +86,10 @@ const POINTS_PER_SIZE = { small: 50, medium: 100, big: 200 };
 // AI visual upgrade cost
 const VISUAL_UPGRADE_COST = 150;
 
+// Sell prices (half of original cost)
+const VISUAL_UPGRADE_SELL_PRICE = 75;  // Half of 150
+const TERRAFORM_SELL_PRICE = 50;       // Half of 100
+
 // Programmatic ship effects (no AI needed - instant purchase)
 // Size upgrades: 10 levels with increasing costs (ship)
 const SIZE_COSTS = [50, 100, 180, 300, 450, 650, 900, 1200, 1600, 2100]; // Cost per level (Total: 7,530)
@@ -969,7 +973,7 @@ function App() {
     for (const player of teamPlayers) {
       if (player.shipImage) {
         shipsFromSupabase[player.username] = {
-          baseImage: player.shipImage,
+          baseImage: '/ship-base.png', // Base ship is always the same
           currentImage: player.shipImage,
           upgrades: [], // Upgrade count is tracked via shipLevel
           effects: player.shipEffects || {
@@ -1861,6 +1865,42 @@ function App() {
     soundManager.playSelect();
   };
 
+  // Sell the latest terraformation (refund half the cost)
+  const sellLatestTerraform = () => {
+    const userId = state.currentUser || '';
+    const currentPlanet = getUserPlanet(userId);
+
+    // Must have terraforms to sell
+    if (currentPlanet.history.length === 0) return;
+
+    // Get the last terraform entry
+    const newHistory = currentPlanet.history.slice(0, -1);
+    const newTerraformCount = Math.max(0, currentPlanet.terraformCount - 1);
+
+    // Determine the new image URL (previous in history, base image, or empty for procedural)
+    const newImageUrl = newHistory.length > 0
+      ? newHistory[newHistory.length - 1].imageUrl
+      : (currentPlanet.baseImage || '');
+
+    // Refund half the cost
+    setPersonalPoints(prev => prev + TERRAFORM_SELL_PRICE);
+    updateRemotePersonalPoints(TERRAFORM_SELL_PRICE, 'Sold terraformation');
+
+    // Update planet state
+    const updatedPlanet: typeof currentPlanet = {
+      ...currentPlanet,
+      imageUrl: newImageUrl,
+      terraformCount: newTerraformCount,
+      history: newHistory,
+    };
+
+    // Update local state and sync to Supabase
+    setUserPlanets(prev => ({ ...prev, [userId]: updatedPlanet }));
+    saveUserPlanetToSupabase(userId, updatedPlanet);
+    gameRef.current?.updateUserPlanetImage(userId, newImageUrl, newTerraformCount, currentPlanet.sizeLevel);
+    soundManager.playSelect();
+  };
+
   // Select a ship image from history
   const selectShipFromHistory = (imageUrl: string) => {
     const userId = state.currentUser || 'default';
@@ -1881,6 +1921,56 @@ function App() {
     // Sync to Supabase
     updatePlayerData({
       ship_current_image: imageUrl,
+    });
+
+    soundManager.playSelect();
+  };
+
+  // Sell the latest ship visual upgrade (refund half the cost)
+  const sellLatestShipUpgrade = () => {
+    // Must have upgrades to sell
+    if (mascotHistory.length === 0) return;
+
+    const userId = state.currentUser || 'default';
+    const currentShip = getCurrentUserShip();
+
+    // Get the last upgrade entry
+    const lastEntry = mascotHistory[mascotHistory.length - 1];
+    const newMascotHistory = mascotHistory.slice(0, -1);
+
+    // Remove the last upgrade ID from userShips
+    const newUpgrades = currentShip.upgrades.slice(0, -1);
+
+    // Determine the new image URL (previous in history or base ship)
+    const newImageUrl = newMascotHistory.length > 0
+      ? newMascotHistory[newMascotHistory.length - 1].imageUrl
+      : (currentShip.baseImage || '/ship-base.png');
+
+    // Refund half the cost
+    setPersonalPoints(prev => prev + VISUAL_UPGRADE_SELL_PRICE);
+    updateRemotePersonalPoints(VISUAL_UPGRADE_SELL_PRICE, 'Sold ship visual upgrade');
+
+    // Update mascot history
+    setMascotHistory(newMascotHistory);
+    saveMascotHistoryToSupabase(newMascotHistory);
+
+    // Update user ships state
+    setUserShips(prev => ({
+      ...prev,
+      [userId]: {
+        ...currentShip,
+        upgrades: newUpgrades,
+        currentImage: newImageUrl,
+      }
+    }));
+
+    // Update the ship in the game canvas
+    gameRef.current?.updateShipImage(newImageUrl, newUpgrades.length);
+
+    // Sync to Supabase
+    updatePlayerData({
+      ship_current_image: newImageUrl,
+      ship_upgrades: newUpgrades,
     });
 
     soundManager.playSelect();
@@ -4408,7 +4498,7 @@ function App() {
                         </div>
                       )}
                       {/* Terraform history */}
-                      {getUserPlanet(state.currentUser || '').history.map((entry, i) => (
+                      {getUserPlanet(state.currentUser || '').history.map((entry, i, arr) => (
                         <div key={i} style={{
                           ...styles.historyItem,
                           cursor: 'pointer',
@@ -4431,6 +4521,15 @@ function App() {
                           >
                             ⬇
                           </button>
+                          {i === arr.length - 1 && (
+                            <button
+                              style={styles.sellButton}
+                              onClick={(e) => { e.stopPropagation(); sellLatestTerraform(); }}
+                              title="Sell for 50 points"
+                            >
+                              Sell (50 ⭐)
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -4516,7 +4615,7 @@ function App() {
                     );
                   })()}
                   {/* Upgrade history */}
-                  {mascotHistory.map((entry, i) => (
+                  {mascotHistory.map((entry, i, arr) => (
                     <div key={i} style={{
                       ...styles.historyItem,
                       cursor: 'pointer',
@@ -4539,6 +4638,15 @@ function App() {
                       >
                         ⬇
                       </button>
+                      {i === arr.length - 1 && (
+                        <button
+                          style={styles.sellButton}
+                          onClick={(e) => { e.stopPropagation(); sellLatestShipUpgrade(); }}
+                          title="Sell for 75 points"
+                        >
+                          Sell (75 ⭐)
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -5437,6 +5545,11 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'absolute', top: 4, right: 4, width: 28, height: 28, borderRadius: '50%',
     background: 'rgba(0,0,0,0.7)', border: '1px solid #555', color: '#fff',
     fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  sellButton: {
+    background: '#ff6b35', border: 'none', borderRadius: 4,
+    padding: '4px 8px', color: 'white', fontSize: '0.7rem',
+    cursor: 'pointer', marginLeft: 4, whiteSpace: 'nowrap',
   },
   currentShipBadge: {
     position: 'absolute', bottom: 4, left: 4, right: 4, textAlign: 'center',
