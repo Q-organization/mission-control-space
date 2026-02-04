@@ -3136,7 +3136,7 @@ function App() {
       <div style={styles.welcome}>
         <img src="/logo.png" alt="Custom One" style={styles.logo} />
         <h1 style={styles.title}>Mission Control</h1>
-        <p style={styles.subtitle}>Space Edition</p>
+        <p style={styles.subtitle}>Custom 1 Edition</p>
 
         <p style={{ color: currentUser?.color, marginBottom: '1rem' }}>
           Welcome, {currentUser?.name}!
@@ -3146,13 +3146,6 @@ function App() {
         <div style={styles.shipPreviewLarge}>
           <img src={currentShip.currentImage} alt="Your Ship" style={styles.shipPreviewImage} />
           <p style={styles.shipUpgradeCount}>{currentShip.upgrades.length} upgrades</p>
-        </div>
-
-        <div style={styles.instructions}>
-          <p><strong>Controls:</strong></p>
-          <p>W / ↑ - Thrust &nbsp;|&nbsp; A / ← D / → - Rotate</p>
-          <p>S / ↓ - Brake &nbsp;|&nbsp; SHIFT - Boost</p>
-          <p>SPACE - Dock at planet</p>
         </div>
 
         <button style={styles.startButton} onClick={() => {
@@ -3166,10 +3159,6 @@ function App() {
 
         <p style={{ ...styles.progress, marginTop: '1.5rem' }}>
           {state.completedPlanets.length} planets completed | {customPlanets.length} custom planets
-        </p>
-
-        <p style={{ color: '#666', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-          Fly to special stations near spawn: 🛒 Shop • 📸 Gallery • 🏭 Factory
         </p>
 
         <button style={styles.switchUserButton} onClick={() => setShowUserSelect(true)}>
@@ -3473,7 +3462,7 @@ function App() {
                 fontSize: '0.9rem',
                 lineHeight: '1.8',
               }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', color: '#ccc' }}>
                   <span style={{ color: '#888' }}>W / ↑</span><span>Thrust</span>
                   <span style={{ color: '#888' }}>A / ←</span><span>Rotate Left</span>
                   <span style={{ color: '#888' }}>D / →</span><span>Rotate Right</span>
@@ -5453,7 +5442,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'linear-gradient(180deg, #0a0a12 0%, #1a1a2e 100%)',
     color: '#fff', textAlign: 'center', padding: '2rem', overflow: 'auto',
   },
-  logo: { height: 60, marginBottom: '1rem' },
+  logo: { height: 60, marginBottom: '1rem', filter: 'drop-shadow(0 0 20px rgba(255, 165, 0, 0.6)) drop-shadow(0 0 40px rgba(255, 107, 74, 0.4))' },
   title: {
     fontFamily: 'Orbitron, sans-serif', fontSize: '3rem', fontWeight: 700, margin: 0,
     background: 'linear-gradient(90deg, #ffa500, #ff6b4a)',
