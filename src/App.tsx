@@ -2324,8 +2324,7 @@ function App() {
     if (newPosition) {
       // Set target - this triggers the rocket to fly!
       gameRef.current?.setSendTarget(newPosition.x, newPosition.y);
-      soundManager.playSendVoiceLine(); // "Ok boss!" / "On it!"
-      soundManager.playTeleport(); // Whoosh!
+      soundManager.playSendVoiceLine(); // "Special delivery!", "Coming through!", etc.
       setEventNotification({ message: `🚀 Task sent to ${ownerName}!`, type: 'mission' });
       setTimeout(() => setEventNotification(null), 3000);
     } else {
