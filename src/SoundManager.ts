@@ -399,6 +399,18 @@ export class SoundManager {
     this.loadingId = null;
   }
 
+  // Upgrade proximity effect - fades loading sound based on distance
+  public updateUpgradeProximity(proximity: number) {
+    // proximity: 0 = far away, 1 = close to upgrade target
+    const sound = this.sounds.get('upgradeLoading');
+    if (!sound || this.loadingId === null) return;
+
+    // Scale volume from 0 to base volume (0.35) based on proximity
+    const baseVolume = 0.35;
+    const volume = proximity * baseVolume;
+    sound.volume(volume, this.loadingId);
+  }
+
   // Shop/station proximity effect
   public updateShopProximity(proximity: number) {
     // proximity: 0 = far away, 1 = at station

@@ -176,6 +176,7 @@ export class SpaceGame {
   private rifleImage: HTMLImageElement | null = null; // Space Rifle weapon image
   private plasmaCanonImage: HTMLImageElement | null = null; // Plasma Canon weapon image
   private rocketLauncherImage: HTMLImageElement | null = null; // Rocket Launcher weapon image
+  private portalImage: HTMLImageElement | null = null; // Mission Control Portal image
   private shipLevel: number = 1;
   private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasWarpDrive: false, hasMissionControlPortal: false };
   private blackHole: BlackHole;
@@ -464,6 +465,14 @@ export class SpaceGame {
     rocketImg.src = '/rocket-launcher.png';
     rocketImg.onload = () => {
       this.rocketLauncherImage = rocketImg;
+    };
+
+    // Load Portal image
+    const portalImg = new Image();
+    portalImg.crossOrigin = 'anonymous';
+    portalImg.src = '/portal.png';
+    portalImg.onload = () => {
+      this.portalImage = portalImg;
     };
   }
 
@@ -1430,6 +1439,32 @@ export class SpaceGame {
       }
     } else {
       soundManager.updateShopProximity(0);
+    }
+
+    // Upgrade proximity sound - fade based on distance to upgrade target
+    if (this.isUpgrading) {
+      let targetX: number, targetY: number;
+      if (this.upgradeTargetPlanetId) {
+        const targetPlanet = this.state.planets.find(p => p.id === this.upgradeTargetPlanetId);
+        if (targetPlanet) {
+          targetX = targetPlanet.x;
+          targetY = targetPlanet.y;
+        } else {
+          targetX = this.state.ship.x;
+          targetY = this.state.ship.y;
+        }
+      } else {
+        // Upgrading ship itself - always at full volume
+        soundManager.updateUpgradeProximity(1);
+        return;
+      }
+
+      const dx = this.state.ship.x - targetX;
+      const dy = this.state.ship.y - targetY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const maxDist = 500; // Fade out over 500 pixels
+      const proximity = Math.max(0, 1 - dist / maxDist);
+      soundManager.updateUpgradeProximity(proximity);
     }
   }
 
@@ -2527,7 +2562,7 @@ export class SpaceGame {
           vx: -Math.cos(angle) * (3 + chargeIntensity * 3),
           vy: -Math.sin(angle) * (3 + chargeIntensity * 3),
           life: 25,
-          color: `hsl(${280 + Math.random() * 40}, 100%, ${60 + chargeIntensity * 30}%)`, // Purple/magenta hue
+          color: `hsl(${200 + Math.random() * 30}, 100%, ${60 + chargeIntensity * 30}%)`, // Blue/cyan hue
           size: 2 + Math.random() * 2,
         });
       }
@@ -2563,7 +2598,7 @@ export class SpaceGame {
         });
       }
 
-      // Emit speed particles along trajectory (purple/magenta)
+      // Emit speed particles along trajectory (blue/cyan)
       if (Math.random() < 0.6) {
         const perpAngle = targetAngle + Math.PI / 2;
         const offset = (Math.random() - 0.5) * 30;
@@ -2573,7 +2608,7 @@ export class SpaceGame {
           vx: -Math.cos(targetAngle) * 2,
           vy: -Math.sin(targetAngle) * 2,
           life: 15,
-          color: `hsl(${280 + Math.random() * 30}, 100%, 70%)`,
+          color: `hsl(${200 + Math.random() * 30}, 100%, 70%)`,
           size: 1.5 + Math.random() * 1.5,
         });
       }
@@ -2602,7 +2637,7 @@ export class SpaceGame {
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             life: 20 + Math.random() * 15,
-            color: `hsl(${270 + Math.random() * 40}, 100%, ${50 + Math.random() * 30}%)`,
+            color: `hsl(${195 + Math.random() * 30}, 100%, ${50 + Math.random() * 30}%)`,
             size: 2 + Math.random() * 3,
           });
         }
@@ -2653,16 +2688,27 @@ export class SpaceGame {
     ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // Solid blue base circle (like a small planet)
+    // Portal base - use image if loaded, otherwise fallback to solid color
     const baseRadius = 50;
-    const baseGradient = ctx.createRadialGradient(x - 15, y - 15, 0, x, y, baseRadius);
-    baseGradient.addColorStop(0, '#60a5fa');
-    baseGradient.addColorStop(0.5, '#3b82f6');
-    baseGradient.addColorStop(1, '#1e40af');
-    ctx.fillStyle = baseGradient;
-    ctx.beginPath();
-    ctx.arc(x, y, baseRadius, 0, Math.PI * 2);
-    ctx.fill();
+    if (this.portalImage) {
+      // Draw the portal image centered and sized appropriately
+      const imgSize = baseRadius * 2.2;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(this.portalAngle * 0.5); // Slow rotation
+      ctx.drawImage(this.portalImage, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
+      ctx.restore();
+    } else {
+      // Fallback: solid blue base circle
+      const baseGradient = ctx.createRadialGradient(x - 15, y - 15, 0, x, y, baseRadius);
+      baseGradient.addColorStop(0, '#60a5fa');
+      baseGradient.addColorStop(0.5, '#3b82f6');
+      baseGradient.addColorStop(1, '#1e40af');
+      ctx.fillStyle = baseGradient;
+      ctx.beginPath();
+      ctx.arc(x, y, baseRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Swirling energy rings on top
     for (let i = 0; i < 4; i++) {
@@ -2714,12 +2760,6 @@ export class SpaceGame {
       ctx.fill();
     }
 
-    // Portal label
-    ctx.font = 'bold 14px "Space Grotesk"';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(150, 210, 255, 0.95)';
-    ctx.fillText('⟡ Mission Control ⟡', x, y + 85);
-
     ctx.restore();
   }
 
@@ -2742,18 +2782,18 @@ export class SpaceGame {
     const screenX = ship.x - camera.x;
     const screenY = ship.y - camera.y;
 
-    // Phase 1: Charging - screen vignette builds up (purple/magenta)
+    // Phase 1: Charging - screen vignette builds up (blue/cyan)
     if (this.portalProgress < CHARGING_END) {
       const chargeIntensity = Math.min(1, this.portalProgress / CHARGING_END);
 
-      // Purple vignette around edges
+      // Blue vignette around edges
       const vignetteGradient = ctx.createRadialGradient(
         canvas.width / 2, canvas.height / 2, canvas.width * 0.3,
         canvas.width / 2, canvas.height / 2, canvas.width * 0.8
       );
       vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      vignetteGradient.addColorStop(0.5, `rgba(50, 0, 80, ${0.1 * chargeIntensity})`);
-      vignetteGradient.addColorStop(1, `rgba(100, 0, 150, ${0.3 * chargeIntensity})`);
+      vignetteGradient.addColorStop(0.5, `rgba(0, 40, 80, ${0.1 * chargeIntensity})`);
+      vignetteGradient.addColorStop(1, `rgba(0, 80, 150, ${0.3 * chargeIntensity})`);
       ctx.fillStyle = vignetteGradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -2761,9 +2801,9 @@ export class SpaceGame {
       ctx.beginPath();
       ctx.arc(screenX, screenY, 50 + chargeIntensity * 40, 0, Math.PI * 2);
       const glowGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 50 + chargeIntensity * 40);
-      glowGradient.addColorStop(0, `rgba(200, 100, 255, ${0.4 * chargeIntensity})`);
-      glowGradient.addColorStop(0.5, `rgba(150, 50, 255, ${0.2 * chargeIntensity})`);
-      glowGradient.addColorStop(1, 'rgba(100, 0, 200, 0)');
+      glowGradient.addColorStop(0, `rgba(100, 200, 255, ${0.4 * chargeIntensity})`);
+      glowGradient.addColorStop(0.5, `rgba(50, 150, 255, ${0.2 * chargeIntensity})`);
+      glowGradient.addColorStop(1, 'rgba(0, 100, 200, 0)');
       ctx.fillStyle = glowGradient;
       ctx.fill();
 
@@ -2773,7 +2813,7 @@ export class SpaceGame {
         const phase = this.portalProgress * 50 + i * 2;
         ctx.beginPath();
         ctx.arc(screenX, screenY, 35 + ringOffset + Math.sin(phase) * 10, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(200, 100, 255, ${(0.6 - i * 0.15) * chargeIntensity})`;
+        ctx.strokeStyle = `rgba(100, 200, 255, ${(0.6 - i * 0.15) * chargeIntensity})`;
         ctx.lineWidth = 3 - i * 0.5;
         ctx.stroke();
       }
@@ -2784,8 +2824,8 @@ export class SpaceGame {
       const flashProgress = (this.portalProgress - (CHARGING_END - 0.03)) / 0.08;
       const flashIntensity = flashProgress < 0.5 ? flashProgress * 2 : (1 - flashProgress) * 2;
 
-      // Full screen flash (purple)
-      ctx.fillStyle = `rgba(180, 100, 255, ${0.3 * flashIntensity})`;
+      // Full screen flash (blue)
+      ctx.fillStyle = `rgba(100, 180, 255, ${0.3 * flashIntensity})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Bright center flash
@@ -2793,8 +2833,8 @@ export class SpaceGame {
       ctx.arc(screenX, screenY, 100 + flashIntensity * 50, 0, Math.PI * 2);
       const flashGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 100 + flashIntensity * 50);
       flashGradient.addColorStop(0, `rgba(255, 255, 255, ${0.8 * flashIntensity})`);
-      flashGradient.addColorStop(0.3, `rgba(200, 100, 255, ${0.5 * flashIntensity})`);
-      flashGradient.addColorStop(1, 'rgba(150, 50, 200, 0)');
+      flashGradient.addColorStop(0.3, `rgba(100, 200, 255, ${0.5 * flashIntensity})`);
+      flashGradient.addColorStop(1, 'rgba(50, 150, 200, 0)');
       ctx.fillStyle = flashGradient;
       ctx.fill();
     }
@@ -2803,19 +2843,19 @@ export class SpaceGame {
     if (this.portalProgress >= CHARGING_END && this.portalProgress < MOVEMENT_END) {
       const moveProgress = (this.portalProgress - CHARGING_END) / (MOVEMENT_END - CHARGING_END);
 
-      // Tunnel vignette effect (purple)
+      // Tunnel vignette effect (blue)
       const tunnelGradient = ctx.createRadialGradient(
         screenX, screenY, 0,
         screenX, screenY, canvas.width * 0.6
       );
       tunnelGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      tunnelGradient.addColorStop(0.4, 'rgba(20, 0, 40, 0.1)');
-      tunnelGradient.addColorStop(0.7, `rgba(50, 0, 80, ${0.2 + moveProgress * 0.1})`);
-      tunnelGradient.addColorStop(1, `rgba(80, 0, 120, ${0.4 + moveProgress * 0.2})`);
+      tunnelGradient.addColorStop(0.4, 'rgba(0, 20, 40, 0.1)');
+      tunnelGradient.addColorStop(0.7, `rgba(0, 50, 100, ${0.2 + moveProgress * 0.1})`);
+      tunnelGradient.addColorStop(1, `rgba(0, 80, 140, ${0.4 + moveProgress * 0.2})`);
       ctx.fillStyle = tunnelGradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Speed lines radiating from center (purple)
+      // Speed lines radiating from center (blue)
       const numLines = 24;
       for (let i = 0; i < numLines; i++) {
         const angle = (i / numLines) * Math.PI * 2;
@@ -2831,18 +2871,18 @@ export class SpaceGame {
           screenX + Math.cos(angle) * (startDist + lineLength),
           screenY + Math.sin(angle) * (startDist + lineLength)
         );
-        ctx.strokeStyle = `rgba(200, 100, 255, ${0.3 + Math.random() * 0.3})`;
+        ctx.strokeStyle = `rgba(100, 200, 255, ${0.3 + Math.random() * 0.3})`;
         ctx.lineWidth = 1 + Math.random() * 2;
         ctx.stroke();
       }
 
-      // Core glow around ship (purple)
+      // Core glow around ship (blue)
       ctx.beginPath();
       ctx.arc(screenX, screenY, 40, 0, Math.PI * 2);
       const coreGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 40);
       coreGradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
-      coreGradient.addColorStop(0.3, 'rgba(200, 100, 255, 0.4)');
-      coreGradient.addColorStop(1, 'rgba(150, 50, 200, 0)');
+      coreGradient.addColorStop(0.3, 'rgba(100, 200, 255, 0.4)');
+      coreGradient.addColorStop(1, 'rgba(50, 150, 200, 0)');
       ctx.fillStyle = coreGradient;
       ctx.fill();
     }
@@ -2852,28 +2892,28 @@ export class SpaceGame {
       const arrivalProgress = (this.portalProgress - MOVEMENT_END) / (1 - MOVEMENT_END);
       const flashIntensity = 1 - arrivalProgress;
 
-      // Screen flash at arrival (purple)
+      // Screen flash at arrival (blue)
       if (arrivalProgress < 0.3) {
-        ctx.fillStyle = `rgba(180, 100, 255, ${0.25 * (1 - arrivalProgress / 0.3)})`;
+        ctx.fillStyle = `rgba(100, 180, 255, ${0.25 * (1 - arrivalProgress / 0.3)})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
-      // Multiple expanding rings (purple)
+      // Multiple expanding rings (blue)
       for (let i = 0; i < 3; i++) {
         ctx.beginPath();
         ctx.arc(screenX, screenY, 40 + arrivalProgress * (80 + i * 30), 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(200, 100, 255, ${(0.7 - i * 0.2) * flashIntensity})`;
+        ctx.strokeStyle = `rgba(100, 200, 255, ${(0.7 - i * 0.2) * flashIntensity})`;
         ctx.lineWidth = (4 - i) * flashIntensity;
         ctx.stroke();
       }
 
-      // Fading glow (purple)
+      // Fading glow (blue)
       ctx.beginPath();
       ctx.arc(screenX, screenY, 60 * flashIntensity, 0, Math.PI * 2);
       const arrivalGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 60 * flashIntensity);
       arrivalGradient.addColorStop(0, `rgba(255, 255, 255, ${0.6 * flashIntensity})`);
-      arrivalGradient.addColorStop(0.4, `rgba(200, 100, 255, ${0.4 * flashIntensity})`);
-      arrivalGradient.addColorStop(1, 'rgba(150, 50, 200, 0)');
+      arrivalGradient.addColorStop(0.4, `rgba(100, 200, 255, ${0.4 * flashIntensity})`);
+      arrivalGradient.addColorStop(1, 'rgba(50, 150, 200, 0)');
       ctx.fillStyle = arrivalGradient;
       ctx.fill();
     }
