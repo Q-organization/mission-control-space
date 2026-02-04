@@ -62,6 +62,29 @@ interface UpgradeSatellite {
   type: 'satellite' | 'robot';
 }
 
+interface EscortDrone {
+  id: number;
+  size: number;
+  color: string;
+  glowColor: string;
+  // Position tracking for following behavior
+  worldX: number;
+  worldY: number;
+  prevWorldX: number;
+  prevWorldY: number;
+  // Velocity for smooth following
+  vx: number;
+  vy: number;
+  // Target offset (where this drone wants to be relative to ship)
+  offsetX: number;
+  offsetY: number;
+  // Wobble for organic movement
+  wobble: number;
+  wobbleSpeed: number;
+  // Image skin
+  imageUrl?: string;
+}
+
 // Store terraform counts and size levels for scaling
 const userPlanetTerraformCounts: Map<string, number> = new Map();
 const userPlanetSizeLevels: Map<string, number> = new Map();
@@ -232,6 +255,8 @@ export class SpaceGame {
   private renderStates: Map<string, InterpolationState> = new Map();
   // Other players' upgrade animations
   private otherPlayerUpgrading: Map<string, { targetPlanetId: string | null; satellites: UpgradeSatellite[] }> = new Map();
+  // Other players' escort drones (persistent for smooth animation)
+  private otherPlayerDrones: Map<string, EscortDrone[]> = new Map();
 
   // Space Rifle projectile system
   private projectiles: Projectile[] = [];
@@ -261,6 +286,21 @@ export class SpaceGame {
   private readonly ROCKET_DAMAGE: number = 35;
   private readonly ROCKET_TURN_SPEED: number = 0.08; // homing turn rate
   private readonly ROCKET_RANGE: number = 800;
+
+  // Escort drones (permanent companions based on ship level)
+  private escortDrones: EscortDrone[] = [];
+  private readonly DRONE_UNLOCK_INTERVAL: number = 5; // Unlock 1 drone every 5 ship levels
+  private droneImages: Map<number, HTMLImageElement> = new Map(); // Drone ID -> loaded image
+
+  // Pre-generated drone skins (permanent, never regenerated)
+  private static readonly DRONE_SKINS: string[] = [
+    'https://v3b.fal.media/files/b/0a8d16e2/FMPZmOGekHcZjkApPP_xZ.png', // Cyan
+    'https://v3b.fal.media/files/b/0a8d16e3/dT_Pq7Pq8Kve3sJBej60D.png', // Pink
+    'https://v3b.fal.media/files/b/0a8d16e3/pp50qnEtkZ4STKnPirq89.png', // Green
+    'https://v3b.fal.media/files/b/0a8d16e4/Q7ggtL-5KgPVdqCuSKvKx.png', // Orange
+    'https://v3b.fal.media/files/b/0a8d16e4/dHlBIychIGWhp5hazNdXb.png', // Purple
+    'https://v3b.fal.media/files/b/0a8d16e5/UBGQqPuv-LEhKrEFUqrHn.png', // Yellow
+  ];
 
   constructor(canvas: HTMLCanvasElement, onDock: (planet: Planet) => void, customPlanets: CustomPlanetData[] = [], shipImageUrl?: string, goals?: GoalsData, upgradeCount: number = 0, userPlanets?: Record<string, UserPlanetData>, currentUser: string = 'quentin') {
     this.canvas = canvas;
@@ -326,6 +366,9 @@ export class SpaceGame {
 
     // Set ship level based on upgrades (affects size)
     this.shipLevel = 1 + upgradeCount;
+
+    // Initialize escort drones based on ship level
+    this.updateEscortDrones();
 
     // Load logo for flags
     this.loadLogo(shipImageUrl);
@@ -914,6 +957,7 @@ export class SpaceGame {
 
   public upgradeShip() {
     this.shipLevel = Math.min(10, this.shipLevel + 1);
+    this.updateEscortDrones();
   }
 
   public updateShipImage(imageUrl: string, newUpgradeCount?: number) {
@@ -929,6 +973,7 @@ export class SpaceGame {
     } else {
       this.shipLevel += 1;
     }
+    this.updateEscortDrones();
   }
 
   public updateShipEffects(effects: ShipEffects) {
@@ -957,7 +1002,8 @@ export class SpaceGame {
       const tc = terraformCount ?? userPlanetTerraformCounts.get(userId) ?? 0;
       const sl = sizeLevel ?? userPlanetSizeLevels.get(userId) ?? 0;
       // Home planets are 2x larger for visibility (matches createUserPlanets formula)
-      const baseRadius = 100 + tc * 5;
+      // Size only grows with purchased size level, not terraform count
+      const baseRadius = 100;
       const sizeMultiplier = 1 + (sl * 0.2);
       planet.radius = baseRadius * sizeMultiplier;
       // Add ring after 3 terraforms
@@ -972,9 +1018,9 @@ export class SpaceGame {
 
     const planet = this.state.planets.find(p => p.id === `user-planet-${userId}`);
     if (planet) {
-      const tc = userPlanetTerraformCounts.get(userId) ?? 0;
       // Home planets are 2x larger for visibility (matches createUserPlanets formula)
-      const baseRadius = 100 + tc * 5;
+      // Size only grows with purchased size level
+      const baseRadius = 100;
       const sizeMultiplier = 1 + (sizeLevel * 0.2);
       planet.radius = baseRadius * sizeMultiplier;
     }
@@ -1005,9 +1051,9 @@ export class SpaceGame {
       userPlanetTerraformCounts.set(userId, terraformCount);
       userPlanetSizeLevels.set(userId, sizeLevel);
 
-      // Base radius grows with terraform count and size level (20% per size level)
+      // Base radius grows only with purchased size level (20% per size level)
       // Home planets are 2x larger for visibility
-      const baseRadius = 100 + terraformCount * 5;
+      const baseRadius = 100;
       const sizeMultiplier = 1 + (sizeLevel * 0.2); // 20% per level
       const finalRadius = baseRadius * sizeMultiplier;
 
@@ -1272,6 +1318,7 @@ export class SpaceGame {
     this.updateCamera();
     this.updateParticles();
     this.updateUpgradeSatellites();
+    this.updateDronePositions();
     this.updateOtherPlayersInterpolation();
     this.updateOtherPlayersParticles();
     this.updateZoneTitle();
@@ -3556,6 +3603,292 @@ export class SpaceGame {
     }
   }
 
+  // Update escort drones based on current ship level
+  private updateEscortDrones() {
+    const droneCount = Math.floor(this.shipLevel / this.DRONE_UNLOCK_INTERVAL);
+
+    // If we have the right number already, just return
+    if (this.escortDrones.length === droneCount) return;
+
+    // Preserve existing drones' images
+    const existingImages = new Map<number, string>();
+    for (const drone of this.escortDrones) {
+      if (drone.imageUrl) {
+        existingImages.set(drone.id, drone.imageUrl);
+      }
+    }
+
+    // Build new drone array
+    this.escortDrones = [];
+
+    // Drone colors - each drone gets a unique color
+    const droneColors = [
+      { color: '#00ffff', glow: '#00ccff' },  // Cyan
+      { color: '#ff6b9d', glow: '#ff4488' },  // Pink
+      { color: '#98fb98', glow: '#66dd66' },  // Green
+      { color: '#ffa500', glow: '#ff8800' },  // Orange
+      { color: '#bf7fff', glow: '#9966ff' },  // Purple
+      { color: '#ffff00', glow: '#cccc00' },  // Yellow
+    ];
+
+    // Formation offsets - drones trail behind in a single file line
+    const formationOffsets = [
+      { x: 0, y: 55 },    // First drone - directly behind
+      { x: 0, y: 95 },    // Second drone - behind first
+      { x: 0, y: 135 },   // Third drone - behind second
+      { x: 0, y: 175 },   // Fourth drone - behind third
+      { x: 0, y: 215 },   // Fifth drone - behind fourth
+      { x: 0, y: 255 },   // Sixth drone - behind fifth
+    ];
+
+    for (let i = 0; i < droneCount; i++) {
+      const colorSet = droneColors[i % droneColors.length];
+      const offset = formationOffsets[i % formationOffsets.length];
+      const skinUrl = SpaceGame.DRONE_SKINS[i % SpaceGame.DRONE_SKINS.length];
+
+      this.escortDrones.push({
+        id: i,
+        size: 10,
+        color: colorSet.color,
+        glowColor: colorSet.glow,
+        worldX: this.state.ship.x + offset.x,
+        worldY: this.state.ship.y + offset.y,
+        prevWorldX: this.state.ship.x + offset.x,
+        prevWorldY: this.state.ship.y + offset.y,
+        vx: 0,
+        vy: 0,
+        offsetX: offset.x,
+        offsetY: offset.y,
+        wobble: Math.random() * Math.PI * 2,
+        wobbleSpeed: 0.03 + Math.random() * 0.02,
+        imageUrl: skinUrl,
+      });
+
+      // Auto-load the pre-generated skin if not already loaded
+      if (!this.droneImages.has(i)) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = skinUrl;
+        img.onload = () => {
+          this.droneImages.set(i, img);
+        };
+      }
+    }
+  }
+
+  // Update drone positions (called each frame)
+  // Each drone follows the one in front of it, creating a chain/snake effect
+  // Drones further back are more elastic/laggy for organic movement
+  private updateDronePositions() {
+    const { ship } = this.state;
+
+    for (let i = 0; i < this.escortDrones.length; i++) {
+      const drone = this.escortDrones[i];
+
+      // Update wobble
+      drone.wobble += drone.wobbleSpeed;
+
+      let targetX: number;
+      let targetY: number;
+
+      if (i === 0) {
+        // First drone follows the ship directly
+        const backAngle = ship.rotation + Math.PI;
+        const followDistance = 50;
+        targetX = ship.x + Math.cos(backAngle) * followDistance;
+        targetY = ship.y + Math.sin(backAngle) * followDistance;
+      } else {
+        // Other drones follow the drone in front of them
+        const leader = this.escortDrones[i - 1];
+        const dx = drone.worldX - leader.worldX;
+        const dy = drone.worldY - leader.worldY;
+        const angleToLeader = Math.atan2(dy, dx);
+        const followDistance = 32; // Distance between drones in the chain
+        targetX = leader.worldX + Math.cos(angleToLeader) * followDistance;
+        targetY = leader.worldY + Math.sin(angleToLeader) * followDistance;
+      }
+
+      // Add small wobble for organic movement
+      const wobbleX = Math.sin(drone.wobble) * 2;
+      const wobbleY = Math.cos(drone.wobble * 1.3) * 2;
+      targetX += wobbleX;
+      targetY += wobbleY;
+
+      // Store previous position
+      drone.prevWorldX = drone.worldX;
+      drone.prevWorldY = drone.worldY;
+
+      // Calculate distance to target
+      const dx = targetX - drone.worldX;
+      const dy = targetY - drone.worldY;
+
+      // Elasticity increases for drones further back in the chain
+      // First drone is snappy, later drones are increasingly laggy/elastic
+      const elasticityFactor = 1 + (i * 0.5); // 1.0, 1.5, 2.0, 2.5, 3.0, 3.5
+      const baseSpringK = 0.1;
+      const baseDamping = 0.8;
+
+      // Softer spring for drones further back = more elastic/laggy
+      const springK = baseSpringK / elasticityFactor;
+      // Slightly more damping further back for smoother motion
+      const damping = Math.min(baseDamping + (i * 0.025), 0.92);
+
+      // Apply spring force
+      drone.vx += dx * springK;
+      drone.vy += dy * springK;
+
+      // Apply damping
+      drone.vx *= damping;
+      drone.vy *= damping;
+
+      // Update position
+      drone.worldX += drone.vx;
+      drone.worldY += drone.vy;
+
+      // Emit trail particles
+      this.emitDroneTrailParticles(drone);
+    }
+  }
+
+  // Render escort drones (following pets)
+  private renderEscortDrones() {
+    const { ctx, state } = this;
+    const { camera } = state;
+
+    if (this.escortDrones.length === 0 || this.shipBeingSucked) return;
+
+    for (const drone of this.escortDrones) {
+      // Convert world position to screen position
+      const screenX = drone.worldX - camera.x;
+      const screenY = drone.worldY - camera.y;
+
+      // Calculate rotation based on velocity (face direction of movement)
+      let rotation = Math.atan2(drone.vy, drone.vx) + Math.PI / 2;
+      // If barely moving, face same direction as ship
+      if (Math.abs(drone.vx) < 0.5 && Math.abs(drone.vy) < 0.5) {
+        rotation = state.ship.rotation;
+      }
+
+      ctx.save();
+      ctx.translate(screenX, screenY);
+      ctx.rotate(rotation);
+
+      // Glow effect
+      ctx.shadowColor = drone.glowColor;
+      ctx.shadowBlur = 15;
+
+      // Check if we have an image for this drone
+      const droneImage = this.droneImages.get(drone.id);
+
+      if (droneImage) {
+        // Draw drone image
+        const imgSize = drone.size * 3.5;
+        ctx.drawImage(droneImage, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
+
+        // Add glow overlay
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.4;
+        ctx.drawImage(droneImage, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+      } else {
+        // Fallback: Drone body - small diamond/arrow shape
+        const s = drone.size;
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 1.2);      // Nose
+        ctx.lineTo(s * 0.7, s * 0.5); // Right wing
+        ctx.lineTo(0, s * 0.2);       // Back center
+        ctx.lineTo(-s * 0.7, s * 0.5);// Left wing
+        ctx.closePath();
+
+        // Fill with gradient
+        const bodyGrad = ctx.createLinearGradient(0, -s, 0, s);
+        bodyGrad.addColorStop(0, drone.color);
+        bodyGrad.addColorStop(1, '#333333');
+        ctx.fillStyle = bodyGrad;
+        ctx.fill();
+
+        // Outline
+        ctx.strokeStyle = drone.color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Cockpit light
+        ctx.beginPath();
+        ctx.arc(0, -s * 0.3, s * 0.3, 0, Math.PI * 2);
+        ctx.fillStyle = drone.color;
+        ctx.fill();
+      }
+
+      // Engine glow at back (always show)
+      const s = drone.size;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(0, s * 0.5, s * 0.35, 0, Math.PI * 2);
+      const engineGrad = ctx.createRadialGradient(0, s * 0.5, 0, 0, s * 0.5, s * 0.5);
+      engineGrad.addColorStop(0, drone.color);
+      engineGrad.addColorStop(0.6, drone.glowColor + '88');
+      engineGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = engineGrad;
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  // Emit trail particles for a drone
+  private emitDroneTrailParticles(drone: EscortDrone) {
+    // Emit based on movement speed
+    const speed = Math.sqrt(drone.vx * drone.vx + drone.vy * drone.vy);
+    if (speed < 0.5) return; // Don't emit if barely moving
+    if (Math.random() > 0.5) return; // 50% chance to emit
+
+    // Trail comes from behind the drone
+    const moveAngle = Math.atan2(drone.vy, drone.vx);
+    const backAngle = moveAngle + Math.PI;
+    const spread = (Math.random() - 0.5) * 0.5;
+    const particleSpeed = Math.random() * 1.5 + 0.5;
+
+    // Use drone colors for trail
+    const colors = [drone.color, drone.glowColor, '#ffffff'];
+
+    this.state.particles.push({
+      x: drone.worldX + Math.cos(backAngle) * 8,
+      y: drone.worldY + Math.sin(backAngle) * 8,
+      vx: Math.cos(backAngle + spread) * particleSpeed - drone.vx * 0.2,
+      vy: Math.sin(backAngle + spread) * particleSpeed - drone.vy * 0.2,
+      life: 18 + Math.random() * 12,
+      maxLife: 30,
+      size: Math.random() * 4 + 2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+    });
+  }
+
+  // Set drone image from URL
+  public setDroneImage(droneId: number, imageUrl: string) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = imageUrl;
+    img.onload = () => {
+      this.droneImages.set(droneId, img);
+      // Update the drone's imageUrl
+      const drone = this.escortDrones.find(d => d.id === droneId);
+      if (drone) {
+        drone.imageUrl = imageUrl;
+      }
+    };
+  }
+
+  // Get current escort drones (for external access)
+  public getEscortDrones(): EscortDrone[] {
+    return this.escortDrones;
+  }
+
+  // Calculate drone count for a given ship level
+  private getDroneCountForLevel(shipLevel: number): number {
+    return Math.floor(shipLevel / this.DRONE_UNLOCK_INTERVAL);
+  }
+
   private emitThrustParticles(isBoosting: boolean = false) {
     const { ship } = this.state;
     const backAngle = ship.rotation + Math.PI;
@@ -3721,6 +4054,9 @@ export class SpaceGame {
 
     // Draw local ship
     this.drawShip();
+
+    // Draw escort drones (following pets)
+    this.renderEscortDrones();
 
     // Draw upgrade satellites/robots orbiting the ship
     this.renderUpgradeSatellites();
@@ -4350,9 +4686,9 @@ export class SpaceGame {
     ctx.translate(x, y);
     ctx.rotate(ship.rotation + Math.PI / 2);
 
-    // Ship size scales with level + size bonus from effects
+    // Ship size scales only with purchased size bonus from effects
     const effectSizeMultiplier = 1 + (this.shipEffects.sizeBonus / 100);
-    let scale = (0.9 + this.shipLevel * 0.12) * effectSizeMultiplier;
+    let scale = 0.9 * effectSizeMultiplier;
 
     // Shrink when being sucked into black hole
     if (this.shipBeingSucked) {
@@ -5089,6 +5425,7 @@ export class SpaceGame {
         this.otherPlayerImages.delete(id);
         this.otherPlayerImageUrls.delete(id);
         this.otherPlayerUpgrading.delete(id);
+        this.otherPlayerDrones.delete(id);
       }
     }
   }
@@ -5463,6 +5800,8 @@ export class SpaceGame {
       for (const pos of positions) {
         this.drawOtherPlayerAt(player, pos.x, pos.y, renderRotation, renderThrusting);
       }
+
+      // TODO: Add escort drones for other players (following behavior)
     }
   }
 
@@ -5479,10 +5818,9 @@ export class SpaceGame {
     ctx.translate(x, y);
     ctx.rotate(renderRotation + Math.PI / 2);
 
-    // Ship size (same formula as local player: base + level bonus + effects)
+    // Ship size (same formula as local player: base + purchased size bonus)
     const effectSizeMultiplier = 1 + ((player.shipEffects?.sizeBonus || 0) / 100);
-    const shipLevel = player.shipLevel || 1;
-    const scale = (0.9 + shipLevel * 0.12) * effectSizeMultiplier;
+    const scale = 0.9 * effectSizeMultiplier;
     const shipSize = 60 * scale;
 
     // Glow effect using player's color
