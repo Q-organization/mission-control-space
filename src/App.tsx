@@ -579,6 +579,7 @@ function App() {
   const [sfxEnabled, setSfxEnabled] = useState(soundManager.isSfxEnabled());
   const [upgradePrompt, setUpgradePrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showGameSettings, setShowGameSettings] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showPointsHistory, setShowPointsHistory] = useState(false);
   const [pointsHistoryTab, setPointsHistoryTab] = useState<'personal' | 'team'>('personal');
@@ -2259,9 +2260,13 @@ function App() {
     }
   }, [state.currentUser]);
 
-  // Handle destroying a completed planet (cleanup feature)
+  // Handle destroying a planet (completed planets with cannon, or unassigned tasks)
   const handleDestroyPlanet = useCallback(async (planet: Planet) => {
-    if (!planet.completed) return;
+    const isNotionPlanet = planet.id.startsWith('notion-');
+    const isUnassigned = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
+
+    // Allow destroying: completed planets OR unassigned tasks
+    if (!planet.completed && !isUnassigned) return;
 
     // Special planets cannot be destroyed
     const specialPlanets = ['shop-station', 'planet-builder'];
@@ -2332,7 +2337,7 @@ function App() {
       // Escape to close modals
       if (e.key === 'Escape' && !isUpgrading) {
         const isGameLanded = gameRef.current?.isPlayerLanded();
-        const hasOpenModal = editingGoal || showSettings || showTerraform ||
+        const hasOpenModal = editingGoal || showSettings || showGameSettings || showTerraform ||
           viewingPlanetOwner || showShop || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal;
 
         if (hasOpenModal) {
@@ -2340,6 +2345,7 @@ function App() {
           // Close everything at once
           setEditingGoal(null);
           setShowSettings(false);
+          setShowGameSettings(false);
           setShowTerraform(false);
           setViewingPlanetOwner(null);
           setShowShop(false);
@@ -2356,7 +2362,7 @@ function App() {
         const target = e.target as HTMLElement;
         const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
         const isGameLanded = gameRef.current?.isPlayerLanded();
-        const hasOpenModal = editingGoal || showSettings || showTerraform ||
+        const hasOpenModal = editingGoal || showSettings || showGameSettings || showTerraform ||
           viewingPlanetOwner || showShop || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal ||
           showWelcome || showUserSelect || showLeaderboard || showPointsHistory;
 
@@ -2369,7 +2375,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showTerraform, viewingPlanetOwner, showShop, showPlanetCreator, showSettings, editingGoal, landedPlanet, isUpgrading, showQuickTaskModal, showWelcome, showUserSelect, showLeaderboard, showPointsHistory]);
+  }, [showTerraform, viewingPlanetOwner, showShop, showPlanetCreator, showSettings, showGameSettings, editingGoal, landedPlanet, isUpgrading, showQuickTaskModal, showWelcome, showUserSelect, showLeaderboard, showPointsHistory]);
 
   // Buy visual upgrade from shop (AI-generated changes to ship appearance)
   const buyVisualUpgrade = async () => {
@@ -2985,38 +2991,45 @@ function App() {
   };
 
   // Save new planet (Notion tasks sync automatically, others are local)
-  const savePlanet = async () => {
+  const savePlanet = () => {
     if (!newPlanet.name) return;
 
     const isNotionTask = newPlanet.type === 'notion';
 
     if (isNotionTask) {
-      // Create Notion task via edge function
-      setIsCreatingPlanet(true);
-      try {
-        const { data: result, error } = await supabase.functions.invoke('notion-create', {
-          body: {
-            name: newPlanet.name,
-            description: newPlanet.description || null,
-            type: notionTaskType,
-            priority: notionPriority,
-            assigned_to: notionAssignedTo || null,
-            created_by: state.currentUser || 'unknown',
-          },
+      // Capture values before resetting form
+      const payload = {
+        name: newPlanet.name,
+        description: newPlanet.description || null,
+        type: notionTaskType,
+        priority: notionPriority,
+        assigned_to: notionAssignedTo || null,
+        created_by: state.currentUser || 'unknown',
+      };
+
+      // Reset form and close immediately
+      setNewPlanet({ size: 'medium' });
+      setPlanetImageFile(null);
+      setPlanetImagePreview(null);
+      setImagePrompt('');
+      setNotionPriority('medium');
+      setNotionAssignedTo('');
+      setNotionTaskType('task');
+      setShowPlanetCreator(false);
+      gameRef.current?.clearLandedState();
+
+      // Create Notion task in background
+      supabase.functions.invoke('notion-create', { body: payload })
+        .then(({ error }) => {
+          if (error) {
+            console.error('Failed to create Notion task:', error);
+          }
+        })
+        .catch((error) => {
+          console.error('Error creating Notion task:', error);
         });
 
-        if (error) {
-          console.error('Failed to create Notion task:', error);
-          alert('Failed to create task in Notion');
-        } else {
-          console.log('Created Notion task:', result);
-          // Planet will appear via realtime subscription
-        }
-      } catch (error) {
-        console.error('Error creating Notion task:', error);
-        alert('Error creating task in Notion');
-      }
-      setIsCreatingPlanet(false);
+      return;
     } else {
       // Local planet (Achievement, Business, Product)
       const planet: CustomPlanet = {
@@ -3336,58 +3349,37 @@ function App() {
         })()}
       </div>
 
-      {/* Audio toggles - bottom right above ship */}
-      <button
-        style={{
-          ...styles.audioToggleIcon,
-          bottom: 150,
-          borderColor: musicEnabled ? 'rgba(74, 222, 128, 0.5)' : 'rgba(255, 255, 255, 0.2)',
-          opacity: musicEnabled ? 1 : 0.5,
-        }}
-        onClick={() => {
-          const newValue = !musicEnabled;
-          setMusicEnabled(newValue);
-          soundManager.setMusicEnabled(newValue);
-        }}
-        title={musicEnabled ? 'Music ON' : 'Music OFF'}
-      >
-        🎵
-      </button>
+      {/* Game Settings Button - bottom right */}
       <button
         style={{
           ...styles.audioToggleIcon,
           bottom: 110,
-          borderColor: sfxEnabled ? 'rgba(74, 222, 128, 0.5)' : 'rgba(255, 255, 255, 0.2)',
-          opacity: sfxEnabled ? 1 : 0.5,
+          borderColor: 'rgba(255, 255, 255, 0.3)',
         }}
-        onClick={() => {
-          const newValue = !sfxEnabled;
-          setSfxEnabled(newValue);
-          soundManager.setSfxEnabled(newValue);
-        }}
-        title={sfxEnabled ? 'Sound Effects ON' : 'Sound Effects OFF'}
+        onClick={() => setShowGameSettings(true)}
+        title="Game Settings"
       >
-        🔊
+        ⚙️
       </button>
 
       {/* Quick Task FAB - hidden when modals are open */}
-      {!editingGoal && !showSettings && !showTerraform && !viewingPlanetOwner && !showShop && !showPlanetCreator && !landedPlanet && !showQuickTaskModal && !showLeaderboard && !showPointsHistory && !showShipHistory && !gameRef.current?.isPlayerLanded() && (
+      {!editingGoal && !showSettings && !showGameSettings && !showTerraform && !viewingPlanetOwner && !showShop && !showPlanetCreator && !landedPlanet && !showQuickTaskModal && !showLeaderboard && !showPointsHistory && !showShipHistory && !gameRef.current?.isPlayerLanded() && (
         <button
           style={{
             position: 'fixed',
             bottom: 24,
             left: 24,
-            width: 56,
-            height: 56,
-            borderRadius: '50%',
+            padding: '12px 20px',
+            borderRadius: '28px',
             background: 'linear-gradient(135deg, #00c8ff 0%, #0088cc 100%)',
             border: 'none',
             boxShadow: '0 4px 20px rgba(0, 200, 255, 0.4)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '1.75rem',
+            gap: '8px',
+            fontSize: '1rem',
+            fontWeight: 600,
             color: '#fff',
             transition: 'transform 0.2s, box-shadow 0.2s',
             zIndex: 900,
@@ -3395,7 +3387,7 @@ function App() {
           onClick={() => setShowQuickTaskModal(true)}
           title="Quick Add Task (T)"
           onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'scale(1.1)';
+            e.currentTarget.style.transform = 'scale(1.05)';
             e.currentTarget.style.boxShadow = '0 6px 25px rgba(0, 200, 255, 0.6)';
           }}
           onMouseLeave={(e) => {
@@ -3403,7 +3395,7 @@ function App() {
             e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 200, 255, 0.4)';
           }}
         >
-          +
+          <span style={{ fontSize: '1.25rem' }}>+</span> Add Task (T)
         </button>
       )}
 
@@ -3414,6 +3406,94 @@ function App() {
           onClose={() => setShowQuickTaskModal(false)}
           currentUser={state.currentUser || 'unknown'}
         />
+      )}
+
+      {/* Game Settings Modal */}
+      {showGameSettings && (
+        <div style={styles.modalOverlay} onClick={() => setShowGameSettings(false)}>
+          <div style={{ ...styles.modal, maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>⚙️ Settings</h2>
+
+            {/* Sound Controls */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ color: '#888', fontSize: '0.85rem', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Sound</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 16px',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => {
+                    const newValue = !musicEnabled;
+                    setMusicEnabled(newValue);
+                    soundManager.setMusicEnabled(newValue);
+                  }}
+                >
+                  <span>🎵 Music</span>
+                  <span style={{ color: musicEnabled ? '#4ade80' : '#666' }}>{musicEnabled ? 'ON' : 'OFF'}</span>
+                </button>
+                <button
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 16px',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => {
+                    const newValue = !sfxEnabled;
+                    setSfxEnabled(newValue);
+                    soundManager.setSfxEnabled(newValue);
+                  }}
+                >
+                  <span>🔊 Sound Effects</span>
+                  <span style={{ color: sfxEnabled ? '#4ade80' : '#666' }}>{sfxEnabled ? 'ON' : 'OFF'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div>
+              <h3 style={{ color: '#888', fontSize: '0.85rem', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Controls</h3>
+              <div style={{
+                background: 'rgba(255,255,255,0.03)',
+                borderRadius: '8px',
+                padding: '16px',
+                fontSize: '0.9rem',
+                lineHeight: '1.8',
+              }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px' }}>
+                  <span style={{ color: '#888' }}>W / ↑</span><span>Thrust</span>
+                  <span style={{ color: '#888' }}>A / ←</span><span>Rotate Left</span>
+                  <span style={{ color: '#888' }}>D / →</span><span>Rotate Right</span>
+                  <span style={{ color: '#888' }}>S / ↓</span><span>Brake</span>
+                  <span style={{ color: '#888' }}>SHIFT</span><span>Boost</span>
+                  <span style={{ color: '#888' }}>SPACE</span><span>Dock / Take Off</span>
+                  <span style={{ color: '#888' }}>T</span><span>Add Task</span>
+                  <span style={{ color: '#888' }}>ESC</span><span>Close Menus</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              style={{ ...styles.cancelButton, marginTop: '1.5rem', width: '100%' }}
+              onClick={() => setShowGameSettings(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Leaderboard Modal */}
@@ -4235,7 +4315,7 @@ function App() {
                 </div>
 
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Description *</label>
+                  <label style={styles.label}>Description</label>
                   <input
                     type="text"
                     style={styles.input}

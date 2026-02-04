@@ -1738,13 +1738,21 @@ export class SpaceGame {
       return;
     }
 
-    // Handle X key - destroy completed Notion planet (requires Destroy Canon equipped)
+    // Handle X key - destroy Notion planet
     if (this.keys.has('x')) {
       this.keys.delete('x');
       const specialPlanets = ['shop-station', 'planet-builder'];
       const isSpecial = specialPlanets.includes(planet.id) || planet.id.startsWith('user-planet-');
       const isNotionPlanet = planet.id.startsWith('notion-');
-      // Can only destroy completed Notion planets if player has the Destroy Canon equipped
+      const isUnassigned = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
+
+      // Unassigned tasks can be deleted without the Destroy Canon (no points)
+      if (isUnassigned && !isSpecial && isNotionPlanet && this.onDestroyPlanet) {
+        this.startDestroyAnimation(planet);
+        return;
+      }
+
+      // Completed Notion planets require the Destroy Canon equipped
       if (planet.completed && !isSpecial && isNotionPlanet && this.onDestroyPlanet && this.shipEffects.destroyCanonEquipped) {
         this.startDestroyAnimation(planet);
       }
@@ -5006,62 +5014,6 @@ export class SpaceGame {
       ctx.restore();
     }
 
-    // Draw controls hint (different controls when landed)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.font = '11px Space Grotesk';
-    ctx.textAlign = 'left';
-    if (this.isLanded && this.landedPlanet) {
-      const hasNotion = this.landedPlanet.notionUrl;
-      const isCompleted = this.landedPlanet.completed;
-      const isNotionPlanet = this.landedPlanet.id.startsWith('notion-');
-      const isUnassigned = isNotionPlanet && (!this.landedPlanet.ownerId || this.landedPlanet.ownerId === '');
-      const isPlanetFactory = this.landedPlanet.id === 'planet-builder';
-      const specialPlanets = ['shop-station', 'planet-builder'];
-      const isSpecial = specialPlanets.includes(this.landedPlanet.id) || this.landedPlanet.id.startsWith('user-planet-');
-      // Check if planet is owned by another player
-      const isOwnedByOther = this.landedPlanet.ownerId !== null &&
-                             this.landedPlanet.ownerId !== undefined &&
-                             this.landedPlanet.ownerId !== '' &&
-                             this.landedPlanet.ownerId !== this.currentUser;
-      let hint = 'SPACE Take Off';
-      // Only show claim/complete options if player can actually do it (not owned by another player)
-      if (!isCompleted && !isPlanetFactory && !isOwnedByOther) {
-        if (isUnassigned) {
-          hint += '  •  C Claim Mission';
-        } else {
-          hint += '  •  C Complete';
-        }
-      }
-      if (isCompleted && !isSpecial && isNotionPlanet) {
-        if (this.shipEffects.destroyCanonEquipped) {
-          hint += '  •  X Destroy';
-        } else if (this.shipEffects.hasDestroyCanon) {
-          hint += '  •  🔒 Equip Canon';
-        } else {
-          hint += '  •  🔒 Canon (Shop)';
-        }
-      }
-      if (hasNotion) {
-        hint += '  •  N Open in Notion';
-      }
-      ctx.fillText(hint, 20, canvas.height - 15);
-    } else {
-      let flightHint = 'W/↑ Thrust  •  A/← D/→ Rotate  •  S/↓ Brake  •  SHIFT Boost  •  SPACE Dock';
-      if (this.shipEffects.spaceRifleEquipped) {
-        flightHint += '  •  X Rifle';
-      }
-      if (this.shipEffects.plasmaCanonEquipped) {
-        flightHint += '  •  Z Plasma';
-      }
-      if (this.shipEffects.rocketLauncherEquipped) {
-        flightHint += '  •  V Rocket';
-      }
-      if (this.shipEffects.hasWarpDrive) {
-        flightHint += '  •  H Warp Home';
-      }
-      ctx.fillText(flightHint, 20, canvas.height - 15);
-    }
-
     // Draw warp home animation ON TOP of everything (including UI)
     if (this.isWarping) {
       this.renderWarpAnimation();
@@ -5806,7 +5758,7 @@ export class SpaceGame {
     const maxTextWidth = boxWidth - 30;
     const hasRealReward = planet.realWorldReward && !planet.completed;
     const hasNotionUrl = planet.notionUrl && !planet.completed;
-    let boxHeight = isUserPlanet ? 90 : 110;
+    let boxHeight = isUserPlanet ? 100 : 110;
     if (hasRealReward) boxHeight += 30;
     if (hasNotionUrl) boxHeight += 20;
     if (isViewOnly) boxHeight += 15; // Extra space for owner info
@@ -6232,21 +6184,41 @@ export class SpaceGame {
           ctx.font = 'bold 14px Space Grotesk';
           ctx.fillText('[ N ] Open Notion', boxX + boxWidth / 2, currentY);
         }
-        // Show view-only indicator
-        ctx.fillStyle = 'rgba(167, 139, 250, 0.7)';
-        ctx.font = '11px Space Grotesk';
-        ctx.fillText('Viewing only - cannot complete', boxX + boxWidth / 2, currentY + 18);
       } else {
         // Claim or Complete hint
         ctx.fillStyle = isUnassignedNotion ? '#ffd700' : '#4ade80';
         ctx.font = 'bold 14px Space Grotesk';
         const actionText = isUnassignedNotion ? '[ C ] Claim Mission' : '[ C ] Complete';
-        ctx.fillText(actionText, boxX + boxWidth / 2 - (hasNotionUrl ? 80 : 0), currentY);
 
-        // Notion hint
-        if (hasNotionUrl) {
-          ctx.fillStyle = '#5490ff';
-          ctx.fillText('[ N ] Open Notion', boxX + boxWidth / 2 + 80, currentY);
+        if (isUnassignedNotion) {
+          // For unassigned: Claim and Delete stacked on left, Notion on right
+          ctx.textAlign = 'left';
+          const leftX = boxX + 30;
+
+          // Line 1: Claim Mission
+          ctx.fillStyle = '#ffd700';
+          ctx.fillText('[ C ] Claim Mission', leftX, currentY - 8);
+
+          // Line 2: Delete
+          ctx.fillStyle = '#ff4444';
+          ctx.fillText('[ X ] Delete', leftX, currentY + 10);
+
+          // Notion hint on the right
+          if (hasNotionUrl) {
+            ctx.textAlign = 'right';
+            ctx.fillStyle = '#5490ff';
+            ctx.fillText('[ N ] Notion', boxX + boxWidth - 30, currentY);
+          }
+
+          ctx.textAlign = 'center';
+        } else {
+          ctx.fillText(actionText, boxX + boxWidth / 2 - (hasNotionUrl ? 80 : 0), currentY);
+
+          // Notion hint
+          if (hasNotionUrl) {
+            ctx.fillStyle = '#5490ff';
+            ctx.fillText('[ N ] Open Notion', boxX + boxWidth / 2 + 80, currentY);
+          }
         }
       }
     } else if (planet.completed && !isSpecialPlanet && planet.type === 'notion') {
