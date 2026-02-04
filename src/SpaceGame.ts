@@ -1191,7 +1191,7 @@ export class SpaceGame {
 
     // Check if boosting
     const isBoosting = this.keys.has('shift');
-    const speedMultiplier = 1 + ((this.shipEffects.speedBonus || 0) * 0.1); // Each level = +10%
+    const speedMultiplier = 1 + ((this.shipEffects.speedBonus || 0) * 0.2); // Each level = +20%
     const acceleration = (isBoosting ? SHIP_BOOST_ACCELERATION : SHIP_ACCELERATION) * speedMultiplier;
     const maxSpeed = (isBoosting ? SHIP_BOOST_MAX_SPEED : SHIP_MAX_SPEED) * speedMultiplier;
 

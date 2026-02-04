@@ -278,7 +278,7 @@ interface ShipEffects {
   glowColor: string | null;
   trailType: 'default' | 'fire' | 'ice' | 'rainbow';
   sizeBonus: number; // Percentage bonus (e.g., 10 = +10%)
-  speedBonus: number; // 0-10 levels, each gives +10% speed
+  speedBonus: number; // 0-10 levels, each gives +20% speed
   landingSpeedBonus: number; // 0-5 levels, each gives +15% faster landing
   ownedGlows: string[]; // Owned glow colors
   ownedTrails: string[]; // Owned trail types
@@ -570,7 +570,7 @@ function App() {
   const [showUserSelect, setShowUserSelect] = useState(!state.currentUser);
   const [showPlanetCreator, setShowPlanetCreator] = useState(false);
   const [showShop, setShowShop] = useState(false);
-  const [shopTab, setShopTab] = useState<'stats' | 'cosmetics' | 'weapons'>('stats');
+  const [shopTab, setShopTab] = useState<'stats' | 'cosmetics' | 'weapons' | 'utility'>('stats');
   const [musicEnabled, setMusicEnabled] = useState(soundManager.isMusicEnabled());
   const [sfxEnabled, setSfxEnabled] = useState(soundManager.isSfxEnabled());
   const [upgradePrompt, setUpgradePrompt] = useState('');
@@ -1968,9 +1968,10 @@ function App() {
       fireConfetti(planet.size);
       soundManager.playDockingSound();
 
-      // Optimistic update: add points instantly for gratification
-      const pointsEarned = POINTS_PER_SIZE[planet.size];
-      setPersonalPoints(prev => prev + pointsEarned);
+      // Optimistic update: add points instantly (based on priority, stored on planet)
+      if (planet.points) {
+        setPersonalPoints(prev => prev + planet.points!);
+      }
 
       // Mark as completed in database - backend awards points to assigned player
       completeNotionPlanet(planet.id);
@@ -2074,9 +2075,10 @@ function App() {
       fireConfetti(planet.size);
       soundManager.playDockingSound();
 
-      // Optimistic update: add points instantly for gratification
-      const pointsEarned = POINTS_PER_SIZE[planet.size];
-      setPersonalPoints(prev => prev + pointsEarned);
+      // Optimistic update: add points instantly (based on priority, stored on planet)
+      if (planet.points) {
+        setPersonalPoints(prev => prev + planet.points!);
+      }
 
       // Mark as completed in database - backend awards points to assigned player
       completeNotionPlanet(planet.id);
@@ -3545,7 +3547,7 @@ function App() {
 
             {/* Tab Navigation */}
             <div style={{ display: 'flex', gap: '4px', marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px' }}>
-              {(['stats', 'cosmetics', 'weapons'] as const).map(tab => (
+              {(['stats', 'cosmetics', 'weapons', 'utility'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setShopTab(tab)}
@@ -3558,13 +3560,14 @@ function App() {
                     color: shopTab === tab ? '#ffa500' : '#888',
                     fontWeight: shopTab === tab ? 600 : 400,
                     cursor: 'pointer',
-                    fontSize: '0.85rem',
+                    fontSize: '0.8rem',
                     transition: 'all 0.2s',
                   }}
                 >
                   {tab === 'stats' && '⚡ Stats'}
                   {tab === 'cosmetics' && '🎨 Cosmetics'}
                   {tab === 'weapons' && '🔫 Weapons'}
+                  {tab === 'utility' && '🔧 Utility'}
                 </button>
               ))}
             </div>
@@ -4002,7 +4005,13 @@ function App() {
                     </div>
                   );
                 })()}
-                {/* Warp Drive - 750 pts */}
+              </div>
+            )}
+
+            {/* Utility Tab */}
+            {shopTab === 'utility' && (
+              <div style={styles.shopSection}>
+                {/* Warp Drive */}
                 {(() => {
                   const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
                   const owned = effects.hasWarpDrive;
@@ -4486,20 +4495,26 @@ function App() {
                 </h4>
                 <div className="hidden-scrollbar" style={{ maxHeight: 250, overflowY: 'auto' }}>
                   {/* Base ship option */}
-                  <div style={{
-                    ...styles.historyItem,
-                    cursor: 'pointer',
-                    border: getCurrentUserShip().currentImage === getCurrentUserShip().baseImage ? '2px solid #4ade80' : '2px solid transparent',
-                  }} onClick={() => selectShipFromHistory(getCurrentUserShip().baseImage || '/ship-base.png')}>
-                    <img src={getCurrentUserShip().baseImage || '/ship-base.png'} alt="" style={styles.historyThumb} />
-                    <div style={styles.historyInfo}>
-                      <span style={styles.historyDesc}>Base Ship</span>
-                      <span style={styles.historyDate}>Original</span>
-                    </div>
-                    {getCurrentUserShip().currentImage === (getCurrentUserShip().baseImage || '/ship-base.png') && (
-                      <span style={{ color: '#4ade80', fontSize: '0.75rem' }}>✓</span>
-                    )}
-                  </div>
+                  {(() => {
+                    const baseShipUrl = getCurrentUserShip().baseImage || '/ship-base.png';
+                    const isBaseSelected = getCurrentUserShip().currentImage === baseShipUrl;
+                    return (
+                      <div style={{
+                        ...styles.historyItem,
+                        cursor: 'pointer',
+                        border: isBaseSelected ? '2px solid #4ade80' : '2px solid transparent',
+                      }} onClick={() => selectShipFromHistory(baseShipUrl)}>
+                        <img src={baseShipUrl} alt="" style={styles.historyThumb} />
+                        <div style={styles.historyInfo}>
+                          <span style={styles.historyDesc}>Base Ship</span>
+                          <span style={styles.historyDate}>Original</span>
+                        </div>
+                        {isBaseSelected && (
+                          <span style={{ color: '#4ade80', fontSize: '0.75rem' }}>✓</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {/* Upgrade history */}
                   {mascotHistory.map((entry, i) => (
                     <div key={i} style={{
