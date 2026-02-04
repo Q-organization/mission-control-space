@@ -2644,21 +2644,21 @@ export class SpaceGame {
     const pulseIntensity = 0.8 + Math.sin(this.portalAngle * 2) * 0.2;
     const glowRadius = 120 * pulseIntensity;
     const outerGlow = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
-    outerGlow.addColorStop(0, 'rgba(150, 50, 255, 0.6)');
-    outerGlow.addColorStop(0.3, 'rgba(120, 20, 220, 0.4)');
-    outerGlow.addColorStop(0.6, 'rgba(100, 0, 200, 0.2)');
-    outerGlow.addColorStop(1, 'rgba(80, 0, 150, 0)');
+    outerGlow.addColorStop(0, 'rgba(50, 180, 255, 0.6)');
+    outerGlow.addColorStop(0.3, 'rgba(30, 140, 255, 0.4)');
+    outerGlow.addColorStop(0.6, 'rgba(20, 100, 220, 0.2)');
+    outerGlow.addColorStop(1, 'rgba(10, 60, 150, 0)');
     ctx.fillStyle = outerGlow;
     ctx.beginPath();
     ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    // Solid purple base circle (like a small planet)
+    // Solid blue base circle (like a small planet)
     const baseRadius = 50;
     const baseGradient = ctx.createRadialGradient(x - 15, y - 15, 0, x, y, baseRadius);
-    baseGradient.addColorStop(0, '#a855f7');
-    baseGradient.addColorStop(0.5, '#7c3aed');
-    baseGradient.addColorStop(1, '#4c1d95');
+    baseGradient.addColorStop(0, '#60a5fa');
+    baseGradient.addColorStop(0.5, '#3b82f6');
+    baseGradient.addColorStop(1, '#1e40af');
     ctx.fillStyle = baseGradient;
     ctx.beginPath();
     ctx.arc(x, y, baseRadius, 0, Math.PI * 2);
@@ -2672,7 +2672,7 @@ export class SpaceGame {
 
       ctx.beginPath();
       ctx.ellipse(x, y, ringRadius, ringRadius * 0.4, ringAngle, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${220 - i * 15}, ${150 + i * 25}, 255, ${ringAlpha})`;
+      ctx.strokeStyle = `rgba(${100 + i * 20}, ${180 + i * 20}, 255, ${ringAlpha})`;
       ctx.lineWidth = 5 - i * 0.8;
       ctx.stroke();
     }
@@ -2683,7 +2683,7 @@ export class SpaceGame {
       const vortexAngle = -this.portalAngle * 3 + i * 0.7;
       ctx.beginPath();
       ctx.ellipse(x, y, vortexRadius, vortexRadius * 0.5, vortexAngle, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(255, 220, 255, ${0.8 - i * 0.15})`;
+      ctx.strokeStyle = `rgba(200, 240, 255, ${0.8 - i * 0.15})`;
       ctx.lineWidth = 3 - i * 0.5;
       ctx.stroke();
     }
@@ -2692,9 +2692,9 @@ export class SpaceGame {
     const coreRadius = 20;
     const coreGradient = ctx.createRadialGradient(x, y, 0, x, y, coreRadius);
     coreGradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    coreGradient.addColorStop(0.3, 'rgba(230, 200, 255, 0.9)');
-    coreGradient.addColorStop(0.7, 'rgba(200, 150, 255, 0.6)');
-    coreGradient.addColorStop(1, 'rgba(150, 100, 255, 0)');
+    coreGradient.addColorStop(0.3, 'rgba(200, 230, 255, 0.9)');
+    coreGradient.addColorStop(0.7, 'rgba(150, 200, 255, 0.6)');
+    coreGradient.addColorStop(1, 'rgba(100, 150, 255, 0)');
     ctx.fillStyle = coreGradient;
     ctx.beginPath();
     ctx.arc(x, y, coreRadius, 0, Math.PI * 2);
@@ -2710,14 +2710,14 @@ export class SpaceGame {
 
       ctx.beginPath();
       ctx.arc(sx, sy, sparkleSize, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(255, 220, 255, ${0.8 + Math.sin(this.portalAngle * 6 + i) * 0.2})`;
+      ctx.fillStyle = `rgba(180, 230, 255, ${0.8 + Math.sin(this.portalAngle * 6 + i) * 0.2})`;
       ctx.fill();
     }
 
     // Portal label
     ctx.font = 'bold 14px "Space Grotesk"';
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(220, 180, 255, 0.95)';
+    ctx.fillStyle = 'rgba(150, 210, 255, 0.95)';
     ctx.fillText('⟡ Mission Control ⟡', x, y + 85);
 
     ctx.restore();
