@@ -77,6 +77,7 @@ const SOUND_CONFIGS: Record<string, SoundConfig> = {
   teleport: {
     src: [`${SOUNDS_PATH}teleport.mp3`],
     volume: 0.5,
+    rate: 1.3,
   },
   upgradeLoading: {
     src: [`${SOUNDS_PATH}upgrade-loading.ogg`],
