@@ -162,11 +162,17 @@ const TASK_VOICE_LINES = [
   `${SOUNDS_PATH}tasks/vcWj8PPN9-U6V3BZHV73p_music_generated.mp3`,
 ];
 
-// Voice lines for sending/reassigning tasks ("ok boss", "on it", etc.)
-// Add mp3 files to public/sounds/send/ folder to enable
+// Voice lines for sending/reassigning tasks ("Special delivery!", "Coming through!", etc.)
 const SEND_VOICE_LINES: string[] = [
-  // `${SOUNDS_PATH}send/ok-boss.mp3`,
-  // `${SOUNDS_PATH}send/on-it.mp3`,
+  `${SOUNDS_PATH}delivery/3altLuDQSB4XYsds8Wn0n_music_generated.mp3`,
+  `${SOUNDS_PATH}delivery/delivery.mp3`,
+  `${SOUNDS_PATH}delivery/Elzr81sZ4mdzWCaUmWhX0_music_generated.mp3`,
+  `${SOUNDS_PATH}delivery/fhCAkl3lvRKjwMGyckLlC_music_generated.mp3`,
+  `${SOUNDS_PATH}delivery/My_SlduSqHH_NeI47ryv3_music_generated.mp3`,
+  `${SOUNDS_PATH}delivery/ngsZ6pqGkGwBRYtzO8Ula_music_generated.mp3`,
+  `${SOUNDS_PATH}delivery/package inbound.mp3`,
+  `${SOUNDS_PATH}delivery/rnBmZ4RiwNQVj58R7w45Q_music_generated.mp3`,
+  `${SOUNDS_PATH}delivery/Xv80e6wBbeiN2j7Uo55tm_music_generated.mp3`,
 ];
 
 export class SoundManager {
