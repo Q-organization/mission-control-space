@@ -2711,7 +2711,6 @@ function App() {
   const selectUser = (userId: string) => {
     soundManager.init();
     soundManager.playSelect();
-    soundManager.playIntroMusic(); // Start intro music on first interaction
     setState(prev => ({ ...prev, currentUser: userId }));
     setShowUserSelect(false);
     // DO NOT initialize userShips with defaults here!
@@ -2931,14 +2930,8 @@ function App() {
     const currentUser = USERS.find(u => u.id === state.currentUser);
     const currentShip = getCurrentUserShip();
 
-    // Initialize audio and play intro on first interaction with welcome screen
-    const handleWelcomeClick = () => {
-      soundManager.init();
-      soundManager.playIntroMusic();
-    };
-
     return (
-      <div style={styles.welcome} onClick={handleWelcomeClick}>
+      <div style={styles.welcome}>
         <img src="/logo.png" alt="Custom One" style={styles.logo} />
         <h1 style={styles.title}>Mission Control</h1>
         <p style={styles.subtitle}>Space Edition</p>
@@ -2963,8 +2956,7 @@ function App() {
         <button style={styles.startButton} onClick={() => {
           soundManager.init();
           soundManager.playSelect();
-          soundManager.stopAllMusic(); // Stop intro music
-          soundManager.startAmbientMusic(); // Start ambient music for gameplay
+          soundManager.playIntroMusic(); // Play intro, then ambient auto-queues
           setShowWelcome(false);
         }}>
           Launch Mission
