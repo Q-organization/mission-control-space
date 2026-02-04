@@ -4209,7 +4209,6 @@ export class SpaceGame {
     this.isUpgrading = true;
     this.upgradeTargetPlanetId = planetId;
     soundManager.startLoadingSound();
-    soundManager.playVisualUpgrade(); // Plays upgrade1 + upgrade2 layered
 
     // Play appropriate voice line
     if (planetId && planetId.startsWith('user-planet-')) {
