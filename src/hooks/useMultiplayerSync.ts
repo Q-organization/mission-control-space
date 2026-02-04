@@ -62,6 +62,8 @@ const defaultShipEffects: ShipEffects = {
   plasmaCanonEquipped: false,
   hasRocketLauncher: false,
   rocketLauncherEquipped: false,
+  hasWarpDrive: false,
+  hasMissionControlPortal: false,
 };
 
 // How long before we consider a player offline even if is_online is true

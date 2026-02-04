@@ -179,6 +179,8 @@ export interface ShipEffects {
   plasmaCanonEquipped: boolean;
   hasRocketLauncher: boolean;
   rocketLauncherEquipped: boolean;
+  hasWarpDrive: boolean;
+  hasMissionControlPortal: boolean;
 }
 
 export interface MultiplayerTeam {

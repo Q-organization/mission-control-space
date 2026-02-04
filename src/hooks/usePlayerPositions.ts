@@ -91,6 +91,8 @@ const defaultShipEffects: ShipEffects = {
   plasmaCanonEquipped: false,
   hasRocketLauncher: false,
   rocketLauncherEquipped: false,
+  hasWarpDrive: false,
+  hasMissionControlPortal: false,
 };
 
 export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlayerPositionsReturn {

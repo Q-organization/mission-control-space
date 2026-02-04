@@ -4043,47 +4043,6 @@ function App() {
                     </div>
                   );
                 })()}
-                {/* Mission Control Portal - 600 pts */}
-                {(() => {
-                  const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
-                  const owned = effects.hasMissionControlPortal;
-                  const canBuy = !owned && personalPoints >= MISSION_CONTROL_PORTAL_COST;
-                  return (
-                    <div style={styles.effectLane}>
-                      <div style={styles.effectLaneLabel}>
-                        <span style={styles.effectLaneIcon}>🌌</span>
-                        <span>MC Portal</span>
-                      </div>
-                      <div style={styles.effectLaneContent}>
-                        <span style={{ fontSize: '0.75rem', color: '#888', flex: 1 }}>
-                          Portal at home (G key)
-                        </span>
-                        {owned ? (
-                          <span style={{
-                            color: '#00ff88',
-                            fontSize: '0.75rem',
-                            fontWeight: 'bold',
-                            padding: '6px 12px',
-                          }}>
-                            OWNED
-                          </span>
-                        ) : (
-                          <button
-                            style={{
-                              ...styles.effectBuyButton,
-                              opacity: canBuy ? 1 : 0.5,
-                              minWidth: 100,
-                            }}
-                            onClick={buyMissionControlPortal}
-                            disabled={!canBuy}
-                          >
-                            {MISSION_CONTROL_PORTAL_COST} ⭐
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             )}
 
@@ -4368,6 +4327,47 @@ function App() {
                           </button>
                         ) : (
                           <span style={styles.effectMaxed}>MAX</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Mission Control Portal */}
+                {(() => {
+                  const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
+                  const owned = effects.hasMissionControlPortal;
+                  const canBuy = !owned && personalPoints >= MISSION_CONTROL_PORTAL_COST;
+                  return (
+                    <div style={{ ...styles.effectLane, marginBottom: '1rem' }}>
+                      <div style={styles.effectLaneLabel}>
+                        <span style={styles.effectLaneIcon}>🌌</span>
+                        <span>Portal</span>
+                      </div>
+                      <div style={styles.effectLaneContent}>
+                        <span style={{ fontSize: '0.75rem', color: '#888', flex: 1 }}>
+                          Teleport to Mission Control
+                        </span>
+                        {owned ? (
+                          <span style={{
+                            color: '#00ff88',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold',
+                            padding: '6px 12px',
+                          }}>
+                            BUILT
+                          </span>
+                        ) : (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              opacity: canBuy ? 1 : 0.5,
+                            }}
+                            onClick={buyMissionControlPortal}
+                            disabled={!canBuy}
+                          >
+                            Build ({MISSION_CONTROL_PORTAL_COST} ⭐)
+                          </button>
                         )}
                       </div>
                     </div>

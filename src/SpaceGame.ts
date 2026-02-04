@@ -50,6 +50,7 @@ interface ShipEffects {
   hasRocketLauncher: boolean;
   rocketLauncherEquipped: boolean;
   hasWarpDrive: boolean;
+  hasMissionControlPortal: boolean;
 }
 
 interface UpgradeSatellite {
@@ -176,7 +177,7 @@ export class SpaceGame {
   private plasmaCanonImage: HTMLImageElement | null = null; // Plasma Canon weapon image
   private rocketLauncherImage: HTMLImageElement | null = null; // Rocket Launcher weapon image
   private shipLevel: number = 1;
-  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasWarpDrive: false };
+  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasWarpDrive: false, hasMissionControlPortal: false };
   private blackHole: BlackHole;
   private shipBeingSucked: boolean = false;
   private suckProgress: number = 0;
@@ -237,6 +238,17 @@ export class SpaceGame {
   private warpTargetY: number = 0;
   private warpParticles: { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }[] = [];
   private warpTrailPoints: { x: number; y: number; alpha: number }[] = [];
+
+  // Mission Control Portal state (teleport from home planet to Mission Control with G key)
+  private isPortalTeleporting: boolean = false;
+  private portalProgress: number = 0;
+  private portalStartX: number = 0;
+  private portalStartY: number = 0;
+  private portalTargetX: number = 0;
+  private portalTargetY: number = 0;
+  private portalParticles: { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }[] = [];
+  private portalTrailPoints: { x: number; y: number; alpha: number }[] = [];
+  private portalAngle: number = 0; // Portal rotation animation
 
   // Upgrading animation state (orbiting satellites/robots)
   private isUpgrading: boolean = false;
@@ -1144,6 +1156,14 @@ export class SpaceGame {
       return;
     }
 
+    // Handle portal teleport animation
+    if (this.isPortalTeleporting) {
+      this.updatePortalAnimation();
+      this.updateCamera();
+      this.updateParticles();
+      return;
+    }
+
     // Handle destroy animation
     if (this.isDestroying) {
       this.updateDestroyAnimation();
@@ -1326,6 +1346,17 @@ export class SpaceGame {
     if (this.keys.has('h') && this.shipEffects.hasWarpDrive && !this.shipBeingSucked && !this.isLanded) {
       this.keys.delete('h'); // Consume key
       this.startWarpHomeAnimation();
+    }
+
+    // Mission Control Portal - auto-teleport when ship enters portal
+    if (this.shipEffects.hasMissionControlPortal && !this.shipBeingSucked && !this.isLanded && !this.isPortalTeleporting && !this.isWarping) {
+      const portalPos = this.getPortalPosition();
+      if (portalPos) {
+        const dist = Math.sqrt((ship.x - portalPos.x) ** 2 + (ship.y - portalPos.y) ** 2);
+        if (dist < 40) { // Enter portal to teleport (smaller radius for actual entry)
+          this.startPortalTeleportAnimation();
+        }
+      }
     }
 
     // Update projectiles (movement, collision, damage)
@@ -2096,8 +2127,8 @@ export class SpaceGame {
     this.warpParticles = [];
     this.warpTrailPoints = [];
 
-    // Play teleport sound
-    soundManager.playTeleport();
+    // Play warp home sound
+    soundManager.playWarpHome();
   }
 
   // Update warp home animation - 3 phases: charging, movement, arrival
@@ -2233,57 +2264,128 @@ export class SpaceGame {
     }
   }
 
-  // Render warp animation effects
+  // Render warp animation effects (rendered on top of everything)
   private renderWarpAnimation() {
     if (!this.isWarping) return;
 
-    const { ctx } = this;
-    const { ship } = this.state;
+    const { ctx, canvas } = this;
+    const { ship, camera } = this.state;
     const CHARGING_END = 0.2;
     const MOVEMENT_END = 0.8;
 
-    // Phase 1: Charging glow around ship
+    // Save context for screen-space effects
+    ctx.save();
+
+    // Reset transform for screen-space overlay effects
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Screen-space ship position
+    const screenX = ship.x - camera.x;
+    const screenY = ship.y - camera.y;
+
+    // Phase 1: Charging - screen vignette builds up
     if (this.warpProgress < CHARGING_END) {
       const chargeIntensity = Math.min(1, this.warpProgress / CHARGING_END);
 
-      // Glow around ship
+      // Cyan vignette around edges
+      const vignetteGradient = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.3,
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.8
+      );
+      vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vignetteGradient.addColorStop(0.5, `rgba(0, 50, 80, ${0.1 * chargeIntensity})`);
+      vignetteGradient.addColorStop(1, `rgba(0, 100, 150, ${0.3 * chargeIntensity})`);
+      ctx.fillStyle = vignetteGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Glow around ship (screen space)
       ctx.beginPath();
-      ctx.arc(ship.x, ship.y, 40 + chargeIntensity * 30, 0, Math.PI * 2);
-      const gradient = ctx.createRadialGradient(ship.x, ship.y, 0, ship.x, ship.y, 40 + chargeIntensity * 30);
-      gradient.addColorStop(0, `rgba(0, 255, 255, ${0.3 * chargeIntensity})`);
-      gradient.addColorStop(0.5, `rgba(0, 200, 255, ${0.2 * chargeIntensity})`);
-      gradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
-      ctx.fillStyle = gradient;
+      ctx.arc(screenX, screenY, 50 + chargeIntensity * 40, 0, Math.PI * 2);
+      const glowGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 50 + chargeIntensity * 40);
+      glowGradient.addColorStop(0, `rgba(0, 255, 255, ${0.4 * chargeIntensity})`);
+      glowGradient.addColorStop(0.5, `rgba(0, 200, 255, ${0.2 * chargeIntensity})`);
+      glowGradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
+      ctx.fillStyle = glowGradient;
       ctx.fill();
 
-      // Pulsing ring
-      ctx.beginPath();
-      ctx.arc(ship.x, ship.y, 30 + Math.sin(this.warpProgress * 40) * 8, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(0, 255, 255, ${0.5 + chargeIntensity * 0.5})`;
-      ctx.lineWidth = 2 + chargeIntensity * 2;
-      ctx.stroke();
+      // Multiple pulsing rings
+      for (let i = 0; i < 3; i++) {
+        const ringOffset = i * 15;
+        const phase = this.warpProgress * 50 + i * 2;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 35 + ringOffset + Math.sin(phase) * 10, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(0, 255, 255, ${(0.6 - i * 0.15) * chargeIntensity})`;
+        ctx.lineWidth = 3 - i * 0.5;
+        ctx.stroke();
+      }
     }
 
-    // Phase 2: Warp trail
+    // Phase 1.5: Departure flash (at transition from charging to movement)
+    if (this.warpProgress >= CHARGING_END - 0.03 && this.warpProgress < CHARGING_END + 0.05) {
+      const flashProgress = (this.warpProgress - (CHARGING_END - 0.03)) / 0.08;
+      const flashIntensity = flashProgress < 0.5 ? flashProgress * 2 : (1 - flashProgress) * 2;
+
+      // Full screen flash
+      ctx.fillStyle = `rgba(0, 255, 255, ${0.3 * flashIntensity})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Bright center flash
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 100 + flashIntensity * 50, 0, Math.PI * 2);
+      const flashGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 100 + flashIntensity * 50);
+      flashGradient.addColorStop(0, `rgba(255, 255, 255, ${0.8 * flashIntensity})`);
+      flashGradient.addColorStop(0.3, `rgba(0, 255, 255, ${0.5 * flashIntensity})`);
+      flashGradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
+      ctx.fillStyle = flashGradient;
+      ctx.fill();
+    }
+
+    // Phase 2: Movement - speed lines and tunnel effect
     if (this.warpProgress >= CHARGING_END && this.warpProgress < MOVEMENT_END) {
-      if (this.warpTrailPoints.length > 1) {
+      const moveProgress = (this.warpProgress - CHARGING_END) / (MOVEMENT_END - CHARGING_END);
+
+      // Tunnel vignette effect
+      const tunnelGradient = ctx.createRadialGradient(
+        screenX, screenY, 0,
+        screenX, screenY, canvas.width * 0.6
+      );
+      tunnelGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      tunnelGradient.addColorStop(0.4, 'rgba(0, 20, 40, 0.1)');
+      tunnelGradient.addColorStop(0.7, `rgba(0, 50, 80, ${0.2 + moveProgress * 0.1})`);
+      tunnelGradient.addColorStop(1, `rgba(0, 80, 120, ${0.4 + moveProgress * 0.2})`);
+      ctx.fillStyle = tunnelGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Speed lines radiating from center
+      const numLines = 24;
+      const targetAngle = Math.atan2(this.warpTargetY - this.warpStartY, this.warpTargetX - this.warpStartX);
+      for (let i = 0; i < numLines; i++) {
+        const angle = (i / numLines) * Math.PI * 2;
+        const lineLength = 100 + Math.random() * 200 * moveProgress;
+        const startDist = 80 + Math.random() * 40;
+
         ctx.beginPath();
-        ctx.moveTo(this.warpTrailPoints[0].x, this.warpTrailPoints[0].y);
-        for (let i = 1; i < this.warpTrailPoints.length; i++) {
-          ctx.lineTo(this.warpTrailPoints[i].x, this.warpTrailPoints[i].y);
-        }
-        ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
-        ctx.lineWidth = 3;
+        ctx.moveTo(
+          screenX + Math.cos(angle) * startDist,
+          screenY + Math.sin(angle) * startDist
+        );
+        ctx.lineTo(
+          screenX + Math.cos(angle) * (startDist + lineLength),
+          screenY + Math.sin(angle) * (startDist + lineLength)
+        );
+        ctx.strokeStyle = `rgba(0, 255, 255, ${0.3 + Math.random() * 0.3})`;
+        ctx.lineWidth = 1 + Math.random() * 2;
         ctx.stroke();
       }
 
-      // Warp distortion around ship
+      // Core glow around ship
       ctx.beginPath();
-      ctx.arc(ship.x, ship.y, 35, 0, Math.PI * 2);
-      const gradient = ctx.createRadialGradient(ship.x, ship.y, 0, ship.x, ship.y, 35);
-      gradient.addColorStop(0, 'rgba(0, 255, 255, 0.4)');
-      gradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
-      ctx.fillStyle = gradient;
+      ctx.arc(screenX, screenY, 40, 0, Math.PI * 2);
+      const coreGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 40);
+      coreGradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+      coreGradient.addColorStop(0.3, 'rgba(0, 255, 255, 0.4)');
+      coreGradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
+      ctx.fillStyle = coreGradient;
       ctx.fill();
     }
 
@@ -2292,25 +2394,495 @@ export class SpaceGame {
       const arrivalProgress = (this.warpProgress - MOVEMENT_END) / (1 - MOVEMENT_END);
       const flashIntensity = 1 - arrivalProgress;
 
-      // Expanding ring
-      ctx.beginPath();
-      ctx.arc(ship.x, ship.y, 30 + arrivalProgress * 60, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(0, 255, 255, ${0.7 * flashIntensity})`;
-      ctx.lineWidth = 3 * flashIntensity;
-      ctx.stroke();
+      // Screen flash at arrival
+      if (arrivalProgress < 0.3) {
+        ctx.fillStyle = `rgba(0, 255, 255, ${0.25 * (1 - arrivalProgress / 0.3)})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Multiple expanding rings
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 40 + arrivalProgress * (80 + i * 30), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(0, 255, 255, ${(0.7 - i * 0.2) * flashIntensity})`;
+        ctx.lineWidth = (4 - i) * flashIntensity;
+        ctx.stroke();
+      }
 
       // Fading glow
       ctx.beginPath();
-      ctx.arc(ship.x, ship.y, 50 * flashIntensity, 0, Math.PI * 2);
-      const gradient = ctx.createRadialGradient(ship.x, ship.y, 0, ship.x, ship.y, 50 * flashIntensity);
-      gradient.addColorStop(0, `rgba(0, 255, 255, ${0.5 * flashIntensity})`);
-      gradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
-      ctx.fillStyle = gradient;
+      ctx.arc(screenX, screenY, 60 * flashIntensity, 0, Math.PI * 2);
+      const arrivalGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 60 * flashIntensity);
+      arrivalGradient.addColorStop(0, `rgba(255, 255, 255, ${0.6 * flashIntensity})`);
+      arrivalGradient.addColorStop(0.4, `rgba(0, 255, 255, ${0.4 * flashIntensity})`);
+      arrivalGradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
+      ctx.fillStyle = arrivalGradient;
       ctx.fill();
     }
 
-    // Draw warp particles
+    // Restore context
+    ctx.restore();
+
+    // Draw warp particles (in world space, so they transform with camera)
     for (const p of this.warpParticles) {
+      const alpha = p.life / 25;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+      ctx.fillStyle = p.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla');
+      ctx.fill();
+    }
+  }
+
+  // Get the position of the Mission Control Portal (at the edge of map, beyond home planet)
+  private getPortalPosition(): { x: number; y: number } | null {
+    if (!this.shipEffects.hasMissionControlPortal) return null;
+
+    // Find the current user's home planet zone
+    const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
+    if (!playerZone) return null;
+
+    // Calculate direction from map center to player zone (outward direction toward edge)
+    const dx = playerZone.centerX - CENTER_X;
+    const dy = playerZone.centerY - CENTER_Y;
+    const outwardAngle = Math.atan2(dy, dx);
+
+    // Portal is 1000 units away from the home planet, toward the edge of the map
+    const portalDistance = 1000;
+
+    return {
+      x: playerZone.centerX + Math.cos(outwardAngle) * portalDistance,
+      y: playerZone.centerY + Math.sin(outwardAngle) * portalDistance,
+    };
+  }
+
+  // Start portal teleport animation (teleport ship to Mission Control)
+  private startPortalTeleportAnimation() {
+    // Find Mission Control zone
+    const mcZone = ZONES.find(z => z.id === 'mission-control');
+    if (!mcZone) return;
+
+    const { ship } = this.state;
+
+    // Set start position (current ship location, should be near the portal)
+    this.portalStartX = ship.x;
+    this.portalStartY = ship.y;
+
+    // Set target position (Mission Control, offset above the center)
+    this.portalTargetX = mcZone.centerX;
+    this.portalTargetY = mcZone.centerY - 150;
+
+    // Initialize animation state
+    this.isPortalTeleporting = true;
+    this.portalProgress = 0;
+    this.portalParticles = [];
+    this.portalTrailPoints = [];
+
+    // Play teleport sound (teleport_02.ogg)
+    soundManager.playWarpHome();
+  }
+
+  // Update portal teleport animation - 3 phases: charging, movement, arrival
+  private updatePortalAnimation() {
+    if (!this.isPortalTeleporting) return;
+
+    const { ship } = this.state;
+    const CHARGING_END = 0.2;
+    const MOVEMENT_END = 0.8;
+
+    // Update portal rotation for visual effect
+    this.portalAngle += 0.05;
+
+    // Update particles (decay)
+    this.portalParticles = this.portalParticles.filter(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+      return p.life > 0;
+    });
+
+    // Update trail points (fade)
+    this.portalTrailPoints = this.portalTrailPoints.filter(tp => {
+      tp.alpha -= 0.02;
+      return tp.alpha > 0;
+    });
+
+    // Phase 1: Charging (0 - 0.2)
+    if (this.portalProgress < CHARGING_END) {
+      this.portalProgress += 0.015;
+
+      // Keep ship at start position during charging
+      ship.x = this.portalStartX;
+      ship.y = this.portalStartY;
+      ship.vx = 0;
+      ship.vy = 0;
+
+      // Emit charging particles converging on ship (purple/magenta hue for portal)
+      const chargeIntensity = Math.min(1, this.portalProgress / CHARGING_END);
+      if (Math.random() < 0.4 + chargeIntensity * 0.4) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 100 + Math.random() * 80;
+        this.portalParticles.push({
+          x: ship.x + Math.cos(angle) * dist,
+          y: ship.y + Math.sin(angle) * dist,
+          vx: -Math.cos(angle) * (3 + chargeIntensity * 3),
+          vy: -Math.sin(angle) * (3 + chargeIntensity * 3),
+          life: 25,
+          color: `hsl(${280 + Math.random() * 40}, 100%, ${60 + chargeIntensity * 30}%)`, // Purple/magenta hue
+          size: 2 + Math.random() * 2,
+        });
+      }
+      return;
+    }
+
+    // Phase 2: Movement (0.2 - 0.8)
+    if (this.portalProgress >= CHARGING_END && this.portalProgress < MOVEMENT_END) {
+      this.portalProgress += 0.025;
+
+      const moveProgress = (this.portalProgress - CHARGING_END) / (MOVEMENT_END - CHARGING_END);
+      // Use easeInOutCubic for smooth acceleration/deceleration
+      const eased = moveProgress < 0.5
+        ? 4 * moveProgress * moveProgress * moveProgress
+        : 1 - Math.pow(-2 * moveProgress + 2, 3) / 2;
+
+      // Interpolate ship position
+      ship.x = this.portalStartX + (this.portalTargetX - this.portalStartX) * eased;
+      ship.y = this.portalStartY + (this.portalTargetY - this.portalStartY) * eased;
+      ship.vx = 0;
+      ship.vy = 0;
+
+      // Rotate ship to face target
+      const targetAngle = Math.atan2(this.portalTargetY - this.portalStartY, this.portalTargetX - this.portalStartX);
+      ship.rotation = targetAngle;
+
+      // Add trail points
+      if (moveProgress > 0.1) {
+        this.portalTrailPoints.push({
+          x: ship.x,
+          y: ship.y,
+          alpha: 0.8,
+        });
+      }
+
+      // Emit speed particles along trajectory (purple/magenta)
+      if (Math.random() < 0.6) {
+        const perpAngle = targetAngle + Math.PI / 2;
+        const offset = (Math.random() - 0.5) * 30;
+        this.portalParticles.push({
+          x: ship.x + Math.cos(perpAngle) * offset,
+          y: ship.y + Math.sin(perpAngle) * offset,
+          vx: -Math.cos(targetAngle) * 2,
+          vy: -Math.sin(targetAngle) * 2,
+          life: 15,
+          color: `hsl(${280 + Math.random() * 30}, 100%, 70%)`,
+          size: 1.5 + Math.random() * 1.5,
+        });
+      }
+      return;
+    }
+
+    // Phase 3: Arrival (0.8 - 1.0)
+    if (this.portalProgress >= MOVEMENT_END) {
+      this.portalProgress += 0.02;
+
+      // Ship at destination
+      ship.x = this.portalTargetX;
+      ship.y = this.portalTargetY;
+      ship.vx = 0;
+      ship.vy = 0;
+      ship.rotation = -Math.PI / 2; // Face up
+
+      // Arrival burst particles
+      if (this.portalProgress < 0.9) {
+        for (let i = 0; i < 5; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 2 + Math.random() * 4;
+          this.portalParticles.push({
+            x: ship.x,
+            y: ship.y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 20 + Math.random() * 15,
+            color: `hsl(${270 + Math.random() * 40}, 100%, ${50 + Math.random() * 30}%)`,
+            size: 2 + Math.random() * 3,
+          });
+        }
+      }
+    }
+
+    // Animation complete
+    if (this.portalProgress >= 1) {
+      this.isPortalTeleporting = false;
+      this.portalParticles = [];
+      this.portalTrailPoints = [];
+    }
+  }
+
+  // Render the Mission Control Portal visual (floating portal near home planet)
+  private renderPortal() {
+    if (!this.shipEffects.hasMissionControlPortal) {
+      return;
+    }
+
+    const portalPos = this.getPortalPosition();
+    if (!portalPos) {
+      return;
+    }
+
+    const { ctx } = this;
+    const { camera } = this.state;
+
+    // Convert world coordinates to screen coordinates
+    const x = portalPos.x - camera.x;
+    const y = portalPos.y - camera.y;
+
+    // Update portal animation angle
+    this.portalAngle += 0.025;
+
+    ctx.save();
+
+    // Large outer glow (pulsing) - bigger for visibility
+    const pulseIntensity = 0.8 + Math.sin(this.portalAngle * 2) * 0.2;
+    const glowRadius = 120 * pulseIntensity;
+    const outerGlow = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
+    outerGlow.addColorStop(0, 'rgba(150, 50, 255, 0.6)');
+    outerGlow.addColorStop(0.3, 'rgba(120, 20, 220, 0.4)');
+    outerGlow.addColorStop(0.6, 'rgba(100, 0, 200, 0.2)');
+    outerGlow.addColorStop(1, 'rgba(80, 0, 150, 0)');
+    ctx.fillStyle = outerGlow;
+    ctx.beginPath();
+    ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Solid purple base circle (like a small planet)
+    const baseRadius = 50;
+    const baseGradient = ctx.createRadialGradient(x - 15, y - 15, 0, x, y, baseRadius);
+    baseGradient.addColorStop(0, '#a855f7');
+    baseGradient.addColorStop(0.5, '#7c3aed');
+    baseGradient.addColorStop(1, '#4c1d95');
+    ctx.fillStyle = baseGradient;
+    ctx.beginPath();
+    ctx.arc(x, y, baseRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Swirling energy rings on top
+    for (let i = 0; i < 4; i++) {
+      const ringRadius = 30 + i * 15;
+      const ringAngle = this.portalAngle * (1.5 - i * 0.2);
+      const ringAlpha = 0.9 - i * 0.15;
+
+      ctx.beginPath();
+      ctx.ellipse(x, y, ringRadius, ringRadius * 0.4, ringAngle, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${220 - i * 15}, ${150 + i * 25}, 255, ${ringAlpha})`;
+      ctx.lineWidth = 5 - i * 0.8;
+      ctx.stroke();
+    }
+
+    // Inner vortex spiral effect
+    for (let i = 0; i < 4; i++) {
+      const vortexRadius = 25 - i * 5;
+      const vortexAngle = -this.portalAngle * 3 + i * 0.7;
+      ctx.beginPath();
+      ctx.ellipse(x, y, vortexRadius, vortexRadius * 0.5, vortexAngle, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 220, 255, ${0.8 - i * 0.15})`;
+      ctx.lineWidth = 3 - i * 0.5;
+      ctx.stroke();
+    }
+
+    // Bright white center core
+    const coreRadius = 20;
+    const coreGradient = ctx.createRadialGradient(x, y, 0, x, y, coreRadius);
+    coreGradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    coreGradient.addColorStop(0.3, 'rgba(230, 200, 255, 0.9)');
+    coreGradient.addColorStop(0.7, 'rgba(200, 150, 255, 0.6)');
+    coreGradient.addColorStop(1, 'rgba(150, 100, 255, 0)');
+    ctx.fillStyle = coreGradient;
+    ctx.beginPath();
+    ctx.arc(x, y, coreRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sparkle particles orbiting the portal
+    for (let i = 0; i < 10; i++) {
+      const sparkleAngle = this.portalAngle * 2.5 + (i / 10) * Math.PI * 2;
+      const sparkleRadius = 55 + Math.sin(this.portalAngle * 4 + i) * 15;
+      const sx = x + Math.cos(sparkleAngle) * sparkleRadius;
+      const sy = y + Math.sin(sparkleAngle) * sparkleRadius;
+      const sparkleSize = 3 + Math.sin(this.portalAngle * 5 + i * 2) * 2;
+
+      ctx.beginPath();
+      ctx.arc(sx, sy, sparkleSize, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 220, 255, ${0.8 + Math.sin(this.portalAngle * 6 + i) * 0.2})`;
+      ctx.fill();
+    }
+
+    // Portal label
+    ctx.font = 'bold 14px "Space Grotesk"';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(220, 180, 255, 0.95)';
+    ctx.fillText('⟡ Mission Control ⟡', x, y + 85);
+
+    ctx.restore();
+  }
+
+  // Render portal teleport animation effects
+  private renderPortalAnimation() {
+    if (!this.isPortalTeleporting) return;
+
+    const { ctx, canvas } = this;
+    const { ship, camera } = this.state;
+    const CHARGING_END = 0.2;
+    const MOVEMENT_END = 0.8;
+
+    // Save context for screen-space effects
+    ctx.save();
+
+    // Reset transform for screen-space overlay effects
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Screen-space ship position
+    const screenX = ship.x - camera.x;
+    const screenY = ship.y - camera.y;
+
+    // Phase 1: Charging - screen vignette builds up (purple/magenta)
+    if (this.portalProgress < CHARGING_END) {
+      const chargeIntensity = Math.min(1, this.portalProgress / CHARGING_END);
+
+      // Purple vignette around edges
+      const vignetteGradient = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.3,
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.8
+      );
+      vignetteGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vignetteGradient.addColorStop(0.5, `rgba(50, 0, 80, ${0.1 * chargeIntensity})`);
+      vignetteGradient.addColorStop(1, `rgba(100, 0, 150, ${0.3 * chargeIntensity})`);
+      ctx.fillStyle = vignetteGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Glow around ship (screen space)
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 50 + chargeIntensity * 40, 0, Math.PI * 2);
+      const glowGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 50 + chargeIntensity * 40);
+      glowGradient.addColorStop(0, `rgba(200, 100, 255, ${0.4 * chargeIntensity})`);
+      glowGradient.addColorStop(0.5, `rgba(150, 50, 255, ${0.2 * chargeIntensity})`);
+      glowGradient.addColorStop(1, 'rgba(100, 0, 200, 0)');
+      ctx.fillStyle = glowGradient;
+      ctx.fill();
+
+      // Multiple pulsing rings
+      for (let i = 0; i < 3; i++) {
+        const ringOffset = i * 15;
+        const phase = this.portalProgress * 50 + i * 2;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 35 + ringOffset + Math.sin(phase) * 10, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(200, 100, 255, ${(0.6 - i * 0.15) * chargeIntensity})`;
+        ctx.lineWidth = 3 - i * 0.5;
+        ctx.stroke();
+      }
+    }
+
+    // Phase 1.5: Departure flash (at transition from charging to movement)
+    if (this.portalProgress >= CHARGING_END - 0.03 && this.portalProgress < CHARGING_END + 0.05) {
+      const flashProgress = (this.portalProgress - (CHARGING_END - 0.03)) / 0.08;
+      const flashIntensity = flashProgress < 0.5 ? flashProgress * 2 : (1 - flashProgress) * 2;
+
+      // Full screen flash (purple)
+      ctx.fillStyle = `rgba(180, 100, 255, ${0.3 * flashIntensity})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Bright center flash
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 100 + flashIntensity * 50, 0, Math.PI * 2);
+      const flashGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 100 + flashIntensity * 50);
+      flashGradient.addColorStop(0, `rgba(255, 255, 255, ${0.8 * flashIntensity})`);
+      flashGradient.addColorStop(0.3, `rgba(200, 100, 255, ${0.5 * flashIntensity})`);
+      flashGradient.addColorStop(1, 'rgba(150, 50, 200, 0)');
+      ctx.fillStyle = flashGradient;
+      ctx.fill();
+    }
+
+    // Phase 2: Movement - speed lines and tunnel effect
+    if (this.portalProgress >= CHARGING_END && this.portalProgress < MOVEMENT_END) {
+      const moveProgress = (this.portalProgress - CHARGING_END) / (MOVEMENT_END - CHARGING_END);
+
+      // Tunnel vignette effect (purple)
+      const tunnelGradient = ctx.createRadialGradient(
+        screenX, screenY, 0,
+        screenX, screenY, canvas.width * 0.6
+      );
+      tunnelGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      tunnelGradient.addColorStop(0.4, 'rgba(20, 0, 40, 0.1)');
+      tunnelGradient.addColorStop(0.7, `rgba(50, 0, 80, ${0.2 + moveProgress * 0.1})`);
+      tunnelGradient.addColorStop(1, `rgba(80, 0, 120, ${0.4 + moveProgress * 0.2})`);
+      ctx.fillStyle = tunnelGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Speed lines radiating from center (purple)
+      const numLines = 24;
+      for (let i = 0; i < numLines; i++) {
+        const angle = (i / numLines) * Math.PI * 2;
+        const lineLength = 100 + Math.random() * 200 * moveProgress;
+        const startDist = 80 + Math.random() * 40;
+
+        ctx.beginPath();
+        ctx.moveTo(
+          screenX + Math.cos(angle) * startDist,
+          screenY + Math.sin(angle) * startDist
+        );
+        ctx.lineTo(
+          screenX + Math.cos(angle) * (startDist + lineLength),
+          screenY + Math.sin(angle) * (startDist + lineLength)
+        );
+        ctx.strokeStyle = `rgba(200, 100, 255, ${0.3 + Math.random() * 0.3})`;
+        ctx.lineWidth = 1 + Math.random() * 2;
+        ctx.stroke();
+      }
+
+      // Core glow around ship (purple)
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 40, 0, Math.PI * 2);
+      const coreGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 40);
+      coreGradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+      coreGradient.addColorStop(0.3, 'rgba(200, 100, 255, 0.4)');
+      coreGradient.addColorStop(1, 'rgba(150, 50, 200, 0)');
+      ctx.fillStyle = coreGradient;
+      ctx.fill();
+    }
+
+    // Phase 3: Arrival flash
+    if (this.portalProgress >= MOVEMENT_END) {
+      const arrivalProgress = (this.portalProgress - MOVEMENT_END) / (1 - MOVEMENT_END);
+      const flashIntensity = 1 - arrivalProgress;
+
+      // Screen flash at arrival (purple)
+      if (arrivalProgress < 0.3) {
+        ctx.fillStyle = `rgba(180, 100, 255, ${0.25 * (1 - arrivalProgress / 0.3)})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Multiple expanding rings (purple)
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 40 + arrivalProgress * (80 + i * 30), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(200, 100, 255, ${(0.7 - i * 0.2) * flashIntensity})`;
+        ctx.lineWidth = (4 - i) * flashIntensity;
+        ctx.stroke();
+      }
+
+      // Fading glow (purple)
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 60 * flashIntensity, 0, Math.PI * 2);
+      const arrivalGradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, 60 * flashIntensity);
+      arrivalGradient.addColorStop(0, `rgba(255, 255, 255, ${0.6 * flashIntensity})`);
+      arrivalGradient.addColorStop(0.4, `rgba(200, 100, 255, ${0.4 * flashIntensity})`);
+      arrivalGradient.addColorStop(1, 'rgba(150, 50, 200, 0)');
+      ctx.fillStyle = arrivalGradient;
+      ctx.fill();
+    }
+
+    // Restore context
+    ctx.restore();
+
+    // Draw portal particles (in world space, so they transform with camera)
+    for (const p of this.portalParticles) {
       const alpha = p.life / 25;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
@@ -4302,6 +4874,9 @@ export class SpaceGame {
       this.drawPlanet(planet);
     }
 
+    // Draw Mission Control Portal (if owned)
+    this.renderPortal();
+
     // Draw black hole
     this.drawBlackHole();
 
@@ -4342,11 +4917,6 @@ export class SpaceGame {
     // Draw claim animation (laser beam + teleport effect)
     if (this.isClaiming) {
       this.renderClaimAnimation();
-    }
-
-    // Draw warp home animation (teleport to home planet)
-    if (this.isWarping) {
-      this.renderWarpAnimation();
     }
 
     // Draw destroy animation (explosion effect)
@@ -4440,7 +5010,20 @@ export class SpaceGame {
       if (this.shipEffects.rocketLauncherEquipped) {
         flightHint += '  •  V Rocket';
       }
+      if (this.shipEffects.hasWarpDrive) {
+        flightHint += '  •  H Warp Home';
+      }
       ctx.fillText(flightHint, 20, canvas.height - 15);
+    }
+
+    // Draw warp home animation ON TOP of everything (including UI)
+    if (this.isWarping) {
+      this.renderWarpAnimation();
+    }
+
+    // Draw portal teleport animation ON TOP of everything (including UI)
+    if (this.isPortalTeleporting) {
+      this.renderPortalAnimation();
     }
   }
 
