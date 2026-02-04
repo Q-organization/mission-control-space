@@ -49,6 +49,7 @@ interface ShipEffects {
   plasmaCanonEquipped: boolean;
   hasRocketLauncher: boolean;
   rocketLauncherEquipped: boolean;
+  hasWarpDrive: boolean;
 }
 
 interface UpgradeSatellite {
@@ -175,7 +176,7 @@ export class SpaceGame {
   private plasmaCanonImage: HTMLImageElement | null = null; // Plasma Canon weapon image
   private rocketLauncherImage: HTMLImageElement | null = null; // Rocket Launcher weapon image
   private shipLevel: number = 1;
-  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false };
+  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasWarpDrive: false };
   private blackHole: BlackHole;
   private shipBeingSucked: boolean = false;
   private suckProgress: number = 0;
@@ -226,6 +227,16 @@ export class SpaceGame {
   private claimTargetReady: boolean = false; // True when API has returned with actual target position
   private claimTrailPoints: { x: number; y: number; alpha: number }[] = [];
   private claimPendingPlanet: Planet | null = null; // New planet data to apply after animation ends
+
+  // Warp home animation state (teleport ship to home planet with H key)
+  private isWarping: boolean = false;
+  private warpProgress: number = 0;
+  private warpStartX: number = 0;
+  private warpStartY: number = 0;
+  private warpTargetX: number = 0;
+  private warpTargetY: number = 0;
+  private warpParticles: { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }[] = [];
+  private warpTrailPoints: { x: number; y: number; alpha: number }[] = [];
 
   // Upgrading animation state (orbiting satellites/robots)
   private isUpgrading: boolean = false;
@@ -1125,6 +1136,14 @@ export class SpaceGame {
       return;
     }
 
+    // Handle warp home animation
+    if (this.isWarping) {
+      this.updateWarpAnimation();
+      this.updateCamera();
+      this.updateParticles();
+      return;
+    }
+
     // Handle destroy animation
     if (this.isDestroying) {
       this.updateDestroyAnimation();
@@ -1303,6 +1322,12 @@ export class SpaceGame {
       // Space TNT (destroyCanonEquipped) is handled in handleLandedControls when landed
     }
 
+    // Warp home with H key (requires Warp Drive upgrade)
+    if (this.keys.has('h') && this.shipEffects.hasWarpDrive && !this.shipBeingSucked && !this.isLanded) {
+      this.keys.delete('h'); // Consume key
+      this.startWarpHomeAnimation();
+    }
+
     // Update projectiles (movement, collision, damage)
     this.updateProjectiles();
     this.updatePlasmaProjectiles();
@@ -1344,11 +1369,13 @@ export class SpaceGame {
       // Check if close enough to dock (and not completed)
       // Also check ownership: can interact with shared planets (ownerId null) or own planets
       // User planets can always be landed on (for viewing other players' planets)
+      // Notion planets owned by others can be landed on for viewing (but not completing)
       const isUserPlanetType = closestPlanet.id.startsWith('user-planet-');
-      const canInteract = isUserPlanetType ||
-                          closestPlanet.ownerId === null ||
-                          closestPlanet.ownerId === undefined ||
-                          closestPlanet.ownerId === this.currentUser;
+      const isNotionPlanetType = closestPlanet.id.startsWith('notion-');
+      const isOwnedByCurrentUser = closestPlanet.ownerId === null ||
+                                   closestPlanet.ownerId === undefined ||
+                                   closestPlanet.ownerId === this.currentUser;
+      const canInteract = isUserPlanetType || isOwnedByCurrentUser || isNotionPlanetType;
 
       // Allow landing on: uncompleted planets OR completed Notion planets (to destroy them)
       const isNotionPlanet = closestPlanet.id.startsWith('notion-');
@@ -1607,7 +1634,12 @@ export class SpaceGame {
       // Special planets cannot be completed
       const specialPlanets = ['shop-station', 'planet-builder'];
       const isSpecial = specialPlanets.includes(planet.id) || planet.id.startsWith('user-planet-');
-      if (!planet.completed && !isSpecial) {
+      // Check if player can modify this planet (owns it or it's unassigned)
+      const isOwnedByOther = planet.ownerId !== null &&
+                             planet.ownerId !== undefined &&
+                             planet.ownerId !== '' &&
+                             planet.ownerId !== this.currentUser;
+      if (!planet.completed && !isSpecial && !isOwnedByOther) {
         const isNotionPlanet = planet.id.startsWith('notion-');
         const isUnassigned = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
 
@@ -2039,6 +2071,251 @@ export class SpaceGame {
       // Claim API was already called at animation start (via onClaimRequest)
       // No need to call onColonize here - the planet is already claimed and at its final position
       this.claimPlanet = null;
+    }
+  }
+
+  // Start warp home animation (teleport ship to home planet)
+  private startWarpHomeAnimation() {
+    // Find home planet zone for current user
+    const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
+    if (!playerZone) return;
+
+    const { ship } = this.state;
+
+    // Set start position (current ship location)
+    this.warpStartX = ship.x;
+    this.warpStartY = ship.y;
+
+    // Set target position (zone center, offset to not land inside planet)
+    this.warpTargetX = playerZone.centerX;
+    this.warpTargetY = playerZone.centerY - 150; // Offset above planet center
+
+    // Initialize animation state
+    this.isWarping = true;
+    this.warpProgress = 0;
+    this.warpParticles = [];
+    this.warpTrailPoints = [];
+
+    // Play teleport sound
+    soundManager.playTeleport();
+  }
+
+  // Update warp home animation - 3 phases: charging, movement, arrival
+  private updateWarpAnimation() {
+    if (!this.isWarping) return;
+
+    const { ship } = this.state;
+    const CHARGING_END = 0.2;
+    const MOVEMENT_END = 0.8;
+
+    // Update particles (decay)
+    this.warpParticles = this.warpParticles.filter(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+      return p.life > 0;
+    });
+
+    // Update trail points (fade)
+    this.warpTrailPoints = this.warpTrailPoints.filter(tp => {
+      tp.alpha -= 0.02;
+      return tp.alpha > 0;
+    });
+
+    // Phase 1: Charging (0 - 0.2)
+    if (this.warpProgress < CHARGING_END) {
+      this.warpProgress += 0.015;
+
+      // Keep ship at start position during charging
+      ship.x = this.warpStartX;
+      ship.y = this.warpStartY;
+      ship.vx = 0;
+      ship.vy = 0;
+
+      // Emit charging particles converging on ship
+      const chargeIntensity = Math.min(1, this.warpProgress / CHARGING_END);
+      if (Math.random() < 0.4 + chargeIntensity * 0.4) {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 100 + Math.random() * 80;
+        this.warpParticles.push({
+          x: ship.x + Math.cos(angle) * dist,
+          y: ship.y + Math.sin(angle) * dist,
+          vx: -Math.cos(angle) * (3 + chargeIntensity * 3),
+          vy: -Math.sin(angle) * (3 + chargeIntensity * 3),
+          life: 25,
+          color: `hsl(${180 + Math.random() * 40}, 100%, ${60 + chargeIntensity * 30}%)`, // Cyan hue
+          size: 2 + Math.random() * 2,
+        });
+      }
+      return;
+    }
+
+    // Phase 2: Movement (0.2 - 0.8)
+    if (this.warpProgress >= CHARGING_END && this.warpProgress < MOVEMENT_END) {
+      this.warpProgress += 0.025;
+
+      const moveProgress = (this.warpProgress - CHARGING_END) / (MOVEMENT_END - CHARGING_END);
+      // Use easeInOutCubic for smooth acceleration/deceleration
+      const eased = moveProgress < 0.5
+        ? 4 * moveProgress * moveProgress * moveProgress
+        : 1 - Math.pow(-2 * moveProgress + 2, 3) / 2;
+
+      // Interpolate ship position
+      ship.x = this.warpStartX + (this.warpTargetX - this.warpStartX) * eased;
+      ship.y = this.warpStartY + (this.warpTargetY - this.warpStartY) * eased;
+      ship.vx = 0;
+      ship.vy = 0;
+
+      // Rotate ship to face target
+      const targetAngle = Math.atan2(this.warpTargetY - this.warpStartY, this.warpTargetX - this.warpStartX);
+      ship.rotation = targetAngle;
+
+      // Add trail points
+      if (moveProgress > 0.1) {
+        this.warpTrailPoints.push({
+          x: ship.x,
+          y: ship.y,
+          alpha: 0.8,
+        });
+      }
+
+      // Emit speed particles along trajectory
+      if (Math.random() < 0.6) {
+        const perpAngle = targetAngle + Math.PI / 2;
+        const offset = (Math.random() - 0.5) * 30;
+        this.warpParticles.push({
+          x: ship.x + Math.cos(perpAngle) * offset,
+          y: ship.y + Math.sin(perpAngle) * offset,
+          vx: -Math.cos(targetAngle) * 2,
+          vy: -Math.sin(targetAngle) * 2,
+          life: 15,
+          color: `hsl(${180 + Math.random() * 30}, 100%, 70%)`,
+          size: 1.5 + Math.random() * 1.5,
+        });
+      }
+      return;
+    }
+
+    // Phase 3: Arrival (0.8 - 1.0)
+    if (this.warpProgress >= MOVEMENT_END) {
+      this.warpProgress += 0.02;
+
+      // Ship at destination
+      ship.x = this.warpTargetX;
+      ship.y = this.warpTargetY;
+      ship.vx = 0;
+      ship.vy = 0;
+      ship.rotation = -Math.PI / 2; // Face up
+
+      // Arrival burst particles
+      if (this.warpProgress < 0.9) {
+        for (let i = 0; i < 5; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 2 + Math.random() * 4;
+          this.warpParticles.push({
+            x: ship.x,
+            y: ship.y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 20 + Math.random() * 15,
+            color: `hsl(${170 + Math.random() * 40}, 100%, ${50 + Math.random() * 30}%)`,
+            size: 2 + Math.random() * 3,
+          });
+        }
+      }
+    }
+
+    // Animation complete
+    if (this.warpProgress >= 1) {
+      this.isWarping = false;
+      this.warpParticles = [];
+      this.warpTrailPoints = [];
+    }
+  }
+
+  // Render warp animation effects
+  private renderWarpAnimation() {
+    if (!this.isWarping) return;
+
+    const { ctx } = this;
+    const { ship } = this.state;
+    const CHARGING_END = 0.2;
+    const MOVEMENT_END = 0.8;
+
+    // Phase 1: Charging glow around ship
+    if (this.warpProgress < CHARGING_END) {
+      const chargeIntensity = Math.min(1, this.warpProgress / CHARGING_END);
+
+      // Glow around ship
+      ctx.beginPath();
+      ctx.arc(ship.x, ship.y, 40 + chargeIntensity * 30, 0, Math.PI * 2);
+      const gradient = ctx.createRadialGradient(ship.x, ship.y, 0, ship.x, ship.y, 40 + chargeIntensity * 30);
+      gradient.addColorStop(0, `rgba(0, 255, 255, ${0.3 * chargeIntensity})`);
+      gradient.addColorStop(0.5, `rgba(0, 200, 255, ${0.2 * chargeIntensity})`);
+      gradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Pulsing ring
+      ctx.beginPath();
+      ctx.arc(ship.x, ship.y, 30 + Math.sin(this.warpProgress * 40) * 8, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(0, 255, 255, ${0.5 + chargeIntensity * 0.5})`;
+      ctx.lineWidth = 2 + chargeIntensity * 2;
+      ctx.stroke();
+    }
+
+    // Phase 2: Warp trail
+    if (this.warpProgress >= CHARGING_END && this.warpProgress < MOVEMENT_END) {
+      if (this.warpTrailPoints.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(this.warpTrailPoints[0].x, this.warpTrailPoints[0].y);
+        for (let i = 1; i < this.warpTrailPoints.length; i++) {
+          ctx.lineTo(this.warpTrailPoints[i].x, this.warpTrailPoints[i].y);
+        }
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+
+      // Warp distortion around ship
+      ctx.beginPath();
+      ctx.arc(ship.x, ship.y, 35, 0, Math.PI * 2);
+      const gradient = ctx.createRadialGradient(ship.x, ship.y, 0, ship.x, ship.y, 35);
+      gradient.addColorStop(0, 'rgba(0, 255, 255, 0.4)');
+      gradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
+
+    // Phase 3: Arrival flash
+    if (this.warpProgress >= MOVEMENT_END) {
+      const arrivalProgress = (this.warpProgress - MOVEMENT_END) / (1 - MOVEMENT_END);
+      const flashIntensity = 1 - arrivalProgress;
+
+      // Expanding ring
+      ctx.beginPath();
+      ctx.arc(ship.x, ship.y, 30 + arrivalProgress * 60, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(0, 255, 255, ${0.7 * flashIntensity})`;
+      ctx.lineWidth = 3 * flashIntensity;
+      ctx.stroke();
+
+      // Fading glow
+      ctx.beginPath();
+      ctx.arc(ship.x, ship.y, 50 * flashIntensity, 0, Math.PI * 2);
+      const gradient = ctx.createRadialGradient(ship.x, ship.y, 0, ship.x, ship.y, 50 * flashIntensity);
+      gradient.addColorStop(0, `rgba(0, 255, 255, ${0.5 * flashIntensity})`);
+      gradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
+
+    // Draw warp particles
+    for (const p of this.warpParticles) {
+      const alpha = p.life / 25;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+      ctx.fillStyle = p.color.replace(')', `, ${alpha})`).replace('hsl', 'hsla');
+      ctx.fill();
     }
   }
 
@@ -4067,6 +4344,11 @@ export class SpaceGame {
       this.renderClaimAnimation();
     }
 
+    // Draw warp home animation (teleport to home planet)
+    if (this.isWarping) {
+      this.renderWarpAnimation();
+    }
+
     // Draw destroy animation (explosion effect)
     if (this.isDestroying) {
       this.renderDestroyAnimation();
@@ -4120,8 +4402,14 @@ export class SpaceGame {
       const isPlanetFactory = this.landedPlanet.id === 'planet-builder';
       const specialPlanets = ['shop-station', 'planet-builder'];
       const isSpecial = specialPlanets.includes(this.landedPlanet.id) || this.landedPlanet.id.startsWith('user-planet-');
+      // Check if planet is owned by another player
+      const isOwnedByOther = this.landedPlanet.ownerId !== null &&
+                             this.landedPlanet.ownerId !== undefined &&
+                             this.landedPlanet.ownerId !== '' &&
+                             this.landedPlanet.ownerId !== this.currentUser;
       let hint = 'SPACE Take Off';
-      if (!isCompleted && !isPlanetFactory) {
+      // Only show claim/complete options if player can actually do it (not owned by another player)
+      if (!isCompleted && !isPlanetFactory && !isOwnedByOther) {
         if (isUnassigned) {
           hint += '  •  C Claim Mission';
         } else {
@@ -4874,11 +5162,15 @@ export class SpaceGame {
 
     // Check if this is a user planet
     const isUserPlanet = planet.id.startsWith('user-planet-');
+    const isNotionPlanet = planet.id.startsWith('notion-');
 
-    // Check if this planet belongs to another player (locked)
-    const isLocked = planet.ownerId !== null &&
-                     planet.ownerId !== undefined &&
-                     planet.ownerId !== this.currentUser;
+    // Check if this planet belongs to another player
+    const isOwnedByOther = planet.ownerId !== null &&
+                           planet.ownerId !== undefined &&
+                           planet.ownerId !== this.currentUser;
+    // Notion planets owned by others are viewable (not locked), other types remain locked
+    const isLocked = isOwnedByOther && !isNotionPlanet;
+    const isViewOnly = isOwnedByOther && isNotionPlanet; // Can view but not complete
     const ownerName = planet.ownerId ? planet.ownerId.charAt(0).toUpperCase() + planet.ownerId.slice(1) : null;
 
     const boxWidth = 320;
@@ -4888,25 +5180,26 @@ export class SpaceGame {
     let boxHeight = isUserPlanet ? 90 : 110;
     if (hasRealReward) boxHeight += 30;
     if (hasNotionUrl) boxHeight += 20;
+    if (isViewOnly) boxHeight += 15; // Extra space for owner info
     const boxX = canvas.width / 2 - boxWidth / 2;
     const boxY = canvas.height - boxHeight - 20;
 
-    // Background
-    ctx.fillStyle = isLocked ? 'rgba(30, 10, 10, 0.95)' : 'rgba(10, 10, 20, 0.95)';
+    // Background (slightly tinted for view-only planets)
+    ctx.fillStyle = isLocked ? 'rgba(30, 10, 10, 0.95)' : (isViewOnly ? 'rgba(20, 15, 30, 0.95)' : 'rgba(10, 10, 20, 0.95)');
     ctx.beginPath();
     ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 12);
     ctx.fill();
 
-    // Border with planet color (dimmed if locked)
+    // Border with planet color (dimmed if locked, player color if view-only)
     ctx.strokeStyle = isLocked ? '#ff4444' : (planet.completed ? '#4ade80' : planet.color);
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Planet name (with lock icon if locked) - truncate if too long
+    // Planet name - truncate if too long (no lock icon for viewable Notion planets)
     ctx.fillStyle = isLocked ? '#ff6666' : (planet.completed ? '#4ade80' : '#fff');
     ctx.font = 'bold 16px Space Grotesk';
     ctx.textAlign = 'center';
-    let nameText = planet.completed ? `✓ ${planet.name}` : (isLocked ? `🔒 ${planet.name}` : planet.name);
+    let nameText = planet.completed ? `✓ ${planet.name}` : (isLocked ? `🔒 ${planet.name}` : (isViewOnly ? `👁 ${planet.name}` : planet.name));
     // Truncate name if too long
     if (ctx.measureText(nameText).width > maxTextWidth) {
       while (ctx.measureText(nameText + '...').width > maxTextWidth && nameText.length > 0) {
@@ -4982,19 +5275,19 @@ export class SpaceGame {
         ctx.fillText(`Ship Reward: ${rewardLabels[planet.reward] || planet.reward}`, canvas.width / 2, boxY + 80);
       }
 
-      // Real world reward
+      // Real world reward (view-only planets can see this too)
       if (hasRealReward) {
         ctx.fillStyle = isLocked ? '#884466' : '#ff6b9d';
         ctx.font = 'bold 11px Space Grotesk';
         ctx.fillText(`🎁 Real Reward: ${planet.realWorldReward}`, canvas.width / 2, boxY + 100);
       }
 
-      // Notion URL hint
+      // Notion URL hint (not dimmed for view-only since they can still open it)
       if (hasNotionUrl) {
         ctx.fillStyle = isLocked ? '#555' : '#64748b';
         ctx.font = '10px Space Grotesk';
-        const notionY = hasRealReward ? boxY + 118 : boxY + 98;
-        ctx.fillText('📋 Click to open in Notion', canvas.width / 2, notionY);
+        const baseNotionY = hasRealReward ? boxY + 118 : boxY + 98;
+        ctx.fillText('📋 Click to open in Notion', canvas.width / 2, baseNotionY);
       }
     }
 
@@ -5004,6 +5297,14 @@ export class SpaceGame {
       ctx.fillStyle = '#ff4444';
       ctx.font = '11px Space Grotesk';
       ctx.fillText(`This is ${ownerName}'s task`, canvas.width / 2, promptY);
+    } else if (isViewOnly && canDock && !planet.completed) {
+      // View-only Notion planet - show owner and allow docking
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = '10px Space Grotesk';
+      ctx.fillText(`Assigned to ${ownerName}`, canvas.width / 2, promptY - 14);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 12px Space Grotesk';
+      ctx.fillText('[ SPACE ] to view', canvas.width / 2, promptY);
     } else if (canDock && !planet.completed) {
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px Space Grotesk';
@@ -5285,21 +5586,39 @@ export class SpaceGame {
     const isPlanetFactory = planet.id === 'planet-builder';
     const specialPlanets = ['shop-station', 'planet-builder'];
     const isSpecialPlanet = specialPlanets.includes(planet.id) || planet.id.startsWith('user-planet-');
+    // Check if this is another player's planet (view-only mode)
+    const isViewOnlyPlanet = planet.ownerId !== null &&
+                             planet.ownerId !== undefined &&
+                             planet.ownerId !== '' &&
+                             planet.ownerId !== this.currentUser;
 
     if (!planet.completed && !isPlanetFactory) {
       const isNotionPlanet = planet.type === 'notion';
       const isUnassignedNotion = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
 
-      // Claim or Complete hint
-      ctx.fillStyle = isUnassignedNotion ? '#ffd700' : '#4ade80';
-      ctx.font = 'bold 14px Space Grotesk';
-      const actionText = isUnassignedNotion ? '[ C ] Claim Mission' : '[ C ] Complete';
-      ctx.fillText(actionText, boxX + boxWidth / 2 - (hasNotionUrl ? 80 : 0), currentY);
+      if (isViewOnlyPlanet) {
+        // View-only mode: only show Notion button, no claim/complete
+        if (hasNotionUrl) {
+          ctx.fillStyle = '#5490ff';
+          ctx.font = 'bold 14px Space Grotesk';
+          ctx.fillText('[ N ] Open Notion', boxX + boxWidth / 2, currentY);
+        }
+        // Show view-only indicator
+        ctx.fillStyle = 'rgba(167, 139, 250, 0.7)';
+        ctx.font = '11px Space Grotesk';
+        ctx.fillText('Viewing only - cannot complete', boxX + boxWidth / 2, currentY + 18);
+      } else {
+        // Claim or Complete hint
+        ctx.fillStyle = isUnassignedNotion ? '#ffd700' : '#4ade80';
+        ctx.font = 'bold 14px Space Grotesk';
+        const actionText = isUnassignedNotion ? '[ C ] Claim Mission' : '[ C ] Complete';
+        ctx.fillText(actionText, boxX + boxWidth / 2 - (hasNotionUrl ? 80 : 0), currentY);
 
-      // Notion hint
-      if (hasNotionUrl) {
-        ctx.fillStyle = '#5490ff';
-        ctx.fillText('[ N ] Open Notion', boxX + boxWidth / 2 + 80, currentY);
+        // Notion hint
+        if (hasNotionUrl) {
+          ctx.fillStyle = '#5490ff';
+          ctx.fillText('[ N ] Open Notion', boxX + boxWidth / 2 + 80, currentY);
+        }
       }
     } else if (planet.completed && !isSpecialPlanet && planet.type === 'notion') {
       // Destroy hint for completed Notion planets (requires Space TNT equipped)
