@@ -209,6 +209,7 @@ export class SpaceGame {
   private onDestroyPlanet: ((planet: Planet) => void) | null = null;
   private onBlackHoleDeath: (() => void) | null = null;
   private onReassignRequest: ((planet: Planet) => void) | null = null; // Called when user wants to reassign task to another user
+  private onEditRequest: ((planet: Planet) => void) | null = null; // Called when user wants to edit task properties
 
   // Destroy animation state (explosion effect)
   private isDestroying: boolean = false;
@@ -957,6 +958,7 @@ export class SpaceGame {
     onDestroyPlanet?: (planet: Planet) => void;
     onBlackHoleDeath?: () => void;
     onReassignRequest?: (planet: Planet) => void;
+    onEditRequest?: (planet: Planet) => void;
   }) {
     this.onLand = callbacks.onLand || null;
     this.onTakeoff = callbacks.onTakeoff || null;
@@ -967,6 +969,7 @@ export class SpaceGame {
     this.onDestroyPlanet = callbacks.onDestroyPlanet || null;
     this.onBlackHoleDeath = callbacks.onBlackHoleDeath || null;
     this.onReassignRequest = callbacks.onReassignRequest || null;
+    this.onEditRequest = callbacks.onEditRequest || null;
   }
 
   public isPlayerLanded(): boolean {
@@ -1811,6 +1814,16 @@ export class SpaceGame {
       const isNotionPlanet = planet.id.startsWith('notion-');
       if (isNotionPlanet && !planet.completed && this.onReassignRequest) {
         this.onReassignRequest(planet);
+      }
+      return;
+    }
+
+    // Handle E key - edit task properties
+    if (this.keys.has('e')) {
+      this.keys.delete('e');
+      const isNotionPlanet = planet.id.startsWith('notion-');
+      if (isNotionPlanet && !planet.completed && this.onEditRequest) {
+        this.onEditRequest(planet);
       }
       return;
     }
@@ -6633,14 +6646,18 @@ export class SpaceGame {
       const isUnassignedNotion = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
 
       if (isViewOnlyPlanet) {
-        // View-only mode: show Send and Notion buttons
+        // View-only mode: show Send, Edit and Notion buttons
         ctx.textAlign = 'left';
         const leftX = boxX + 30;
 
         // Send hint (reassign)
         ctx.fillStyle = '#f59e0b';
         ctx.font = 'bold 14px Space Grotesk';
-        ctx.fillText('[ R ] Send', leftX, currentY);
+        ctx.fillText('[ R ] Send', leftX, currentY - 8);
+
+        // Edit hint
+        ctx.fillStyle = '#a78bfa';
+        ctx.fillText('[ E ] Edit', leftX, currentY + 10);
 
         // Notion hint on the right
         if (hasNotionUrl) {
@@ -6657,21 +6674,25 @@ export class SpaceGame {
         const actionText = isUnassignedNotion ? '[ C ] Claim Mission' : '[ C ] Complete';
 
         if (isUnassignedNotion) {
-          // For unassigned: Claim, Delete, Send on left column, Notion on right
+          // For unassigned: Claim, Send, Edit, Delete on left column, Notion on right
           ctx.textAlign = 'left';
           const leftX = boxX + 30;
 
           // Line 1: Claim Mission
           ctx.fillStyle = '#ffd700';
-          ctx.fillText('[ C ] Claim Mission', leftX, currentY - 16);
+          ctx.fillText('[ C ] Claim Mission', leftX, currentY - 24);
 
           // Line 2: Send (reassign)
           ctx.fillStyle = '#f59e0b';
-          ctx.fillText('[ R ] Send', leftX, currentY + 2);
+          ctx.fillText('[ R ] Send', leftX, currentY - 6);
 
-          // Line 3: Delete
+          // Line 3: Edit
+          ctx.fillStyle = '#a78bfa';
+          ctx.fillText('[ E ] Edit', leftX, currentY + 12);
+
+          // Line 4: Delete
           ctx.fillStyle = '#ff4444';
-          ctx.fillText('[ X ] Delete', leftX, currentY + 20);
+          ctx.fillText('[ X ] Delete', leftX, currentY + 30);
 
           // Notion hint on the right
           if (hasNotionUrl) {
@@ -6682,18 +6703,22 @@ export class SpaceGame {
 
           ctx.textAlign = 'center';
         } else {
-          // For assigned tasks: Complete, Send, and Notion
+          // For assigned tasks: Complete, Send, Edit, and Notion
           ctx.textAlign = 'left';
           const leftX = boxX + 30;
 
           // Complete hint
           ctx.fillStyle = '#4ade80';
           ctx.font = 'bold 14px Space Grotesk';
-          ctx.fillText('[ C ] Complete', leftX, currentY - 8);
+          ctx.fillText('[ C ] Complete', leftX, currentY - 16);
 
           // Send hint (reassign)
           ctx.fillStyle = '#f59e0b';
-          ctx.fillText('[ R ] Send', leftX, currentY + 10);
+          ctx.fillText('[ R ] Send', leftX, currentY + 2);
+
+          // Edit hint
+          ctx.fillStyle = '#a78bfa';
+          ctx.fillText('[ E ] Edit', leftX, currentY + 20);
 
           // Notion hint on the right
           if (hasNotionUrl) {

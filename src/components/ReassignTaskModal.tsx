@@ -9,6 +9,7 @@ interface ReassignTaskModalProps {
 }
 
 const TEAM_MEMBERS = [
+  { id: '', name: 'Unassigned' },
   { id: 'quentin', name: 'Quentin' },
   { id: 'armel', name: 'Armel' },
   { id: 'alex', name: 'Alex' },

@@ -1,10 +1,20 @@
-import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect } from 'react';
+import type { Planet } from '../types';
 
-interface QuickTaskModalProps {
+interface EditTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: string;
+  onSave: (updates: EditTaskUpdates) => void;
+  planet: Planet;
+}
+
+export interface EditTaskUpdates {
+  name?: string;
+  description?: string;
+  task_type?: 'bug' | 'feature' | 'task';
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  due_date?: string | null;
+  assigned_to?: string | null;
 }
 
 const TEAM_MEMBERS = [
@@ -16,70 +26,98 @@ const TEAM_MEMBERS = [
   { id: 'hugues', name: 'Hugues' },
 ];
 
-export function QuickTaskModal({ isOpen, onClose, currentUser }: QuickTaskModalProps) {
-  const [taskName, setTaskName] = useState('');
+// Parse priority from planet.priority which may have emoji prefix like "🔥 High"
+function parsePriority(raw: string | null | undefined): 'low' | 'medium' | 'high' | 'critical' {
+  if (!raw) return 'medium';
+  const lower = raw.toLowerCase();
+  if (lower.includes('critical')) return 'critical';
+  if (lower.includes('high')) return 'high';
+  if (lower.includes('low')) return 'low';
+  return 'medium';
+}
+
+// Parse task type from planet.taskType
+function parseTaskType(raw: string | null | undefined): 'bug' | 'feature' | 'task' {
+  if (!raw) return 'task';
+  const lower = raw.toLowerCase();
+  if (lower.includes('bug')) return 'bug';
+  if (lower.includes('feature') || lower.includes('enhancement')) return 'feature';
+  return 'task';
+}
+
+export function EditTaskModal({ isOpen, onClose, onSave, planet }: EditTaskModalProps) {
+  const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [taskType, setTaskType] = useState<'task' | 'bug' | 'feature'>('task');
+  const [taskType, setTaskType] = useState<'bug' | 'feature' | 'task'>('task');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
-  const [assignedTo, setAssignedTo] = useState(currentUser);
+  const [dueDate, setDueDate] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
+
+  // Pre-fill form when planet changes
+  useEffect(() => {
+    if (planet) {
+      setName(planet.name || '');
+      setDescription(planet.description || '');
+      setTaskType(parseTaskType(planet.taskType));
+      setPriority(parsePriority(planet.priority));
+      setDueDate(planet.targetDate || '');
+      setAssignedTo(planet.ownerId || '');
+    }
+  }, [planet]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = () => {
-    if (!taskName.trim()) return;
+  const handleSave = () => {
+    if (!name.trim()) return;
 
-    // Capture values before resetting
-    const payload = {
-      name: taskName.trim(),
-      description: description.trim() || null,
-      type: taskType,
-      priority: priority,
-      assigned_to: assignedTo || null,
-      created_by: currentUser,
-    };
+    const updates: EditTaskUpdates = {};
 
-    // Reset form and close immediately
-    setTaskName('');
-    setDescription('');
-    setTaskType('task');
-    setPriority('medium');
-    setAssignedTo(currentUser);
+    if (name.trim() !== (planet.name || '')) {
+      updates.name = name.trim();
+    }
+    if (description !== (planet.description || '')) {
+      updates.description = description;
+    }
+    if (taskType !== parseTaskType(planet.taskType)) {
+      updates.task_type = taskType;
+    }
+    if (priority !== parsePriority(planet.priority)) {
+      updates.priority = priority;
+    }
+    const originalDate = planet.targetDate || '';
+    if (dueDate !== originalDate) {
+      updates.due_date = dueDate || null;
+    }
+    if (assignedTo !== (planet.ownerId || '')) {
+      updates.assigned_to = assignedTo || null;
+    }
+
+    // Only save if something changed
+    if (Object.keys(updates).length > 0) {
+      onSave(updates);
+    }
     onClose();
-
-    // Create task in background
-    supabase.functions.invoke('notion-create', { body: payload })
-      .then(({ error }) => {
-        if (error) {
-          console.error('Failed to create Notion task:', error);
-        }
-      })
-      .catch((error) => {
-        console.error('Error creating Notion task:', error);
-      });
   };
 
-  const isValid = taskName.trim();
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !(e.target as HTMLElement).tagName.match(/TEXTAREA/i) && isValid) {
+    if (e.key === 'Enter' && !(e.target as HTMLElement).tagName.match(/TEXTAREA/i) && name.trim()) {
       e.preventDefault();
-      handleSubmit();
+      handleSave();
     }
   };
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()} onKeyDown={handleKeyDown}>
-        <h2 style={styles.modalTitle}>Quick Add Task</h2>
+        <h2 style={styles.modalTitle}>Edit Task</h2>
 
         <div style={styles.formGroup}>
-          <label style={styles.label}>Task Name</label>
+          <label style={styles.label}>Title</label>
           <input
             type="text"
             style={styles.input}
-            value={taskName}
-            onChange={(e) => setTaskName(e.target.value)}
-            placeholder="What needs to be done?"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             autoFocus
           />
         </div>
@@ -90,7 +128,6 @@ export function QuickTaskModal({ isOpen, onClose, currentUser }: QuickTaskModalP
             style={{ ...styles.input, minHeight: 80, resize: 'vertical' }}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Add details..."
           />
         </div>
 
@@ -104,7 +141,7 @@ export function QuickTaskModal({ isOpen, onClose, currentUser }: QuickTaskModalP
             >
               <option value="task">Task</option>
               <option value="bug">Bug</option>
-              <option value="feature">Feature</option>
+              <option value="feature">Enhancement</option>
             </select>
           </div>
 
@@ -123,36 +160,45 @@ export function QuickTaskModal({ isOpen, onClose, currentUser }: QuickTaskModalP
           </div>
         </div>
 
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Assign To</label>
-          <select
-            style={styles.select}
-            value={assignedTo}
-            onChange={(e) => setAssignedTo(e.target.value)}
-          >
-            {TEAM_MEMBERS.map(member => (
-              <option key={member.id} value={member.id}>{member.name}</option>
-            ))}
-          </select>
+        <div style={styles.formRow}>
+          <div style={{ ...styles.formGroup, flex: 1 }}>
+            <label style={styles.label}>Due Date</label>
+            <input
+              type="date"
+              style={styles.input}
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </div>
+
+          <div style={{ ...styles.formGroup, flex: 1 }}>
+            <label style={styles.label}>Assign To</label>
+            <select
+              style={styles.select}
+              value={assignedTo}
+              onChange={(e) => setAssignedTo(e.target.value)}
+            >
+              {TEAM_MEMBERS.map(member => (
+                <option key={member.id} value={member.id}>{member.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div style={styles.modalButtons}>
-          <button
-            style={styles.cancelButton}
-            onClick={onClose}
-          >
+          <button style={styles.cancelButton} onClick={onClose}>
             Cancel
           </button>
           <button
             style={{
               ...styles.saveButton,
-              opacity: !isValid ? 0.5 : 1,
-              cursor: !isValid ? 'not-allowed' : 'pointer',
+              opacity: !name.trim() ? 0.5 : 1,
+              cursor: !name.trim() ? 'not-allowed' : 'pointer',
             }}
-            onClick={handleSubmit}
-            disabled={!isValid}
+            onClick={handleSave}
+            disabled={!name.trim()}
           >
-            Create Task
+            Save Changes
           </button>
         </div>
 
@@ -183,13 +229,15 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 420,
     maxHeight: '90vh',
     overflowY: 'auto',
-    border: '1px solid #00c8ff',
-    boxShadow: '0 0 30px rgba(0, 200, 255, 0.2)',
+    border: '1px solid #a78bfa',
+    boxShadow: '0 0 30px rgba(167, 139, 250, 0.2)',
+    scrollbarWidth: 'none' as const,
+    msOverflowStyle: 'none' as const,
   },
   modalTitle: {
     fontFamily: 'Orbitron, sans-serif',
     fontSize: '1.5rem',
-    color: '#00c8ff',
+    color: '#a78bfa',
     marginTop: 0,
     marginBottom: '1.5rem',
   },
@@ -217,7 +265,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
     fontSize: '1rem',
     outline: 'none',
-    boxSizing: 'border-box',
+    boxSizing: 'border-box' as const,
     fontFamily: 'inherit',
   },
   select: {
@@ -247,7 +295,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   saveButton: {
     padding: '0.75rem 1.5rem',
-    background: 'linear-gradient(90deg, #00c8ff, #0088cc)',
+    background: 'linear-gradient(90deg, #a78bfa, #7c3aed)',
     border: 'none',
     borderRadius: 8,
     color: '#fff',

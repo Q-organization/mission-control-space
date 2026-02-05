@@ -3414,9 +3414,9 @@ function App() {
         <img
           src="/logo.png"
           alt="Logo"
-          style={{ ...styles.hudLogo, cursor: state.currentUser === 'quentin' ? 'pointer' : 'default' }}
-          onClick={() => state.currentUser === 'quentin' && setShowSettings(true)}
-          title={state.currentUser === 'quentin' ? 'Admin Settings' : ''}
+          style={{ ...styles.hudLogo, cursor: ['quentin', 'armel'].includes(state.currentUser) ? 'pointer' : 'default' }}
+          onClick={() => ['quentin', 'armel'].includes(state.currentUser) && setShowSettings(true)}
+          title={['quentin', 'armel'].includes(state.currentUser) ? 'Admin Settings' : ''}
         />
         <span style={styles.hudText}>Mission Control</span>
         <span style={{ color: currentUser?.color, marginLeft: 8 }}>
