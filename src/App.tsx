@@ -794,8 +794,9 @@ function App() {
     }
     // Include notion planets if filter is on
     if (missionFilters.has('notion')) {
-      const notionWithDates = notionGamePlanets.filter(np => np.targetDate && !np.completed);
-      const notionWithoutDates = notionGamePlanets.filter(np => !np.targetDate && !np.completed);
+      const currentUser = state.currentUser?.toLowerCase();
+      const notionWithDates = notionGamePlanets.filter(np => np.targetDate && !np.completed && np.ownerId?.toLowerCase() === currentUser);
+      const notionWithoutDates = notionGamePlanets.filter(np => !np.targetDate && !np.completed && np.ownerId?.toLowerCase() === currentUser);
       console.log(`[nextMissions] Notion planets: ${notionGamePlanets.length} total, ${notionWithDates.length} with dates, ${notionWithoutDates.length} without dates`);
       if (notionWithDates.length > 0) {
         console.log('[nextMissions] Notion planets with dates:', notionWithDates.map(np => `${np.name}: ${np.targetDate}`));
