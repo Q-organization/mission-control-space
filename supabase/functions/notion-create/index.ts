@@ -245,7 +245,7 @@ Deno.serve(async (req) => {
         title: [{ text: { content: body.name } }],
       },
       'Status': {
-        status: { name: 'Ticket Open' },
+        select: { name: 'Ticket Open' },
       },
     };
 
