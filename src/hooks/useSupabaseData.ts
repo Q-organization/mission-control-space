@@ -44,71 +44,9 @@ interface MascotHistoryEntry {
   earnedBy: string;
 }
 
-// Bump this version when DEFAULT_GOALS change to force Supabase refresh
-const GOALS_VERSION = 2;
-
-// Default goals
-const DEFAULT_GOALS: Goals = {
-  business: [
-    { id: 'b1', name: 'Gates open — 5 paying customers', size: 'small', points: 100, targetDate: '2026-02-12' },
-    { id: 'b2', name: '10 customers / $5k MRR', size: 'small', points: 200, targetDate: '2026-02-19' },
-    { id: 'b3', name: '20 customers / $10k MRR', size: 'small', points: 400, targetDate: '2026-02-28' },
-    { id: 'b4', name: 'Hugues starts to open the gates', size: 'medium', points: 300, targetDate: '2026-03-07' },
-    { id: 'b5', name: '$20k MRR', size: 'medium', points: 500, targetDate: '2026-03-14' },
-    { id: 'b6', name: 'Affiliate/referral program live', size: 'medium', points: 300, targetDate: '2026-03-21' },
-    { id: 'b7', name: '100 customers / $50k MRR', size: 'medium', points: 750, targetDate: '2026-03-31' },
-    { id: 'b8', name: 'First agency partnership signed', size: 'medium', points: 500, targetDate: '2026-04-15' },
-    { id: 'b9', name: '$100k MRR', size: 'big', points: 1000, targetDate: '2026-04-30' },
-    { id: 'b10', name: '$150k MRR', size: 'big', points: 1500, targetDate: '2026-05-31' },
-    { id: 'b11', name: '$250k MRR', size: 'big', points: 2500, targetDate: '2026-06-30' },
-    { id: 'b12', name: '$500k MRR', size: 'big', points: 5000, targetDate: '2026-09-30' },
-    { id: 'b13', name: '$1M MRR', size: 'big', points: 10000, targetDate: '2026-12-31' },
-    { id: 'b14', name: '$3M MRR / $36M ARR', size: 'big', points: 15000, targetDate: '2027-06-30' },
-    { id: 'b15', name: '$5M MRR / $60M ARR', size: 'big', points: 25000, targetDate: '2027-12-31' },
-  ],
-  product: [
-    { id: 'p1', name: 'Templates Ready', size: 'small', points: 20, targetDate: '2026-02-06' },
-    { id: 'p2', name: 'Public Launch', size: 'small', points: 30, targetDate: '2026-02-10' },
-    { id: 'p3', name: 'Onboarding Wizard', size: 'small', points: 40, targetDate: '2026-02-21' },
-    { id: 'p4', name: 'Educational Videos', size: 'medium', points: 60, targetDate: '2026-03-07' },
-    { id: 'p5', name: '100 Videos Processed', size: 'medium', points: 80, targetDate: '2026-03-14' },
-    { id: 'p6', name: 'Analytics Functioning', size: 'medium', points: 100, targetDate: '2026-03-31' },
-    { id: 'p7', name: '1,000 Videos Processed', size: 'medium', points: 150, targetDate: '2026-04-30' },
-    { id: 'p8', name: '50 Templates', size: 'medium', points: 200, targetDate: '2026-05-31' },
-    { id: 'p9', name: 'Smooth UX Achieved', size: 'big', points: 300, targetDate: '2026-06-30' },
-    { id: 'p10', name: '"Where Are The Bugs?"', size: 'big', points: 500, targetDate: '2026-09-30' },
-    { id: 'p11', name: '100,000 Videos Processed', size: 'big', points: 750, targetDate: '2026-12-31' },
-    { id: 'p12', name: 'AI Agent Builds Funnels', size: 'big', points: 1500, targetDate: '2027-06-30' },
-    { id: 'p13', name: 'Desktop Version', size: 'big', points: 2000, targetDate: '2027-09-30' },
-    { id: 'p14', name: '1,000,000 Videos Processed', size: 'big', points: 5000, targetDate: '2027-12-31' },
-  ],
-  achievement: [
-    { id: 'a1', name: 'First Organic Signup', size: 'small', points: 20 },
-    { id: 'a2', name: 'First Paying Customer', size: 'small', points: 30 },
-    { id: 'a3', name: 'First Referral', size: 'small', points: 40 },
-    { id: 'a4', name: 'First Week Streak', size: 'small', points: 50 },
-    { id: 'a5', name: '10 Referrals', size: 'medium', points: 75 },
-    { id: 'a6', name: 'Customers in 10+ Countries', size: 'medium', points: 100 },
-    { id: 'a7', name: 'First Podcast Appearance', size: 'medium', points: 100 },
-    { id: 'a8', name: 'First $10k Day', size: 'medium', points: 150 },
-    { id: 'a9', name: 'Big Podcast (100k+ audience)', size: 'medium', points: 250 },
-    { id: 'a10', name: 'Customers in 50+ Countries', size: 'big', points: 300 },
-    { id: 'a11', name: 'Competitor Copies Us', size: 'big', points: 400 },
-    { id: 'a12', name: 'Product Hunt Top 5', size: 'big', points: 500 },
-    { id: 'a13', name: 'Hacker News Front Page', size: 'big', points: 600 },
-    { id: 'a14', name: 'TechCrunch/Forbes Mention', size: 'big', points: 750 },
-    { id: 'a15', name: 'Product Hunt #1 of Day', size: 'big', points: 1000 },
-    { id: 'a16', name: 'Remy Jupille Uses Us', size: 'big', points: 1000 },
-    { id: 'a17', name: 'Yomi Denzel Uses Us', size: 'big', points: 1250 },
-    { id: 'a18', name: 'Iman Gadzhi Uses Us', size: 'big', points: 1500 },
-    { id: 'a19', name: 'Charlie Morgan Uses Us', size: 'big', points: 1500 },
-    { id: 'a20', name: 'Viral Video (1M+ views)', size: 'big', points: 2000 },
-    { id: 'a21', name: 'Gary Vee Notice', size: 'big', points: 3000 },
-    { id: 'a22', name: 'Alex Hormozi Notice', size: 'big', points: 3000 },
-    { id: 'a23', name: 'Wikipedia Page', size: 'big', points: 5000 },
-    { id: 'a24', name: 'Customer Tattoos Logo', size: 'big', points: 10000 },
-  ],
-};
+// Empty defaults — Supabase is the sole source of truth for goals.
+// Goals are managed via the admin settings panel.
+const EMPTY_GOALS: Goals = { business: [], product: [], achievement: [] };
 
 // Sort goals by targetDate (goals without dates go to the end)
 const sortGoalsByDate = (goals: Goal[]): Goal[] => {
@@ -153,7 +91,7 @@ interface UseSupabaseDataReturn {
 export function useSupabaseData(options: UseSupabaseDataOptions): UseSupabaseDataReturn {
   const { teamId, playerId, username } = options;
 
-  const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
+  const [goals, setGoals] = useState<Goals>(EMPTY_GOALS);
   const [customPlanets, setCustomPlanets] = useState<CustomPlanet[]>([]);
   const [userPlanets, setUserPlanets] = useState<Record<string, UserPlanet>>({});
   const [mascotHistory, setMascotHistory] = useState<MascotHistoryEntry[]>([]);
@@ -178,26 +116,14 @@ export function useSupabaseData(options: UseSupabaseDataOptions): UseSupabaseDat
       if (teamError) {
         console.error('[useSupabaseData] Error fetching team:', teamError);
       } else if (teamData) {
-        // Only use Supabase goals if they exist, have content, and match current version
+        // Load goals from Supabase (sole source of truth)
         if (teamData.goals && typeof teamData.goals === 'object') {
-          const supabaseGoals = teamData.goals as Goals & { _version?: number };
-          const hasContent = supabaseGoals.business?.length > 0 ||
-                            supabaseGoals.product?.length > 0 ||
-                            supabaseGoals.achievement?.length > 0;
-          if (hasContent && supabaseGoals._version === GOALS_VERSION) {
-            // Sort dated categories by targetDate
-            setGoals({
-              business: sortGoalsByDate(supabaseGoals.business || []),
-              product: sortGoalsByDate(supabaseGoals.product || []),
-              achievement: supabaseGoals.achievement || [],
-            });
-          } else if (!hasContent || supabaseGoals._version !== GOALS_VERSION) {
-            // Goals are outdated or empty — push new defaults to Supabase
-            console.log('[useSupabaseData] Goals version mismatch, updating to v' + GOALS_VERSION);
-            const goalsWithVersion = { ...DEFAULT_GOALS, _version: GOALS_VERSION };
-            setGoals(DEFAULT_GOALS);
-            await supabase.from('teams').update({ goals: goalsWithVersion }).eq('id', teamId);
-          }
+          const supabaseGoals = teamData.goals as Goals;
+          setGoals({
+            business: sortGoalsByDate(supabaseGoals.business || []),
+            product: sortGoalsByDate(supabaseGoals.product || []),
+            achievement: supabaseGoals.achievement || [],
+          });
         }
         if (teamData.custom_planets && Array.isArray(teamData.custom_planets)) {
           setCustomPlanets(teamData.custom_planets as CustomPlanet[]);
@@ -257,7 +183,7 @@ export function useSupabaseData(options: UseSupabaseDataOptions): UseSupabaseDat
     try {
       const { error } = await supabase
         .from('teams')
-        .update({ goals: { ...newGoals, _version: GOALS_VERSION } })
+        .update({ goals: newGoals })
         .eq('id', teamId);
 
       if (error) {

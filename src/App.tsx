@@ -72,7 +72,6 @@ const CUSTOM_PLANETS_KEY = 'mission-control-custom-planets';
 const TEAM_POINTS_KEY = 'mission-control-team-points';
 const USER_SHIPS_KEY = 'mission-control-user-ships';
 const MASCOT_HISTORY_KEY = 'mission-control-mascot-history';
-const GOALS_KEY = 'mission-control-goals';
 const USER_PLANETS_KEY = 'mission-control-user-planets';
 
 // Default planet image - empty string means use procedural barren planet
@@ -130,68 +129,6 @@ const SPACE_TNT_COST = 1000;
 const PLASMA_CANON_COST = 1500;
 const ROCKET_LAUNCHER_COST = 2500;
 
-// Default goals/milestones
-const DEFAULT_GOALS = {
-  business: [
-    { id: 'b1', name: 'Gates open — 5 paying customers', size: 'small', points: 100, targetDate: '2026-02-12' },
-    { id: 'b2', name: '10 customers / $5k MRR', size: 'small', points: 200, targetDate: '2026-02-19' },
-    { id: 'b3', name: '20 customers / $10k MRR', size: 'small', points: 400, targetDate: '2026-02-28' },
-    { id: 'b4', name: 'Hugues starts to open the gates', size: 'medium', points: 300, targetDate: '2026-03-07' },
-    { id: 'b5', name: '$20k MRR', size: 'medium', points: 500, targetDate: '2026-03-14' },
-    { id: 'b6', name: 'Affiliate/referral program live', size: 'medium', points: 300, targetDate: '2026-03-21' },
-    { id: 'b7', name: '100 customers / $50k MRR', size: 'medium', points: 750, targetDate: '2026-03-31' },
-    { id: 'b8', name: 'First agency partnership signed', size: 'medium', points: 500, targetDate: '2026-04-15' },
-    { id: 'b9', name: '$100k MRR', size: 'big', points: 1000, targetDate: '2026-04-30' },
-    { id: 'b10', name: '$150k MRR', size: 'big', points: 1500, targetDate: '2026-05-31' },
-    { id: 'b11', name: '$250k MRR', size: 'big', points: 2500, targetDate: '2026-06-30' },
-    { id: 'b12', name: '$500k MRR', size: 'big', points: 5000, targetDate: '2026-09-30' },
-    { id: 'b13', name: '$1M MRR', size: 'big', points: 10000, targetDate: '2026-12-31' },
-    { id: 'b14', name: '$3M MRR / $36M ARR', size: 'big', points: 15000, targetDate: '2027-06-30' },
-    { id: 'b15', name: '$5M MRR / $60M ARR', size: 'big', points: 25000, targetDate: '2027-12-31' },
-  ],
-  product: [
-    { id: 'p1', name: 'Templates Ready', size: 'small', points: 20, targetDate: '2026-02-06' },
-    { id: 'p2', name: 'Public Launch', size: 'small', points: 30, targetDate: '2026-02-10' },
-    { id: 'p3', name: 'Onboarding Wizard', size: 'small', points: 40, targetDate: '2026-02-21' },
-    { id: 'p4', name: 'Educational Videos', size: 'medium', points: 60, targetDate: '2026-03-07' },
-    { id: 'p5', name: '100 Videos Processed', size: 'medium', points: 80, targetDate: '2026-03-14' },
-    { id: 'p6', name: 'Analytics Functioning', size: 'medium', points: 100, targetDate: '2026-03-31' },
-    { id: 'p7', name: '1,000 Videos Processed', size: 'medium', points: 150, targetDate: '2026-04-30' },
-    { id: 'p8', name: '50 Templates', size: 'medium', points: 200, targetDate: '2026-05-31' },
-    { id: 'p9', name: 'Smooth UX Achieved', size: 'big', points: 300, targetDate: '2026-06-30' },
-    { id: 'p10', name: '"Where Are The Bugs?"', size: 'big', points: 500, targetDate: '2026-09-30' },
-    { id: 'p11', name: '100,000 Videos Processed', size: 'big', points: 750, targetDate: '2026-12-31' },
-    { id: 'p12', name: 'AI Agent Builds Funnels', size: 'big', points: 1500, targetDate: '2027-06-30' },
-    { id: 'p13', name: 'Desktop Version', size: 'big', points: 2000, targetDate: '2027-09-30' },
-    { id: 'p14', name: '1,000,000 Videos Processed', size: 'big', points: 5000, targetDate: '2027-12-31' },
-  ],
-  achievement: [
-    { id: 'a1', name: 'First Organic Signup', size: 'small', points: 20 },
-    { id: 'a2', name: 'First Paying Customer', size: 'small', points: 30 },
-    { id: 'a3', name: 'First Referral', size: 'small', points: 40 },
-    { id: 'a4', name: 'First Week Streak', size: 'small', points: 50 },
-    { id: 'a5', name: '10 Referrals', size: 'medium', points: 75 },
-    { id: 'a6', name: 'Customers in 10+ Countries', size: 'medium', points: 100 },
-    { id: 'a7', name: 'First Podcast Appearance', size: 'medium', points: 100 },
-    { id: 'a8', name: 'First $10k Day', size: 'medium', points: 150 },
-    { id: 'a9', name: 'Big Podcast (100k+ audience)', size: 'medium', points: 250 },
-    { id: 'a10', name: 'Customers in 50+ Countries', size: 'big', points: 300 },
-    { id: 'a11', name: 'Competitor Copies Us', size: 'big', points: 400 },
-    { id: 'a12', name: 'Product Hunt Top 5', size: 'big', points: 500 },
-    { id: 'a13', name: 'Hacker News Front Page', size: 'big', points: 600 },
-    { id: 'a14', name: 'TechCrunch/Forbes Mention', size: 'big', points: 750 },
-    { id: 'a15', name: 'Product Hunt #1 of Day', size: 'big', points: 1000 },
-    { id: 'a16', name: 'Remy Jupille Uses Us', size: 'big', points: 1000 },
-    { id: 'a17', name: 'Yomi Denzel Uses Us', size: 'big', points: 1250 },
-    { id: 'a18', name: 'Iman Gadzhi Uses Us', size: 'big', points: 1500 },
-    { id: 'a19', name: 'Charlie Morgan Uses Us', size: 'big', points: 1500 },
-    { id: 'a20', name: 'Viral Video (1M+ views)', size: 'big', points: 2000 },
-    { id: 'a21', name: 'Gary Vee Notice', size: 'big', points: 3000 },
-    { id: 'a22', name: 'Alex Hormozi Notice', size: 'big', points: 3000 },
-    { id: 'a23', name: 'Wikipedia Page', size: 'big', points: 5000 },
-    { id: 'a24', name: 'Customer Tattoos Logo', size: 'big', points: 10000 },
-  ],
-};
 
 interface Goal {
   id: string;
@@ -249,23 +186,6 @@ const saveUserPlanets = (planets: Record<string, UserPlanet>) => {
   }
 };
 
-const loadGoals = (): Goals => {
-  try {
-    const saved = localStorage.getItem(GOALS_KEY);
-    if (saved) return JSON.parse(saved);
-  } catch (e) {
-    console.error('Failed to load goals:', e);
-  }
-  return DEFAULT_GOALS as Goals;
-};
-
-const saveGoals = (goals: Goals) => {
-  try {
-    localStorage.setItem(GOALS_KEY, JSON.stringify(goals));
-  } catch (e) {
-    console.error('Failed to save goals:', e);
-  }
-};
 
 interface CustomPlanet {
   id: string;
@@ -570,7 +490,7 @@ function App() {
   const [personalPoints, setPersonalPoints] = useState(0);
   const [userShips, setUserShips] = useState<Record<string, UserShip>>({}); // Loaded from Supabase via teamPlayers
   const [mascotHistory, setMascotHistory] = useState<MascotHistoryEntry[]>([]); // Loaded from Supabase
-  const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS as Goals); // Loaded from Supabase
+  const [goals, setGoals] = useState<Goals>({ business: [], product: [], achievement: [] }); // Loaded from Supabase
   const [userPlanets, setUserPlanets] = useState<Record<string, UserPlanet>>({}); // Loaded from Supabase
   const [showTerraform, setShowTerraform] = useState(false);
   const [terraformPrompt, setTerraformPrompt] = useState('');
@@ -754,7 +674,7 @@ function App() {
   );
 
   // Player positions hook - handles real-time ship positions
-  const { otherPlayers, broadcastPosition, broadcastUpgradeState, broadcastSendStart, broadcastSendTarget, setPositionUpdateCallback, setUpgradeUpdateCallback, setSendAnimationCallback } = usePlayerPositions({
+  const { otherPlayers, broadcastPosition, broadcastUpgradeState, broadcastSendStart, broadcastSendTarget, broadcastWeaponFire, broadcastPlanetDestroy, setPositionUpdateCallback, setUpgradeUpdateCallback, setSendAnimationCallback, setWeaponFireCallback, setPlanetDestroyCallback } = usePlayerPositions({
     teamId: team?.id || null,
     playerId: currentDbPlayerId,
     players: playersForPositions,
@@ -961,6 +881,8 @@ function App() {
   const positionCallbackRef = useRef<((playerId: string, data: { x: number; y: number; vx: number; vy: number; rotation: number; thrusting: boolean; boosting: boolean; timestamp: number }) => void) | null>(null);
   const upgradeCallbackRef = useRef<((playerId: string, data: { isUpgrading: boolean; targetPlanetId: string | null }) => void) | null>(null);
   const sendAnimCallbackRef = useRef<((playerId: string, data: { type: 'start' | 'target'; planetId: string; velocityX?: number; velocityY?: number; targetX?: number; targetY?: number }) => void) | null>(null);
+  const weaponFireCallbackRef = useRef<((playerId: string, data: { weaponType: 'rifle' | 'plasma' | 'rocket'; x: number; y: number; vx: number; vy: number; rotation: number; targetPlanetId: string | null }) => void) | null>(null);
+  const planetDestroyCallbackRef = useRef<((playerId: string, data: { planetId: string; fromRifle: boolean }) => void) | null>(null);
 
   // Update callback refs when game is available
   useEffect(() => {
@@ -988,6 +910,12 @@ function App() {
       } else if (data.type === 'target') {
         gameRef.current?.setRemoteSendTarget(data.planetId, data.targetX ?? 0, data.targetY ?? 0);
       }
+    };
+    weaponFireCallbackRef.current = (playerId, data) => {
+      gameRef.current?.onRemoteWeaponFire(playerId, data);
+    };
+    planetDestroyCallbackRef.current = (playerId, data) => {
+      gameRef.current?.onRemotePlanetDestroy(playerId, data);
     };
   }, [teamPlayers]);
 
@@ -1018,6 +946,24 @@ function App() {
       setSendAnimationCallback(null);
     };
   }, [setSendAnimationCallback]);
+
+  useEffect(() => {
+    setWeaponFireCallback((playerId, data) => {
+      weaponFireCallbackRef.current?.(playerId, data);
+    });
+    return () => {
+      setWeaponFireCallback(null);
+    };
+  }, [setWeaponFireCallback]);
+
+  useEffect(() => {
+    setPlanetDestroyCallback((playerId, data) => {
+      planetDestroyCallbackRef.current?.(playerId, data);
+    });
+    return () => {
+      setPlanetDestroyCallback(null);
+    };
+  }, [setPlanetDestroyCallback]);
 
   // Update game with other players (for metadata like ship images, effects, etc.)
   useEffect(() => {
@@ -1312,14 +1258,37 @@ function App() {
     alert('Custom planets have been deleted!');
   };
 
-  // Reset Goals (local only)
-  const resetGoals = () => {
-    if (!confirm('Reset all goals to defaults? This cannot be undone!')) return;
+  // Reset Goals completion state (uncomplete all goals)
+  const resetGoals = async () => {
+    if (!confirm('Reset all goal completion progress? This cannot be undone!')) return;
 
-    localStorage.removeItem(GOALS_KEY);
-    setGoals(DEFAULT_GOALS as Goals);
+    try {
+      // Get all goal IDs
+      const goalIds = [
+        ...goals.business.map(g => g.id),
+        ...goals.product.map(g => g.id),
+        ...goals.achievement.map(g => g.id),
+      ];
 
-    alert('Goals have been reset to defaults!');
+      // Remove goal IDs from completedPlanets
+      const newCompleted = state.completedPlanets.filter(id => !goalIds.includes(id));
+
+      // Update Supabase
+      if (team?.id) {
+        await supabase
+          .from('teams')
+          .update({ completed_planets: newCompleted })
+          .eq('id', team.id);
+      }
+
+      // Update local state
+      setState(prev => ({ ...prev, completedPlanets: newCompleted }));
+
+      alert('Goal progress has been reset!');
+    } catch (err) {
+      console.error('Failed to reset goal progress:', err);
+      alert('Failed to reset goal progress. Check console for details.');
+    }
   };
 
   // Reset everything (all of the above)
@@ -1366,7 +1335,6 @@ function App() {
       localStorage.removeItem(TEAM_POINTS_KEY);
       localStorage.removeItem(USER_SHIPS_KEY);
       localStorage.removeItem(MASCOT_HISTORY_KEY);
-      localStorage.removeItem(GOALS_KEY);
       localStorage.removeItem(USER_PLANETS_KEY);
 
       // Reset all state
@@ -1375,7 +1343,7 @@ function App() {
       setTeamPoints(0);
       setUserShips({});
       setMascotHistory([]);
-      setGoals(DEFAULT_GOALS as Goals);
+      setGoals({ business: [], product: [], achievement: [] });
       setUserPlanets({});
       setShowSettings(false);
       setShowWelcome(true);
@@ -3455,6 +3423,16 @@ function App() {
       onBlackHoleDeath: () => landingCallbacksRef.current.onBlackHoleDeath(),
       onReassignRequest: (planet) => landingCallbacksRef.current.onReassignRequest(planet),
       onEditRequest: (planet) => landingCallbacksRef.current.onEditRequest(planet),
+    });
+
+    // Set up weapon fire broadcast callback (game → WS)
+    game.setWeaponFireCallback((weaponType, x, y, vx, vy, rotation, targetPlanetId) => {
+      broadcastWeaponFire(weaponType, x, y, vx, vy, rotation, targetPlanetId);
+    });
+
+    // Set up planet destroy broadcast callback (game → WS)
+    game.setPlanetDestroyBroadcastCallback((planetId, fromRifle) => {
+      broadcastPlanetDestroy(planetId, fromRifle);
     });
 
     // Sync notion planets immediately if already loaded

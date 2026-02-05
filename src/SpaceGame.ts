@@ -344,6 +344,25 @@ export class SpaceGame {
   private readonly ROCKET_TURN_SPEED: number = 0.08; // homing turn rate
   private readonly ROCKET_RANGE: number = 800;
 
+  // Remote projectiles (visual-only, no collision/damage)
+  private remoteProjectiles: Projectile[] = [];
+  private remotePlasmaProjectiles: PlasmaProjectile[] = [];
+  private remoteRockets: Rocket[] = [];
+
+  // Remote destroy animations (explosion effects from other players)
+  private remoteDestroyAnimations: Map<string, {
+    x: number;
+    y: number;
+    radius: number;
+    progress: number;
+    particles: { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }[];
+    fromRifle: boolean;
+  }> = new Map();
+
+  // Callbacks for broadcasting weapon fire and planet destruction
+  private onWeaponFire: ((weaponType: 'rifle' | 'plasma' | 'rocket', x: number, y: number, vx: number, vy: number, rotation: number, targetPlanetId: string | null) => void) | null = null;
+  private onPlanetDestroyBroadcast: ((planetId: string, fromRifle: boolean) => void) | null = null;
+
   // Escort drones (permanent companions based on ship level)
   private escortDrones: EscortDrone[] = [];
   private readonly DRONE_UNLOCK_INTERVAL: number = 5; // Unlock 1 drone every 5 ship levels
@@ -663,12 +682,15 @@ export class SpaceGame {
     // Black hole is at CENTER_X + 150, CENTER_Y - 250
     const blackHoleX = CENTER_X + 150;
     const blackHoleY = CENTER_Y - 250;
+    // Sort achievements by size: small → medium → big (bigger planets on outer rings to avoid overlap)
+    const sizeOrder: Record<string, number> = { small: 0, medium: 1, big: 2 };
+    const sortedAchievements = [...achievements].sort((a, b) => (sizeOrder[a.size] || 0) - (sizeOrder[b.size] || 0));
     // True Archimedean spiral: r = a + b*θ
-    achievements.forEach((m, i) => {
-      const totalPlanets = achievements.length;
+    sortedAchievements.forEach((m, i) => {
+      const totalPlanets = sortedAchievements.length;
       // Archimedean spiral parameters
       const startRadius = 200; // Start outside black hole pull radius (350)
-      const radiusGrowth = 40; // How much radius increases per radian
+      const radiusGrowth = 35; // How much radius increases per radian
       const startAngle = -Math.PI / 2; // Start from top
       // Each planet is evenly spaced along the spiral
       const theta = (i / (totalPlanets - 1)) * Math.PI * 5; // ~2.5 full rotations
@@ -1010,6 +1032,14 @@ export class SpaceGame {
     this.onEditRequest = callbacks.onEditRequest || null;
   }
 
+  public setWeaponFireCallback(callback: ((weaponType: 'rifle' | 'plasma' | 'rocket', x: number, y: number, vx: number, vy: number, rotation: number, targetPlanetId: string | null) => void) | null) {
+    this.onWeaponFire = callback;
+  }
+
+  public setPlanetDestroyBroadcastCallback(callback: ((planetId: string, fromRifle: boolean) => void) | null) {
+    this.onPlanetDestroyBroadcast = callback;
+  }
+
   public isPlayerLanded(): boolean {
     return this.isLanded;
   }
@@ -1302,6 +1332,8 @@ export class SpaceGame {
     // Handle destroy animation
     if (this.isDestroying) {
       this.updateDestroyAnimation();
+      this.updateRemoteProjectiles();
+      this.updateRemoteDestroyAnimations();
       this.updateCamera();
       this.updateParticles();
       return;
@@ -1506,6 +1538,10 @@ export class SpaceGame {
     this.updateProjectiles();
     this.updatePlasmaProjectiles();
     this.updateRockets();
+
+    // Update remote projectiles and destroy animations (visual only)
+    this.updateRemoteProjectiles();
+    this.updateRemoteDestroyAnimations();
 
     // World bounds (wrap around like classic arcade games)
     const wrapMargin = 50;
@@ -3741,17 +3777,25 @@ export class SpaceGame {
 
     // Spawn bullet at front of ship
     const spawnDist = 25;
+    const bx = ship.x + Math.cos(ship.rotation) * spawnDist;
+    const by = ship.y + Math.sin(ship.rotation) * spawnDist;
+    const bvx = Math.cos(ship.rotation) * this.BULLET_SPEED + ship.vx * 0.3;
+    const bvy = Math.sin(ship.rotation) * this.BULLET_SPEED + ship.vy * 0.3;
+
     this.projectiles.push({
-      x: ship.x + Math.cos(ship.rotation) * spawnDist,
-      y: ship.y + Math.sin(ship.rotation) * spawnDist,
-      vx: Math.cos(ship.rotation) * this.BULLET_SPEED + ship.vx * 0.3,
-      vy: Math.sin(ship.rotation) * this.BULLET_SPEED + ship.vy * 0.3,
+      x: bx,
+      y: by,
+      vx: bvx,
+      vy: bvy,
       life: this.BULLET_RANGE / this.BULLET_SPEED,
       maxLife: this.BULLET_RANGE / this.BULLET_SPEED,
       damage: this.BULLET_DAMAGE,
       size: 4,
       color: '#ffcc00',
     });
+
+    // Broadcast to other players
+    this.onWeaponFire?.('rifle', bx, by, bvx, bvy, ship.rotation, null);
 
     // Muzzle flash particles
     this.emitMuzzleFlash(ship.x, ship.y, ship.rotation);
@@ -4140,17 +4184,25 @@ export class SpaceGame {
     const { ship } = this.state;
 
     const spawnDist = 30;
+    const px = ship.x + Math.cos(ship.rotation) * spawnDist;
+    const py = ship.y + Math.sin(ship.rotation) * spawnDist;
+    const pvx = Math.cos(ship.rotation) * this.PLASMA_SPEED + ship.vx * 0.2;
+    const pvy = Math.sin(ship.rotation) * this.PLASMA_SPEED + ship.vy * 0.2;
+
     this.plasmaProjectiles.push({
-      x: ship.x + Math.cos(ship.rotation) * spawnDist,
-      y: ship.y + Math.sin(ship.rotation) * spawnDist,
-      vx: Math.cos(ship.rotation) * this.PLASMA_SPEED + ship.vx * 0.2,
-      vy: Math.sin(ship.rotation) * this.PLASMA_SPEED + ship.vy * 0.2,
+      x: px,
+      y: py,
+      vx: pvx,
+      vy: pvy,
       life: this.PLASMA_RANGE / this.PLASMA_SPEED,
       maxLife: this.PLASMA_RANGE / this.PLASMA_SPEED,
       damage: this.PLASMA_DAMAGE,
       size: this.PLASMA_SIZE,
       rotation: 0,
     });
+
+    // Broadcast to other players
+    this.onWeaponFire?.('plasma', px, py, pvx, pvy, ship.rotation, null);
 
     // Plasma burst particles
     this.emitPlasmaBurst(ship.x, ship.y, ship.rotation);
@@ -4310,17 +4362,26 @@ export class SpaceGame {
     }
 
     const spawnDist = 25;
+    const rx = ship.x + Math.cos(ship.rotation) * spawnDist;
+    const ry = ship.y + Math.sin(ship.rotation) * spawnDist;
+    const rvx = Math.cos(ship.rotation) * this.ROCKET_SPEED + ship.vx * 0.3;
+    const rvy = Math.sin(ship.rotation) * this.ROCKET_SPEED + ship.vy * 0.3;
+    const targetId = nearestTarget?.id || null;
+
     this.rockets.push({
-      x: ship.x + Math.cos(ship.rotation) * spawnDist,
-      y: ship.y + Math.sin(ship.rotation) * spawnDist,
-      vx: Math.cos(ship.rotation) * this.ROCKET_SPEED + ship.vx * 0.3,
-      vy: Math.sin(ship.rotation) * this.ROCKET_SPEED + ship.vy * 0.3,
+      x: rx,
+      y: ry,
+      vx: rvx,
+      vy: rvy,
       life: this.ROCKET_RANGE / this.ROCKET_SPEED,
       maxLife: this.ROCKET_RANGE / this.ROCKET_SPEED,
       damage: this.ROCKET_DAMAGE,
       rotation: ship.rotation,
-      targetPlanetId: nearestTarget?.id || null,
+      targetPlanetId: targetId,
     });
+
+    // Broadcast to other players
+    this.onWeaponFire?.('rocket', rx, ry, rvx, rvy, ship.rotation, targetId);
 
     // Rocket launch particles
     this.emitRocketSmoke(ship.x, ship.y, ship.rotation);
@@ -4504,6 +4565,9 @@ export class SpaceGame {
     this.destroyPlanet = planet;
     this.destroyParticles = [];
     this.destroyFromRifle = fromRifle;
+
+    // Broadcast to other players
+    this.onPlanetDestroyBroadcast?.(planet.id, fromRifle);
 
     // Clear landed state (only relevant for canon)
     if (!fromRifle) {
@@ -4727,6 +4791,309 @@ export class SpaceGame {
     ctx.shadowBlur = 0;
     ctx.restore();
   }
+
+  // ==================== REMOTE WEAPON & DESTROY SYSTEM ====================
+
+  // Handle remote weapon fire — spawn visual-only projectile
+  public onRemoteWeaponFire(_playerId: string, data: {
+    weaponType: 'rifle' | 'plasma' | 'rocket';
+    x: number; y: number; vx: number; vy: number;
+    rotation: number; targetPlanetId: string | null;
+  }) {
+    if (data.weaponType === 'rifle') {
+      this.remoteProjectiles.push({
+        x: data.x, y: data.y,
+        vx: data.vx, vy: data.vy,
+        life: this.BULLET_RANGE / this.BULLET_SPEED,
+        maxLife: this.BULLET_RANGE / this.BULLET_SPEED,
+        damage: 0, size: 4, color: '#ffcc00',
+      });
+    } else if (data.weaponType === 'plasma') {
+      this.remotePlasmaProjectiles.push({
+        x: data.x, y: data.y,
+        vx: data.vx, vy: data.vy,
+        life: this.PLASMA_RANGE / this.PLASMA_SPEED,
+        maxLife: this.PLASMA_RANGE / this.PLASMA_SPEED,
+        damage: 0, size: this.PLASMA_SIZE, rotation: 0,
+      });
+    } else if (data.weaponType === 'rocket') {
+      this.remoteRockets.push({
+        x: data.x, y: data.y,
+        vx: data.vx, vy: data.vy,
+        life: this.ROCKET_RANGE / this.ROCKET_SPEED,
+        maxLife: this.ROCKET_RANGE / this.ROCKET_SPEED,
+        damage: 0, rotation: data.rotation,
+        targetPlanetId: data.targetPlanetId,
+      });
+    }
+  }
+
+  // Handle remote planet destroy — start explosion from current planet snapshot
+  public onRemotePlanetDestroy(_playerId: string, data: { planetId: string; fromRifle: boolean }) {
+    const planet = this.state.planets.find(p => p.id === data.planetId);
+    if (!planet) return;
+
+    this.remoteDestroyAnimations.set(data.planetId, {
+      x: planet.x,
+      y: planet.y,
+      radius: planet.radius,
+      progress: 0.6, // Skip charge/beam, jump straight to explosion
+      particles: [],
+      fromRifle: data.fromRifle,
+    });
+  }
+
+  // Update remote projectiles (movement only, no collision)
+  private updateRemoteProjectiles() {
+    // Rifle bullets
+    for (let i = this.remoteProjectiles.length - 1; i >= 0; i--) {
+      const p = this.remoteProjectiles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life--;
+      if (p.life <= 0) this.remoteProjectiles.splice(i, 1);
+    }
+
+    // Plasma
+    for (let i = this.remotePlasmaProjectiles.length - 1; i >= 0; i--) {
+      const p = this.remotePlasmaProjectiles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rotation += 0.15;
+      p.life--;
+      if (p.life <= 0) this.remotePlasmaProjectiles.splice(i, 1);
+    }
+
+    // Rockets (with homing toward target planet)
+    for (let i = this.remoteRockets.length - 1; i >= 0; i--) {
+      const r = this.remoteRockets[i];
+
+      // Homing behavior (same as local rockets but visual only)
+      if (r.targetPlanetId) {
+        const target = this.state.planets.find(p => p.id === r.targetPlanetId);
+        if (target) {
+          const dx = target.x - r.x;
+          const dy = target.y - r.y;
+          const targetAngle = Math.atan2(dy, dx);
+          let angleDiff = targetAngle - r.rotation;
+          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+          r.rotation += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.ROCKET_TURN_SPEED);
+          const speed = Math.sqrt(r.vx * r.vx + r.vy * r.vy);
+          r.vx = Math.cos(r.rotation) * speed;
+          r.vy = Math.sin(r.rotation) * speed;
+        }
+      }
+
+      r.x += r.vx;
+      r.y += r.vy;
+      r.life--;
+      if (r.life <= 0) this.remoteRockets.splice(i, 1);
+    }
+  }
+
+  // Update remote destroy animations (explosion particles)
+  private updateRemoteDestroyAnimations() {
+    for (const [planetId, anim] of this.remoteDestroyAnimations) {
+      anim.progress += 0.04; // Same speed as rifle destroy
+
+      // Spawn explosion particles (phase 3: 0.6 - 0.85)
+      if (anim.progress < 0.75) {
+        for (let i = 0; i < 35; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 6 + Math.random() * 12;
+          anim.particles.push({
+            x: anim.x, y: anim.y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 60 + Math.random() * 50,
+            color: ['#ff4444', '#ff8800', '#ffcc00', '#ffffff'][Math.floor(Math.random() * 4)],
+            size: 5 + Math.random() * 8,
+          });
+        }
+      }
+
+      // Update particles
+      for (let i = anim.particles.length - 1; i >= 0; i--) {
+        const p = anim.particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.96;
+        p.vy *= 0.96;
+        p.life--;
+        if (p.life <= 0) anim.particles.splice(i, 1);
+      }
+
+      // Clean up when done
+      if (anim.progress >= 1 && anim.particles.length === 0) {
+        this.remoteDestroyAnimations.delete(planetId);
+      }
+    }
+  }
+
+  // Render remote destroy animations
+  private renderRemoteDestroyAnimations() {
+    const { ctx } = this;
+    const camera = this.state.camera;
+
+    for (const [, anim] of this.remoteDestroyAnimations) {
+      ctx.save();
+
+      // Screen flash during early explosion
+      if (anim.progress >= 0.6 && anim.progress < 0.8) {
+        const flashIntensity = 1 - (anim.progress - 0.6) / 0.2;
+        const flashRadius = anim.radius * 2.5;
+        const gradient = ctx.createRadialGradient(
+          anim.x - camera.x, anim.y - camera.y, 0,
+          anim.x - camera.x, anim.y - camera.y, flashRadius
+        );
+        gradient.addColorStop(0, `rgba(255, 200, 100, ${flashIntensity * 0.4})`);
+        gradient.addColorStop(1, 'rgba(255, 100, 50, 0)');
+        ctx.beginPath();
+        ctx.arc(anim.x - camera.x, anim.y - camera.y, flashRadius, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
+
+      // Draw particles
+      for (const p of anim.particles) {
+        const alpha = p.life / 60;
+        ctx.beginPath();
+        ctx.arc(p.x - camera.x, p.y - camera.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.min(1, alpha);
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = p.color;
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  }
+
+  // Render remote rifle projectiles (same visual as local, different array)
+  private renderRemoteProjectiles() {
+    if (this.remoteProjectiles.length === 0) return;
+    const { ctx } = this;
+    const camera = this.state.camera;
+
+    for (const p of this.remoteProjectiles) {
+      const x = p.x - camera.x;
+      const y = p.y - camera.y;
+      const alpha = Math.min(1, p.life / p.maxLife + 0.3);
+
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = p.color;
+
+      ctx.beginPath();
+      ctx.arc(x, y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - p.vx * 2, y - p.vy * 2);
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = p.size * 0.6;
+      ctx.globalAlpha = alpha * 0.5;
+      ctx.stroke();
+
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // Render remote plasma projectiles
+  private renderRemotePlasmaProjectiles() {
+    if (this.remotePlasmaProjectiles.length === 0) return;
+    const { ctx } = this;
+    const camera = this.state.camera;
+
+    for (const p of this.remotePlasmaProjectiles) {
+      const x = p.x - camera.x;
+      const y = p.y - camera.y;
+      const alpha = Math.min(1, p.life / p.maxLife + 0.3);
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(p.rotation);
+
+      ctx.shadowBlur = 25;
+      ctx.shadowColor = '#8844ff';
+
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, p.size);
+      gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+      gradient.addColorStop(0.3, `rgba(170, 102, 255, ${alpha})`);
+      gradient.addColorStop(0.7, `rgba(136, 68, 255, ${alpha * 0.8})`);
+      gradient.addColorStop(1, 'rgba(136, 68, 255, 0)');
+
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.fill();
+
+      ctx.restore();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // Render remote rockets
+  private renderRemoteRockets() {
+    if (this.remoteRockets.length === 0) return;
+    const { ctx } = this;
+    const camera = this.state.camera;
+
+    for (const r of this.remoteRockets) {
+      const x = r.x - camera.x;
+      const y = r.y - camera.y;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(r.rotation);
+
+      ctx.fillStyle = '#cc4444';
+      ctx.beginPath();
+      ctx.moveTo(12, 0);
+      ctx.lineTo(-8, -5);
+      ctx.lineTo(-8, 5);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#aa3333';
+      ctx.beginPath();
+      ctx.moveTo(-8, -5);
+      ctx.lineTo(-12, -8);
+      ctx.lineTo(-8, -3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-8, 5);
+      ctx.lineTo(-12, 8);
+      ctx.lineTo(-8, 3);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = '#ff6600';
+      ctx.fillStyle = '#ff8800';
+      ctx.beginPath();
+      ctx.arc(-10, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  // ==================== END REMOTE WEAPON & DESTROY SYSTEM ====================
 
   // Additional easing functions for the landing
   private easeOutBack(t: number): number {
@@ -5566,14 +5933,17 @@ export class SpaceGame {
       ctx.globalAlpha = 1;
     }
 
-    // Draw projectiles (space rifle bullets)
+    // Draw projectiles (space rifle bullets) — local + remote
     this.renderProjectiles();
+    this.renderRemoteProjectiles();
 
-    // Draw plasma projectiles
+    // Draw plasma projectiles — local + remote
     this.renderPlasmaProjectiles();
+    this.renderRemotePlasmaProjectiles();
 
-    // Draw rockets
+    // Draw rockets — local + remote
     this.renderRockets();
+    this.renderRemoteRockets();
 
     // Draw other players' ships (behind local ship)
     this.renderOtherPlayers();
@@ -5596,6 +5966,9 @@ export class SpaceGame {
     if (this.isDestroying) {
       this.renderDestroyAnimation();
     }
+
+    // Draw remote destroy animations from other players
+    this.renderRemoteDestroyAnimations();
 
     // Draw send/reassign animation (balloon deflate effect)
     if (this.isSending) {
@@ -6928,8 +7301,8 @@ export class SpaceGame {
       const isNotionPlanet = planet.type === 'notion';
       const isUnassignedNotion = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
 
-      if (isViewOnlyPlanet) {
-        // View-only mode: show Send, Edit and Notion buttons
+      if (isViewOnlyPlanet && isNotionPlanet) {
+        // View-only mode for Notion tasks: show Send, Edit and Notion buttons
         ctx.textAlign = 'left';
         const leftX = boxX + 30;
 
@@ -6950,6 +7323,9 @@ export class SpaceGame {
         }
 
         ctx.textAlign = 'center';
+      } else if (isViewOnlyPlanet) {
+        // View-only mode for non-notion planets: no actions available
+        // (just the close hint at the bottom)
       } else {
         // Claim or Complete hint
         ctx.fillStyle = isUnassignedNotion ? '#ffd700' : '#4ade80';
@@ -6985,8 +7361,8 @@ export class SpaceGame {
           }
 
           ctx.textAlign = 'center';
-        } else {
-          // For assigned tasks: Complete, Send, Edit, and Notion
+        } else if (isNotionPlanet) {
+          // For assigned Notion tasks: Complete, Send, Edit, and Notion
           ctx.textAlign = 'left';
           const leftX = boxX + 30;
 
@@ -7011,6 +7387,11 @@ export class SpaceGame {
           }
 
           ctx.textAlign = 'center';
+        } else {
+          // Non-notion planets (achievements, business, product): only Complete
+          ctx.fillStyle = '#4ade80';
+          ctx.font = 'bold 14px Space Grotesk';
+          ctx.fillText('[ C ] Complete', boxX + boxWidth / 2, currentY);
         }
       }
     } else if (planet.completed && !isSpecialPlanet && planet.type === 'notion') {
