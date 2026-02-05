@@ -492,8 +492,7 @@ function App() {
   const [teamPoints, setTeamPoints] = useState(0); // Loaded from Supabase via useMultiplayerSync
   const [gameReady, setGameReady] = useState(false); // Track when game is initialized
   const [assetsLoaded, setAssetsLoaded] = useState(false);
-  const isReturnVisit = useRef(!!localStorage.getItem('mission-control-user-ships-cache'));
-  const [warpComplete, setWarpComplete] = useState(isReturnVisit.current);
+  const [warpComplete, setWarpComplete] = useState(false);
   const [personalPoints, setPersonalPoints] = useState(0);
   const [userShips, setUserShips] = useState<Record<string, UserShip>>(() => {
     try {
