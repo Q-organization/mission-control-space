@@ -2300,12 +2300,27 @@ function App() {
       const currentShip = getCurrentUserShip();
       const effects = currentShip.effects || {};
       const unowned: string[] = [];
-      if (!effects.hasSpaceRifle) unowned.push('Space Rifle (500 credits)');
-      if (!effects.hasPlasmaCanon) unowned.push('Plasma Canon (1,500 credits)');
-      if (!effects.hasRocketLauncher) unowned.push('Rocket Launcher (2,500 credits)');
+      // Weapons
+      if (!effects.hasSpaceRifle) unowned.push('Space Rifle');
+      if (!effects.hasSpaceTNT) unowned.push('Space TNT');
+      if (!effects.hasPlasmaCanon) unowned.push('Plasma Canon');
+      if (!effects.hasRocketLauncher) unowned.push('Rocket Launcher');
+      // Utilities
+      if (!effects.hasWarpDrive) unowned.push('Warp Drive');
+      if (!effects.hasMissionControlPortal) unowned.push('Mission Control Portal');
+      // Stats
       if ((effects.sizeBonus || 0) < 10) unowned.push('Size upgrade');
       if ((effects.speedBonus || 0) < 10) unowned.push('Speed upgrade');
-      unowned.push('Visual upgrade (150 credits)');
+      if ((effects.landingSpeedBonus || 0) < 5) unowned.push('Landing Speed upgrade');
+      // Cosmetics
+      if (!effects.orangeGlow) unowned.push('Orange Glow');
+      if (!effects.blueGlow) unowned.push('Blue Glow');
+      if (!effects.purpleGlow) unowned.push('Purple Glow');
+      if (!effects.greenGlow) unowned.push('Green Glow');
+      if (!effects.fireTrail) unowned.push('Fire Trail');
+      if (!effects.iceTrail) unowned.push('Ice Trail');
+      if (!effects.rainbowTrail) unowned.push('Rainbow Trail');
+      unowned.push('Visual upgrade');
       voiceService.shopGreeting({
         playerName: USERS.find(u => u.id === state.currentUser)?.name || state.currentUser || 'friend',
         credits: personalPoints,
