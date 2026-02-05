@@ -366,6 +366,12 @@ export class SpaceGame {
   private onWeaponFire: ((weaponType: 'rifle' | 'plasma' | 'rocket', x: number, y: number, vx: number, vy: number, rotation: number, targetPlanetId: string | null) => void) | null = null;
   private onPlanetDestroyBroadcast: ((planetId: string, fromRifle: boolean) => void) | null = null;
 
+  // Asset loading tracking
+  private criticalAssetsLoaded = 0;
+  private criticalAssetsTotal = 0;
+  private assetsReady = false;
+  private onAssetsReady: (() => void) | null = null;
+
   // Escort drones (permanent companions based on ship level)
   private escortDrones: EscortDrone[] = [];
   private readonly DRONE_UNLOCK_INTERVAL: number = 5; // Unlock 1 drone every 5 ship levels
@@ -422,10 +428,10 @@ export class SpaceGame {
       }
     });
 
-    // Load station skins
-    this.loadCustomPlanetImage('shop-station', '/shop-station.png');
-    this.loadCustomPlanetImage('planet-builder', '/planet-factory.png');
-    this.loadCustomPlanetImage('control-hub', '/control-hub.png');
+    // Load station skins (critical - visible immediately)
+    this.loadCustomPlanetImage('shop-station', '/shop-station.png', true);
+    this.loadCustomPlanetImage('planet-builder', '/planet-factory.png', true);
+    this.loadCustomPlanetImage('control-hub', '/control-hub.png', true);
 
     // Load goal skins (achievements, business, product) from Supabase imageUrl
     if (goals) {
@@ -437,11 +443,11 @@ export class SpaceGame {
       });
     }
 
-    // Load Notion task type skins
-    this.loadNotionTypeImage('bug', '/notion-bug.png');
-    this.loadNotionTypeImage('enhancement', '/notion-enhancement.png');
+    // Load Notion task type skins (critical - visible immediately)
+    this.loadNotionTypeImage('bug', '/notion-bug.png', true);
+    this.loadNotionTypeImage('enhancement', '/notion-enhancement.png', true);
     this.loadNotionTypeImage('feature', '/notion-enhancement.png');
-    this.loadNotionTypeImage('task', '/notion-task.png');
+    this.loadNotionTypeImage('task', '/notion-task.png', true);
 
     // Load critical priority flame overlay
     const flameImg = new Image();
@@ -478,6 +484,7 @@ export class SpaceGame {
 
   private loadLogo(shipImageUrl?: string) {
     const img = new Image();
+    this.trackCriticalAsset(img);
     img.src = '/logo.png';
     img.onload = () => {
       this.logoImage = img;
@@ -486,6 +493,7 @@ export class SpaceGame {
     // Load ship image (use custom URL if provided)
     const shipImg = new Image();
     shipImg.crossOrigin = 'anonymous';
+    this.trackCriticalAsset(shipImg);
     shipImg.src = shipImageUrl || '/ship-base.png';
     shipImg.onload = () => {
       this.shipImage = shipImg;
@@ -868,22 +876,42 @@ export class SpaceGame {
     return planets;
   }
 
-  private loadCustomPlanetImage(planetId: string, imageUrl: string) {
+  private loadCustomPlanetImage(planetId: string, imageUrl: string, critical = false) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
+    if (critical) this.trackCriticalAsset(img);
     img.src = imageUrl;
     img.onload = () => {
       this.customPlanetImages.set(planetId, img);
     };
   }
 
-  private loadNotionTypeImage(taskType: string, imageUrl: string) {
+  private loadNotionTypeImage(taskType: string, imageUrl: string, critical = false) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
+    if (critical) this.trackCriticalAsset(img);
     img.src = imageUrl;
     img.onload = () => {
       this.notionTypeImages.set(taskType, img);
     };
+  }
+
+  public setOnAssetsReady(cb: () => void) {
+    this.onAssetsReady = cb;
+    if (this.assetsReady) cb();
+  }
+
+  private trackCriticalAsset(img: HTMLImageElement) {
+    this.criticalAssetsTotal++;
+    const onDone = () => {
+      this.criticalAssetsLoaded++;
+      if (this.criticalAssetsLoaded >= this.criticalAssetsTotal && !this.assetsReady) {
+        this.assetsReady = true;
+        this.onAssetsReady?.();
+      }
+    };
+    img.addEventListener('load', onDone, { once: true });
+    img.addEventListener('error', onDone, { once: true });
   }
 
   public addCustomPlanet(customPlanet: CustomPlanetData) {

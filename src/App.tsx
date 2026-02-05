@@ -490,6 +490,7 @@ function App() {
   const [customPlanets, setCustomPlanets] = useState<CustomPlanet[]>([]); // Loaded from Supabase
   const [teamPoints, setTeamPoints] = useState(0); // Loaded from Supabase via useMultiplayerSync
   const [gameReady, setGameReady] = useState(false); // Track when game is initialized
+  const [assetsLoaded, setAssetsLoaded] = useState(false); // Track when critical images are loaded
   const [personalPoints, setPersonalPoints] = useState(0);
   const [userShips, setUserShips] = useState<Record<string, UserShip>>({}); // Loaded from Supabase via teamPlayers
   const [mascotHistory, setMascotHistory] = useState<MascotHistoryEntry[]>([]); // Loaded from Supabase
@@ -3513,12 +3514,14 @@ function App() {
     }
 
     state.completedPlanets.forEach(id => game.completePlanet(id));
+    game.setOnAssetsReady(() => setAssetsLoaded(true));
     game.start();
     setGameReady(true); // Signal that game is ready for broadcasting
 
     return () => {
       game.stop();
       setGameReady(false);
+      setAssetsLoaded(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showWelcome, showUserSelect, customPlanets, goals]);
@@ -3594,6 +3597,51 @@ function App() {
   return (
     <div style={styles.container}>
       <canvas ref={canvasRef} style={styles.canvas} />
+
+      {/* Loading overlay - covers canvas until critical assets are loaded */}
+      {!assetsLoaded && gameReady && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: '#0a0a12',
+          display: 'flex',
+          flexDirection: 'column' as const,
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          transition: 'opacity 0.4s ease-out',
+        }}>
+          <img src="/logo.png" alt="" style={{ width: 80, height: 80, marginBottom: 24, animation: 'loadingPulse 1.5s ease-in-out infinite' }} />
+          <div style={{
+            width: 120,
+            height: 3,
+            background: 'rgba(255,165,0,0.15)',
+            borderRadius: 2,
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              width: '40%',
+              height: '100%',
+              background: '#ffa500',
+              borderRadius: 2,
+              animation: 'loadingSlide 1s ease-in-out infinite',
+            }} />
+          </div>
+          <style>{`
+            @keyframes loadingPulse {
+              0%, 100% { opacity: 0.6; transform: scale(1); }
+              50% { opacity: 1; transform: scale(1.05); }
+            }
+            @keyframes loadingSlide {
+              0% { transform: translateX(-120px); }
+              100% { transform: translateX(300px); }
+            }
+          `}</style>
+        </div>
+      )}
 
       {/* Upgrade overlay */}
       {isUpgrading && (
