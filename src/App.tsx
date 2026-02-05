@@ -3867,7 +3867,10 @@ function App() {
           isOpen={showQuickTaskModal}
           onClose={() => setShowQuickTaskModal(false)}
           currentUser={state.currentUser || 'unknown'}
-          onCreatedForSelf={() => soundManager.playClaimVoiceLine()}
+          onCreatedForSelf={(taskName, taskType, priority) => {
+            soundManager.playClaimVoiceLine();
+            gameRef.current?.startNewTaskSendAnimation(taskName, taskType, priority);
+          }}
         />
       )}
 

@@ -5,6 +5,7 @@ interface QuickTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: string;
+  onCreatedForSelf?: (taskName: string, taskType: string, priority: string) => void;
 }
 
 const TEAM_MEMBERS = [
@@ -16,7 +17,7 @@ const TEAM_MEMBERS = [
   { id: 'hugues', name: 'Hugues' },
 ];
 
-export function QuickTaskModal({ isOpen, onClose, currentUser }: QuickTaskModalProps) {
+export function QuickTaskModal({ isOpen, onClose, currentUser, onCreatedForSelf }: QuickTaskModalProps) {
   const [taskName, setTaskName] = useState('');
   const [description, setDescription] = useState('');
   const [taskType, setTaskType] = useState<'task' | 'bug' | 'feature'>('task');
@@ -37,6 +38,11 @@ export function QuickTaskModal({ isOpen, onClose, currentUser }: QuickTaskModalP
       assigned_to: assignedTo || null,
       created_by: currentUser,
     };
+
+    // Play voice line + send animation if assigning to self
+    if (assignedTo === currentUser && onCreatedForSelf) {
+      onCreatedForSelf(payload.name, taskType, priority);
+    }
 
     // Reset form and close immediately
     setTaskName('');

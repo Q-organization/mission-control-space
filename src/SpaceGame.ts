@@ -2090,6 +2090,60 @@ export class SpaceGame {
     this.isSending = true;
   }
 
+  // Create a temporary planet at ship position and animate it to the player's home zone
+  // Used when creating a task assigned to yourself
+  public startNewTaskSendAnimation(taskName: string, taskType: string, priority: string): { vx: number; vy: number } | null {
+    const { ship } = this.state;
+
+    // Find the current user's home zone
+    const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
+    if (!playerZone) return null;
+
+    // Determine color based on task type
+    const typeColors: Record<string, { color: string; glowColor: string }> = {
+      bug: { color: '#ff6b6b', glowColor: '#ff4444' },
+      feature: { color: '#4ecdc4', glowColor: '#00bfae' },
+      task: { color: '#fbbf24', glowColor: '#f59e0b' },
+    };
+    const colors = typeColors[taskType] || typeColors.task;
+
+    // Determine radius based on priority
+    let radius = 40;
+    let size: 'small' | 'medium' | 'big' = 'medium';
+    if (priority === 'critical') { radius = 55; size = 'big'; }
+    else if (priority === 'high') { radius = 45; size = 'medium'; }
+    else if (priority === 'low') { radius = 32; size = 'small'; }
+
+    // Create temporary planet at ship position
+    const tempPlanet: Planet = {
+      id: `temp-new-task-${Date.now()}`,
+      name: taskName,
+      x: ship.x,
+      y: ship.y,
+      radius,
+      color: colors.color,
+      glowColor: colors.glowColor,
+      completed: false,
+      type: 'notion',
+      size,
+      ownerId: this.currentUser,
+      taskType,
+      priority,
+    };
+
+    this.state.planets.push(tempPlanet);
+
+    // Start send animation
+    this.startSendAnimation(tempPlanet);
+
+    // Set target to home zone immediately (with some random offset for variety)
+    const offsetX = (Math.random() - 0.5) * 300;
+    const offsetY = (Math.random() - 0.5) * 300;
+    this.setSendTarget(playerZone.centerX + offsetX, playerZone.centerY + offsetY);
+
+    return this.getSendVelocity();
+  }
+
   // Public method to set target position when API returns
   public setSendTarget(targetX: number, targetY: number) {
     if (!this.isSending) return;
