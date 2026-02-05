@@ -634,17 +634,11 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
   },
   dropdownMenu: {
-    position: 'absolute' as const,
-    top: '100%',
-    left: 0,
-    right: 0,
     marginTop: 4,
     background: '#1a1a2e',
     border: '1px solid #333',
     borderRadius: 10,
     overflow: 'hidden',
-    zIndex: 10,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
   },
   dropdownItem: {
     display: 'flex',
