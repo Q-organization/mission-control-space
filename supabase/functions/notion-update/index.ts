@@ -326,31 +326,24 @@ Deno.serve(async (req) => {
 
     // Update Notion page
     const notionToken = Deno.env.get('NOTION_API_TOKEN');
-    if (notionToken && Object.keys(notionProperties).length > 0) {
+    if (notionToken && (Object.keys(notionProperties).length > 0 || assigneeChanged)) {
       // Handle assignee change in Notion
       if (assigneeChanged) {
         if (body.assigned_to) {
-          // Find Notion user
-          const usersResponse = await fetch('https://api.notion.com/v1/users', {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${notionToken}`,
-              'Notion-Version': '2022-06-28',
-            },
-          });
+          // Look up Notion user ID from mappings table
+          const { data: mapping } = await supabase
+            .from('notion_user_mappings')
+            .select('notion_user_id, players!inner(username)')
+            .eq('team_id', planet.team_id)
+            .ilike('players.username', body.assigned_to)
+            .single();
 
-          if (usersResponse.ok) {
-            const usersData = await usersResponse.json();
-            const notionUser = usersData.results?.find((user: { name?: string; type: string }) =>
-              user.type === 'person' &&
-              user.name?.toLowerCase() === body.assigned_to!.toLowerCase()
-            );
-
-            if (notionUser) {
-              notionProperties['Attributed to'] = {
-                people: [{ id: notionUser.id }],
-              };
-            }
+          if (mapping?.notion_user_id) {
+            notionProperties['Attributed to'] = {
+              people: [{ id: mapping.notion_user_id }],
+            };
+          } else {
+            console.log(`No Notion user mapping found for player: ${body.assigned_to}`);
           }
         } else {
           // Clear assignee

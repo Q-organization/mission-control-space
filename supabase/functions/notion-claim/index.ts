@@ -192,52 +192,39 @@ Deno.serve(async (req) => {
     const notionToken = Deno.env.get('NOTION_API_TOKEN');
     if (notionToken) {
       try {
-        // Fetch Notion workspace users to find the matching user ID
-        const usersResponse = await fetch('https://api.notion.com/v1/users', {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${notionToken}`,
-            'Notion-Version': '2022-06-28',
-          },
-        });
+        // Look up Notion user ID from mappings table (reliable, unlike name matching)
+        const { data: mapping } = await supabase
+          .from('notion_user_mappings')
+          .select('notion_user_id, players!inner(username)')
+          .eq('team_id', planet.team_id)
+          .ilike('players.username', player_username)
+          .single();
 
-        if (usersResponse.ok) {
-          const usersData = await usersResponse.json();
-          // Find user whose name matches (case-insensitive)
-          const notionUser = usersData.results?.find((user: { name?: string; type: string }) =>
-            user.type === 'person' &&
-            user.name?.toLowerCase() === player_username.toLowerCase()
-          );
-
-          if (notionUser) {
-            // Update the Notion page with the "Attributed to" field
-            const updateResponse = await fetch(`https://api.notion.com/v1/pages/${planet.notion_task_id}`, {
-              method: 'PATCH',
-              headers: {
-                'Authorization': `Bearer ${notionToken}`,
-                'Content-Type': 'application/json',
-                'Notion-Version': '2022-06-28',
-              },
-              body: JSON.stringify({
-                properties: {
-                  'Attributed to': {
-                    people: [{ id: notionUser.id }],
-                  },
+        if (mapping?.notion_user_id) {
+          const updateResponse = await fetch(`https://api.notion.com/v1/pages/${planet.notion_task_id}`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${notionToken}`,
+              'Content-Type': 'application/json',
+              'Notion-Version': '2022-06-28',
+            },
+            body: JSON.stringify({
+              properties: {
+                'Attributed to': {
+                  people: [{ id: mapping.notion_user_id }],
                 },
-              }),
-            });
+              },
+            }),
+          });
 
-            if (updateResponse.ok) {
-              console.log(`Updated Notion task ${planet.notion_task_id} - assigned to ${notionUser.name} (${notionUser.id})`);
-            } else {
-              const errorText = await updateResponse.text();
-              console.error('Failed to update Notion page:', errorText);
-            }
+          if (updateResponse.ok) {
+            console.log(`Updated Notion task ${planet.notion_task_id} - assigned to ${player_username} (${mapping.notion_user_id})`);
           } else {
-            console.log(`Notion user not found for username: ${player_username}`);
+            const errorText = await updateResponse.text();
+            console.error('Failed to update Notion page:', errorText);
           }
         } else {
-          console.error('Failed to fetch Notion users:', await usersResponse.text());
+          console.log(`No Notion user mapping found for player: ${player_username}`);
         }
       } catch (notionError) {
         console.error('Failed to update Notion:', notionError);

@@ -278,29 +278,21 @@ Deno.serve(async (req) => {
       };
     }
 
-    // Find Notion user ID for assigned_to
-    let notionUserId: string | null = null;
+    // Find Notion user ID for assigned_to using mappings table
     if (body.assigned_to) {
-      const usersResponse = await fetch('https://api.notion.com/v1/users', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${notionToken}`,
-          'Notion-Version': '2022-06-28',
-        },
-      });
+      const { data: mapping } = await supabase
+        .from('notion_user_mappings')
+        .select('notion_user_id, players!inner(username)')
+        .eq('team_id', team.id)
+        .ilike('players.username', body.assigned_to)
+        .single();
 
-      if (usersResponse.ok) {
-        const usersData = await usersResponse.json();
-        const notionUser = usersData.results?.find((user: { name?: string; type: string }) =>
-          user.type === 'person' &&
-          user.name?.toLowerCase() === body.assigned_to?.toLowerCase()
-        );
-        if (notionUser) {
-          notionUserId = notionUser.id;
-          notionProperties['Attributed to'] = {
-            people: [{ id: notionUser.id }],
-          };
-        }
+      if (mapping?.notion_user_id) {
+        notionProperties['Attributed to'] = {
+          people: [{ id: mapping.notion_user_id }],
+        };
+      } else {
+        console.log(`No Notion user mapping found for player: ${body.assigned_to}`);
       }
     }
 
