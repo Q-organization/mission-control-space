@@ -197,6 +197,7 @@ export class SpaceGame {
   // Landed state (player is on planet, showing details)
   private isLanded: boolean = false;
   private landedPlanet: Planet | null = null;
+  private landedPanelBounds: { x: number; y: number; w: number; h: number } | null = null;
 
   // Callbacks for landing interactions
   private onLand: ((planet: Planet) => void) | null = null;
@@ -509,65 +510,65 @@ export class SpaceGame {
 
     // Use provided goals or fallback to defaults
     const businessMilestones = goals?.business || [
-      { id: 'b1', name: 'First Organic Signup', size: 'small' as const, points: 20 },
-      { id: 'b2', name: 'First Paying Customer', size: 'small' as const, points: 30, realWorldReward: 'Team dinner' },
-      { id: 'b3', name: 'First Referral', size: 'small' as const, points: 40 },
-      { id: 'b4', name: '5 Customers', size: 'small' as const, points: 50 },
-      { id: 'b5', name: '10 Customers', size: 'medium' as const, points: 75 },
-      { id: 'b6', name: '$5k MRR', size: 'medium' as const, points: 100, realWorldReward: 'Team lunch (covers dev salaries)' },
-      { id: 'b7', name: '10 Referrals', size: 'medium' as const, points: 125 },
-      { id: 'b8', name: '25 Customers', size: 'medium' as const, points: 150 },
-      { id: 'b9', name: '$10k MRR', size: 'medium' as const, points: 200, realWorldReward: 'Owners start getting paid' },
-      { id: 'b10', name: '50 Customers', size: 'medium' as const, points: 250 },
-      { id: 'b11', name: '$20k MRR', size: 'big' as const, points: 400, realWorldReward: '+$1k/month everyone' },
-      { id: 'b12', name: '100 Customers', size: 'big' as const, points: 500 },
-      { id: 'b13', name: '$50k MRR', size: 'big' as const, points: 750, realWorldReward: 'Weekend trip for team' },
-      { id: 'b14', name: '$55k MRR', size: 'big' as const, points: 1000, realWorldReward: 'Owners at $10k — fancy dinner' },
-      { id: 'b15', name: '200 Customers', size: 'big' as const, points: 1250 },
-      { id: 'b16', name: '$100k MRR', size: 'big' as const, points: 2000, realWorldReward: '€5k bonus + equity for key people' },
-      { id: 'b17', name: '500 Customers', size: 'big' as const, points: 3000 },
-      { id: 'b18', name: '$250k MRR', size: 'big' as const, points: 5000, realWorldReward: 'Team trip anywhere in the world' },
-      { id: 'b19', name: '$1M MRR', size: 'big' as const, points: 10000, realWorldReward: 'Dream car or equivalent' },
+      { id: 'b1', name: 'Gates open — 5 paying customers', size: 'small' as const, points: 100, targetDate: '2026-02-12' },
+      { id: 'b2', name: '10 customers / $5k MRR', size: 'small' as const, points: 200, targetDate: '2026-02-19' },
+      { id: 'b3', name: '20 customers / $10k MRR', size: 'small' as const, points: 400, targetDate: '2026-02-28' },
+      { id: 'b4', name: 'Hugues starts to open the gates', size: 'medium' as const, points: 300, targetDate: '2026-03-07' },
+      { id: 'b5', name: '$20k MRR', size: 'medium' as const, points: 500, targetDate: '2026-03-14' },
+      { id: 'b6', name: 'Affiliate/referral program live', size: 'medium' as const, points: 300, targetDate: '2026-03-21' },
+      { id: 'b7', name: '100 customers / $50k MRR', size: 'medium' as const, points: 750, targetDate: '2026-03-31' },
+      { id: 'b8', name: 'First agency partnership signed', size: 'medium' as const, points: 500, targetDate: '2026-04-15' },
+      { id: 'b9', name: '$100k MRR', size: 'big' as const, points: 1000, targetDate: '2026-04-30' },
+      { id: 'b10', name: '$150k MRR', size: 'big' as const, points: 1500, targetDate: '2026-05-31' },
+      { id: 'b11', name: '$250k MRR', size: 'big' as const, points: 2500, targetDate: '2026-06-30' },
+      { id: 'b12', name: '$500k MRR', size: 'big' as const, points: 5000, targetDate: '2026-09-30' },
+      { id: 'b13', name: '$1M MRR', size: 'big' as const, points: 10000, targetDate: '2026-12-31' },
+      { id: 'b14', name: '$3M MRR / $36M ARR', size: 'big' as const, points: 15000, targetDate: '2027-06-30' },
+      { id: 'b15', name: '$5M MRR / $60M ARR', size: 'big' as const, points: 25000, targetDate: '2027-12-31' },
     ];
 
     const productMilestones = goals?.product || [
-      { id: 'p1', name: '100 Videos Processed', size: 'small' as const, points: 20 },
-      { id: 'p2', name: 'Educational Videos', size: 'small' as const, points: 30 },
-      { id: 'p3', name: 'Templates Ready', size: 'small' as const, points: 40 },
-      { id: 'p4', name: 'Onboarding Wizard', size: 'medium' as const, points: 60 },
-      { id: 'p5', name: 'Public Launch', size: 'medium' as const, points: 80 },
-      { id: 'p6', name: 'Analytics Functioning', size: 'medium' as const, points: 100 },
-      { id: 'p7', name: '1,000 Videos Processed', size: 'medium' as const, points: 150 },
-      { id: 'p8', name: '50 Templates', size: 'medium' as const, points: 200 },
-      { id: 'p9', name: 'Smooth UX Achieved', size: 'big' as const, points: 300 },
-      { id: 'p10', name: '"Where Are The Bugs?"', size: 'big' as const, points: 500 },
-      { id: 'p11', name: '100,000 Videos Processed', size: 'big' as const, points: 750 },
-      { id: 'p12', name: 'AI Agent Builds Funnels', size: 'big' as const, points: 1500 },
-      { id: 'p13', name: 'Desktop Version', size: 'big' as const, points: 2000 },
-      { id: 'p14', name: '1,000,000 Videos Processed', size: 'big' as const, points: 5000 },
+      { id: 'p1', name: 'Templates Ready', size: 'small' as const, points: 20, targetDate: '2026-02-06' },
+      { id: 'p2', name: 'Public Launch', size: 'small' as const, points: 30, targetDate: '2026-02-10' },
+      { id: 'p3', name: 'Onboarding Wizard', size: 'small' as const, points: 40, targetDate: '2026-02-21' },
+      { id: 'p4', name: 'Educational Videos', size: 'medium' as const, points: 60, targetDate: '2026-03-07' },
+      { id: 'p5', name: '100 Videos Processed', size: 'medium' as const, points: 80, targetDate: '2026-03-14' },
+      { id: 'p6', name: 'Analytics Functioning', size: 'medium' as const, points: 100, targetDate: '2026-03-31' },
+      { id: 'p7', name: '1,000 Videos Processed', size: 'medium' as const, points: 150, targetDate: '2026-04-30' },
+      { id: 'p8', name: '50 Templates', size: 'medium' as const, points: 200, targetDate: '2026-05-31' },
+      { id: 'p9', name: 'Smooth UX Achieved', size: 'big' as const, points: 300, targetDate: '2026-06-30' },
+      { id: 'p10', name: '"Where Are The Bugs?"', size: 'big' as const, points: 500, targetDate: '2026-09-30' },
+      { id: 'p11', name: '100,000 Videos Processed', size: 'big' as const, points: 750, targetDate: '2026-12-31' },
+      { id: 'p12', name: 'AI Agent Builds Funnels', size: 'big' as const, points: 1500, targetDate: '2027-06-30' },
+      { id: 'p13', name: 'Desktop Version', size: 'big' as const, points: 2000, targetDate: '2027-09-30' },
+      { id: 'p14', name: '1,000,000 Videos Processed', size: 'big' as const, points: 5000, targetDate: '2027-12-31' },
     ];
 
     const achievements = goals?.achievement || [
-      { id: 'a1', name: 'First Week Streak', size: 'small' as const, points: 50 },
-      { id: 'a2', name: 'Customers in 10+ Countries', size: 'medium' as const, points: 75 },
-      { id: 'a3', name: 'First Podcast Appearance', size: 'medium' as const, points: 100 },
-      { id: 'a4', name: 'First $10k Day', size: 'medium' as const, points: 150 },
-      { id: 'a5', name: 'Big Podcast (100k+ audience)', size: 'medium' as const, points: 250 },
-      { id: 'a6', name: 'Customers in 50+ Countries', size: 'big' as const, points: 300 },
-      { id: 'a7', name: 'Competitor Copies Us', size: 'big' as const, points: 400 },
-      { id: 'a8', name: 'Product Hunt Top 5', size: 'big' as const, points: 500 },
-      { id: 'a9', name: 'Hacker News Front Page', size: 'big' as const, points: 600 },
-      { id: 'a10', name: 'TechCrunch/Forbes Mention', size: 'big' as const, points: 750 },
-      { id: 'a11', name: 'Product Hunt #1 of Day', size: 'big' as const, points: 1000 },
-      { id: 'a12', name: 'Remy Jupille Uses Us', size: 'big' as const, points: 1000 },
-      { id: 'a13', name: 'Yomi Denzel Uses Us', size: 'big' as const, points: 1250 },
-      { id: 'a14', name: 'Iman Gadzhi Uses Us', size: 'big' as const, points: 1500 },
-      { id: 'a15', name: 'Charlie Morgan Uses Us', size: 'big' as const, points: 1500 },
-      { id: 'a16', name: 'Viral Video (1M+ views)', size: 'big' as const, points: 2000 },
-      { id: 'a17', name: 'Gary Vee Notice', size: 'big' as const, points: 3000 },
-      { id: 'a18', name: 'Alex Hormozi Notice', size: 'big' as const, points: 3000 },
-      { id: 'a19', name: 'Wikipedia Page', size: 'big' as const, points: 5000 },
-      { id: 'a20', name: 'Customer Tattoos Logo', size: 'big' as const, points: 10000 },
+      { id: 'a1', name: 'First Organic Signup', size: 'small' as const, points: 20 },
+      { id: 'a2', name: 'First Paying Customer', size: 'small' as const, points: 30 },
+      { id: 'a3', name: 'First Referral', size: 'small' as const, points: 40 },
+      { id: 'a4', name: 'First Week Streak', size: 'small' as const, points: 50 },
+      { id: 'a5', name: '10 Referrals', size: 'medium' as const, points: 75 },
+      { id: 'a6', name: 'Customers in 10+ Countries', size: 'medium' as const, points: 100 },
+      { id: 'a7', name: 'First Podcast Appearance', size: 'medium' as const, points: 100 },
+      { id: 'a8', name: 'First $10k Day', size: 'medium' as const, points: 150 },
+      { id: 'a9', name: 'Big Podcast (100k+ audience)', size: 'medium' as const, points: 250 },
+      { id: 'a10', name: 'Customers in 50+ Countries', size: 'big' as const, points: 300 },
+      { id: 'a11', name: 'Competitor Copies Us', size: 'big' as const, points: 400 },
+      { id: 'a12', name: 'Product Hunt Top 5', size: 'big' as const, points: 500 },
+      { id: 'a13', name: 'Hacker News Front Page', size: 'big' as const, points: 600 },
+      { id: 'a14', name: 'TechCrunch/Forbes Mention', size: 'big' as const, points: 750 },
+      { id: 'a15', name: 'Product Hunt #1 of Day', size: 'big' as const, points: 1000 },
+      { id: 'a16', name: 'Remy Jupille Uses Us', size: 'big' as const, points: 1000 },
+      { id: 'a17', name: 'Yomi Denzel Uses Us', size: 'big' as const, points: 1250 },
+      { id: 'a18', name: 'Iman Gadzhi Uses Us', size: 'big' as const, points: 1500 },
+      { id: 'a19', name: 'Charlie Morgan Uses Us', size: 'big' as const, points: 1500 },
+      { id: 'a20', name: 'Viral Video (1M+ views)', size: 'big' as const, points: 2000 },
+      { id: 'a21', name: 'Gary Vee Notice', size: 'big' as const, points: 3000 },
+      { id: 'a22', name: 'Alex Hormozi Notice', size: 'big' as const, points: 3000 },
+      { id: 'a23', name: 'Wikipedia Page', size: 'big' as const, points: 5000 },
+      { id: 'a24', name: 'Customer Tattoos Logo', size: 'big' as const, points: 10000 },
     ];
 
     const sizeRadius = { small: 35, medium: 50, big: 70 };
@@ -706,19 +707,19 @@ export class SpaceGame {
       ownerId: null, // Shared station
     });
 
-    // Control Hub station - above Mission Control
+    // Control Hub station - below Mission Control (centered under Shop + Factory)
     planets.push({
       id: 'control-hub',
       name: 'Control Hub',
       x: MISSION_CONTROL_X,
-      y: MISSION_CONTROL_Y - 220,
+      y: MISSION_CONTROL_Y + 420,
       radius: 105,
-      color: '#00c8ff',
-      glowColor: 'rgba(0, 200, 255, 0.5)',
+      color: '#9944ff',
+      glowColor: 'rgba(153, 68, 255, 0.5)',
       completed: false,
       type: 'station',
       size: 'big',
-      style: { baseColor: '#00c8ff', accent: '#0090cc', type: 'station' },
+      style: { baseColor: '#9944ff', accent: '#7722dd', type: 'station' },
       hasRing: false,
       hasMoon: false,
       description: 'Business data dashboard',
@@ -979,6 +980,7 @@ export class SpaceGame {
   public clearLandedState(): void {
     this.isLanded = false;
     this.landedPlanet = null;
+    this.landedPanelBounds = null;
   }
 
   private setupInput() {
@@ -1002,6 +1004,23 @@ export class SpaceGame {
       }
 
       this.keys.delete(e.key.toLowerCase());
+    });
+
+    // Click outside landed panel to close it
+    this.canvas.addEventListener('click', (e) => {
+      if (!this.isLanded || !this.landedPlanet || !this.landedPanelBounds) return;
+      const rect = this.canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const b = this.landedPanelBounds;
+      if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) {
+        this.isLanded = false;
+        this.landedPlanet = null;
+        this.landedPanelBounds = null;
+        if (this.onTakeoff) {
+          this.onTakeoff();
+        }
+      }
     });
   }
 
@@ -6164,7 +6183,10 @@ export class SpaceGame {
     const maxTextWidth = boxWidth - 30;
     const hasRealReward = planet.realWorldReward && !planet.completed;
     const hasNotionUrl = planet.notionUrl && !planet.completed;
+    const hasTargetDate = !isUserPlanet && (planet as any).targetDate && !planet.completed;
+    const dateOffset = hasTargetDate ? 18 : 0;
     let boxHeight = isUserPlanet ? 100 : 110;
+    if (hasTargetDate) boxHeight += 18;
     if (hasRealReward) boxHeight += 30;
     if (hasNotionUrl) boxHeight += 20;
     if (isViewOnly) boxHeight += 15; // Extra space for owner info
@@ -6231,6 +6253,23 @@ export class SpaceGame {
       const ownerText = ownerName ? ` • ${ownerName}'s Task` : ' • Shared Task';
       ctx.fillText(typeLabel + ownerText, canvas.width / 2, boxY + 40);
 
+      // Due date
+      if (hasTargetDate) {
+        const targetDate = new Date((planet as any).targetDate + 'T00:00:00');
+        const daysLeft = Math.ceil((targetDate.getTime() - Date.now()) / 86400000);
+        const dateStr = targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        let dateColor = '#4ade80';
+        let daysText = `${daysLeft}d left`;
+        if (daysLeft < 0) { dateColor = '#ff4444'; daysText = `${Math.abs(daysLeft)}d overdue`; }
+        else if (daysLeft === 0) { dateColor = '#ff4444'; daysText = 'due today'; }
+        else if (daysLeft <= 3) { dateColor = '#ffa500'; }
+        else if (daysLeft <= 7) { dateColor = '#dddd00'; }
+        else if (daysLeft <= 14) { dateColor = '#aadd00'; }
+        ctx.fillStyle = dateColor;
+        ctx.font = '11px Space Grotesk';
+        ctx.fillText(`📅 ${dateStr} · ${daysText}`, canvas.width / 2, boxY + 55);
+      }
+
       // Description - truncate if too long
       if (planet.description) {
         ctx.fillStyle = isLocked ? '#777' : '#aaa';
@@ -6242,7 +6281,7 @@ export class SpaceGame {
           }
           descText = descText + '...';
         }
-        ctx.fillText(descText, canvas.width / 2, boxY + 60);
+        ctx.fillText(descText, canvas.width / 2, boxY + 60 + dateOffset);
       }
 
       // Reward type
@@ -6259,21 +6298,21 @@ export class SpaceGame {
         };
         ctx.fillStyle = isLocked ? '#886600' : '#ffa500';
         ctx.font = 'bold 11px Space Grotesk';
-        ctx.fillText(`Ship Reward: ${rewardLabels[planet.reward] || planet.reward}`, canvas.width / 2, boxY + 80);
+        ctx.fillText(`Ship Reward: ${rewardLabels[planet.reward] || planet.reward}`, canvas.width / 2, boxY + 80 + dateOffset);
       }
 
       // Real world reward (view-only planets can see this too)
       if (hasRealReward) {
         ctx.fillStyle = isLocked ? '#884466' : '#ff6b9d';
         ctx.font = 'bold 11px Space Grotesk';
-        ctx.fillText(`🎁 Real Reward: ${planet.realWorldReward}`, canvas.width / 2, boxY + 100);
+        ctx.fillText(`🎁 Real Reward: ${planet.realWorldReward}`, canvas.width / 2, boxY + 100 + dateOffset);
       }
 
       // Notion URL hint (not dimmed for view-only since they can still open it)
       if (hasNotionUrl) {
         ctx.fillStyle = isLocked ? '#555' : '#64748b';
         ctx.font = '10px Space Grotesk';
-        const baseNotionY = hasRealReward ? boxY + 118 : boxY + 98;
+        const baseNotionY = hasRealReward ? boxY + 118 + dateOffset : boxY + 98 + dateOffset;
         ctx.fillText('📋 Click to open in Notion', canvas.width / 2, baseNotionY);
       }
     }
@@ -6345,6 +6384,9 @@ export class SpaceGame {
 
     const boxX = canvas.width / 2 - boxWidth / 2;
     const boxY = canvas.height / 2 - boxHeight / 2;
+
+    // Store bounds for click-outside detection
+    this.landedPanelBounds = { x: boxX, y: boxY, w: boxWidth, h: boxHeight };
 
     // Background with glow effect
     ctx.save();

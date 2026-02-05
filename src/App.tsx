@@ -3459,7 +3459,10 @@ function App() {
 
           {/* Filter popover */}
           {showMissionFilter && (
+            <>
+            <div onClick={() => setShowMissionFilter(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }} />
             <div style={{
+              position: 'relative', zIndex: 1,
               background: 'rgba(20,20,30,0.95)', borderRadius: 6, padding: '6px 0',
               border: '1px solid rgba(255,255,255,0.12)', marginBottom: 6,
             }}>
@@ -3497,6 +3500,7 @@ function App() {
                 </div>
               ))}
             </div>
+            </>
           )}
 
           {nextMissions ? nextMissions.map((m, i) => (
@@ -4624,8 +4628,9 @@ function App() {
 
       {/* Planet Creator Modal */}
       {showPlanetCreator && (
-        <div style={styles.modalOverlay}>
+        <div style={styles.modalOverlay} onClick={() => { if (!isCreatingPlanet) { setShowPlanetCreator(false); gameRef.current?.clearLandedState(); } }}>
           <div
+            onClick={e => e.stopPropagation()}
             style={{ ...styles.modal, minWidth: newPlanet.type ? '400px' : '500px' }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !(e.target as HTMLElement).tagName.match(/TEXTAREA/i) && newPlanet.name && !isCreatingPlanet) {
