@@ -17,6 +17,7 @@ import type { EditTaskUpdates } from './components/EditTaskModal';
 import { LandedPlanetModal } from './components/LandedPlanetModal';
 import type { PlayerInfo } from './components/LandedPlanetModal';
 import { ControlHubDashboard } from './components/ControlHubDashboard';
+import { WarpTransition } from './components/WarpTransition';
 
 const FAL_API_KEY = 'c2df5aba-75d9-4626-95bb-aa366317d09e:8f90bb335a773f0ce3f261354107daa6';
 const STORAGE_KEY = 'mission-control-space-state';
@@ -490,9 +491,15 @@ function App() {
   const [customPlanets, setCustomPlanets] = useState<CustomPlanet[]>([]); // Loaded from Supabase
   const [teamPoints, setTeamPoints] = useState(0); // Loaded from Supabase via useMultiplayerSync
   const [gameReady, setGameReady] = useState(false); // Track when game is initialized
-  const [assetsLoaded, setAssetsLoaded] = useState(false); // Track when critical images are loaded
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
+  const [warpComplete, setWarpComplete] = useState(false);
   const [personalPoints, setPersonalPoints] = useState(0);
-  const [userShips, setUserShips] = useState<Record<string, UserShip>>({}); // Loaded from Supabase via teamPlayers
+  const [userShips, setUserShips] = useState<Record<string, UserShip>>(() => {
+    try {
+      const cached = localStorage.getItem('mission-control-user-ships-cache');
+      return cached ? JSON.parse(cached) : {};
+    } catch { return {}; }
+  });
   const [mascotHistory, setMascotHistory] = useState<MascotHistoryEntry[]>([]); // Loaded from Supabase
   const [goals, setGoals] = useState<Goals>({ business: [], product: [], achievement: [] }); // Loaded from Supabase
   const [userPlanets, setUserPlanets] = useState<Record<string, UserPlanet>>({}); // Loaded from Supabase
@@ -1118,6 +1125,8 @@ function App() {
           merged[userId] = ship;
         }
       }
+      // Cache to localStorage for instant load next time
+      try { localStorage.setItem('mission-control-user-ships-cache', JSON.stringify(merged)); } catch {}
       return merged;
     });
   }, [teamPlayers]);
@@ -1134,12 +1143,15 @@ function App() {
     return info;
   }, [userShips]);
 
-  // Sync current user's ship effects to game when they change (e.g., loaded from Supabase)
+  // Sync current user's ship effects and image to game when they change (e.g., loaded from Supabase)
   useEffect(() => {
     if (!gameRef.current || !state.currentUser) return;
     const currentShip = userShips[state.currentUser];
     if (currentShip?.effects) {
       gameRef.current.updateShipEffects(currentShip.effects);
+    }
+    if (currentShip?.currentImage) {
+      gameRef.current.updateShipImage(currentShip.currentImage, currentShip.upgrades?.length || 0);
     }
   }, [userShips, state.currentUser]);
 
@@ -3522,6 +3534,7 @@ function App() {
       game.stop();
       setGameReady(false);
       setAssetsLoaded(false);
+      setWarpComplete(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showWelcome, showUserSelect, customPlanets, goals]);
@@ -3598,49 +3611,12 @@ function App() {
     <div style={styles.container}>
       <canvas ref={canvasRef} style={styles.canvas} />
 
-      {/* Loading overlay - covers canvas until critical assets are loaded */}
-      {!assetsLoaded && gameReady && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: '#0a0a12',
-          display: 'flex',
-          flexDirection: 'column' as const,
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          transition: 'opacity 0.4s ease-out',
-        }}>
-          <img src="/logo.png" alt="" style={{ width: 80, height: 80, marginBottom: 24, animation: 'loadingPulse 1.5s ease-in-out infinite' }} />
-          <div style={{
-            width: 120,
-            height: 3,
-            background: 'rgba(255,165,0,0.15)',
-            borderRadius: 2,
-            overflow: 'hidden',
-          }}>
-            <div style={{
-              width: '40%',
-              height: '100%',
-              background: '#ffa500',
-              borderRadius: 2,
-              animation: 'loadingSlide 1s ease-in-out infinite',
-            }} />
-          </div>
-          <style>{`
-            @keyframes loadingPulse {
-              0%, 100% { opacity: 0.6; transform: scale(1); }
-              50% { opacity: 1; transform: scale(1.05); }
-            }
-            @keyframes loadingSlide {
-              0% { transform: translateX(-120px); }
-              100% { transform: translateX(300px); }
-            }
-          `}</style>
-        </div>
+      {/* Warp transition - hyperspace animation while assets load */}
+      {gameReady && !warpComplete && (
+        <WarpTransition
+          assetsReady={assetsLoaded}
+          onComplete={() => setWarpComplete(true)}
+        />
       )}
 
       {/* Upgrade overlay */}
