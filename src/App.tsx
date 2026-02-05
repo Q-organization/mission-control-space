@@ -128,65 +128,63 @@ const ROCKET_LAUNCHER_COST = 2500;
 // Default goals/milestones
 const DEFAULT_GOALS = {
   business: [
-    { id: 'b1', name: 'First Organic Signup', size: 'small', points: 20 },
-    { id: 'b2', name: 'First Paying Customer', size: 'small', points: 30 },
-    { id: 'b3', name: 'First Referral', size: 'small', points: 40 },
-    { id: 'b4', name: '5 Customers', size: 'small', points: 50 },
-    { id: 'b5', name: '10 Customers', size: 'medium', points: 75 },
-    { id: 'b6', name: '$5k MRR', size: 'medium', points: 100 },
-    { id: 'b7', name: '10 Referrals', size: 'medium', points: 125 },
-    { id: 'b8', name: '25 Customers', size: 'medium', points: 150 },
-    { id: 'b9', name: '$10k MRR', size: 'medium', points: 200 },
-    { id: 'b10', name: '50 Customers', size: 'medium', points: 250 },
-    { id: 'b11', name: '$20k MRR', size: 'big', points: 400 },
-    { id: 'b12', name: '100 Customers', size: 'big', points: 500 },
-    { id: 'b13', name: '$50k MRR', size: 'big', points: 750 },
-    { id: 'b14', name: '$55k MRR', size: 'big', points: 1000 },
-    { id: 'b15', name: '200 Customers', size: 'big', points: 1250 },
-    { id: 'b16', name: '$100k MRR', size: 'big', points: 2000 },
-    { id: 'b17', name: '500 Customers', size: 'big', points: 3000 },
-    { id: 'b18', name: '$250k MRR', size: 'big', points: 5000 },
-    { id: 'b19', name: '$1M MRR', size: 'big', points: 10000 },
+    { id: 'b1', name: 'Gates open — 5 paying customers', size: 'small', points: 100, targetDate: '2026-02-12' },
+    { id: 'b2', name: '10 customers / $5k MRR', size: 'small', points: 200, targetDate: '2026-02-19' },
+    { id: 'b3', name: '20 customers / $10k MRR', size: 'small', points: 400, targetDate: '2026-02-28' },
+    { id: 'b4', name: 'Hugues starts to open the gates', size: 'medium', points: 300, targetDate: '2026-03-07' },
+    { id: 'b5', name: '$20k MRR', size: 'medium', points: 500, targetDate: '2026-03-14' },
+    { id: 'b6', name: 'Affiliate/referral program live', size: 'medium', points: 300, targetDate: '2026-03-21' },
+    { id: 'b7', name: '100 customers / $50k MRR', size: 'medium', points: 750, targetDate: '2026-03-31' },
+    { id: 'b8', name: 'First agency partnership signed', size: 'medium', points: 500, targetDate: '2026-04-15' },
+    { id: 'b9', name: '$100k MRR', size: 'big', points: 1000, targetDate: '2026-04-30' },
+    { id: 'b10', name: '$150k MRR', size: 'big', points: 1500, targetDate: '2026-05-31' },
+    { id: 'b11', name: '$250k MRR', size: 'big', points: 2500, targetDate: '2026-06-30' },
+    { id: 'b12', name: '$500k MRR', size: 'big', points: 5000, targetDate: '2026-09-30' },
+    { id: 'b13', name: '$1M MRR', size: 'big', points: 10000, targetDate: '2026-12-31' },
+    { id: 'b14', name: '$3M MRR / $36M ARR', size: 'big', points: 15000, targetDate: '2027-06-30' },
+    { id: 'b15', name: '$5M MRR / $60M ARR', size: 'big', points: 25000, targetDate: '2027-12-31' },
   ],
   product: [
-    { id: 'p1', name: '100 Videos Processed', size: 'small', points: 20 },
-    { id: 'p2', name: 'Educational Videos', size: 'small', points: 30 },
-    { id: 'p3', name: 'Templates Ready', size: 'small', points: 40 },
-    { id: 'p4', name: 'Onboarding Wizard', size: 'medium', points: 60 },
-    { id: 'p5', name: 'Public Launch', size: 'medium', points: 80 },
-    { id: 'p6', name: 'Analytics Functioning', size: 'medium', points: 100 },
-    { id: 'p7', name: '1,000 Videos Processed', size: 'medium', points: 150 },
-    { id: 'p8', name: '50 Templates', size: 'medium', points: 200 },
-    { id: 'p9', name: 'Smooth UX Achieved', size: 'big', points: 300 },
-    { id: 'p10', name: '"Where Are The Bugs?"', size: 'big', points: 500 },
-    { id: 'p11', name: '100,000 Videos Processed', size: 'big', points: 750 },
-    { id: 'p12', name: 'AI Agent Builds Funnels', size: 'big', points: 1500 },
-    { id: 'p13', name: 'Desktop Version', size: 'big', points: 2000 },
-    { id: 'p14', name: '1,000,000 Videos Processed', size: 'big', points: 5000 },
-    { id: 'p15', name: 'AI Chat Agent', size: 'medium', points: 120 },
-    { id: 'p16', name: '15min Onboarding', size: 'small', points: 50 },
-    { id: 'p17', name: 'Referral System in Place', size: 'medium', points: 90 },
+    { id: 'p1', name: 'Templates Ready', size: 'small', points: 20, targetDate: '2026-02-06' },
+    { id: 'p2', name: 'Public Launch', size: 'small', points: 30, targetDate: '2026-02-10' },
+    { id: 'p3', name: 'Onboarding Wizard', size: 'small', points: 40, targetDate: '2026-02-21' },
+    { id: 'p4', name: 'Educational Videos', size: 'medium', points: 60, targetDate: '2026-03-07' },
+    { id: 'p5', name: '100 Videos Processed', size: 'medium', points: 80, targetDate: '2026-03-14' },
+    { id: 'p6', name: 'Analytics Functioning', size: 'medium', points: 100, targetDate: '2026-03-31' },
+    { id: 'p7', name: '1,000 Videos Processed', size: 'medium', points: 150, targetDate: '2026-04-30' },
+    { id: 'p8', name: '50 Templates', size: 'medium', points: 200, targetDate: '2026-05-31' },
+    { id: 'p9', name: 'Smooth UX Achieved', size: 'big', points: 300, targetDate: '2026-06-30' },
+    { id: 'p10', name: '"Where Are The Bugs?"', size: 'big', points: 500, targetDate: '2026-09-30' },
+    { id: 'p11', name: '100,000 Videos Processed', size: 'big', points: 750, targetDate: '2026-12-31' },
+    { id: 'p12', name: 'AI Agent Builds Funnels', size: 'big', points: 1500, targetDate: '2027-06-30' },
+    { id: 'p13', name: 'Desktop Version', size: 'big', points: 2000, targetDate: '2027-09-30' },
+    { id: 'p14', name: '1,000,000 Videos Processed', size: 'big', points: 5000, targetDate: '2027-12-31' },
   ],
   achievement: [
-    { id: 'a2', name: 'Customers in 10+ Countries', size: 'medium', points: 75 },
-    { id: 'a3', name: 'First Podcast Appearance', size: 'medium', points: 100 },
-    { id: 'a4', name: 'First $10k Day', size: 'medium', points: 150 },
-    { id: 'a5', name: 'Big Podcast (100k+ audience)', size: 'medium', points: 250 },
-    { id: 'a6', name: 'Customers in 50+ Countries', size: 'big', points: 300 },
-    { id: 'a7', name: 'Competitor Copies Us', size: 'big', points: 400 },
-    { id: 'a8', name: 'Product Hunt Top 5', size: 'big', points: 500 },
-    { id: 'a9', name: 'Hacker News Front Page', size: 'big', points: 600 },
-    { id: 'a10', name: 'TechCrunch/Forbes Mention', size: 'big', points: 750 },
-    { id: 'a11', name: 'Product Hunt #1 of Day', size: 'big', points: 1000 },
-    { id: 'a12', name: 'Remy Jupille Uses Us', size: 'big', points: 1000 },
-    { id: 'a13', name: 'Yomi Denzel Uses Us', size: 'big', points: 1250 },
-    { id: 'a14', name: 'Iman Gadzhi Uses Us', size: 'big', points: 1500 },
-    { id: 'a15', name: 'Charlie Morgan Uses Us', size: 'big', points: 1500 },
-    { id: 'a16', name: 'Viral Video (1M+ views)', size: 'big', points: 2000 },
-    { id: 'a17', name: 'Gary Vee Notice', size: 'big', points: 3000 },
-    { id: 'a18', name: 'Alex Hormozi Notice', size: 'big', points: 3000 },
-    { id: 'a19', name: 'Wikipedia Page', size: 'big', points: 5000 },
-    { id: 'a20', name: 'Customer Tattoos Logo', size: 'big', points: 10000 },
+    { id: 'a1', name: 'First Organic Signup', size: 'small', points: 20 },
+    { id: 'a2', name: 'First Paying Customer', size: 'small', points: 30 },
+    { id: 'a3', name: 'First Referral', size: 'small', points: 40 },
+    { id: 'a4', name: 'First Week Streak', size: 'small', points: 50 },
+    { id: 'a5', name: '10 Referrals', size: 'medium', points: 75 },
+    { id: 'a6', name: 'Customers in 10+ Countries', size: 'medium', points: 100 },
+    { id: 'a7', name: 'First Podcast Appearance', size: 'medium', points: 100 },
+    { id: 'a8', name: 'First $10k Day', size: 'medium', points: 150 },
+    { id: 'a9', name: 'Big Podcast (100k+ audience)', size: 'medium', points: 250 },
+    { id: 'a10', name: 'Customers in 50+ Countries', size: 'big', points: 300 },
+    { id: 'a11', name: 'Competitor Copies Us', size: 'big', points: 400 },
+    { id: 'a12', name: 'Product Hunt Top 5', size: 'big', points: 500 },
+    { id: 'a13', name: 'Hacker News Front Page', size: 'big', points: 600 },
+    { id: 'a14', name: 'TechCrunch/Forbes Mention', size: 'big', points: 750 },
+    { id: 'a15', name: 'Product Hunt #1 of Day', size: 'big', points: 1000 },
+    { id: 'a16', name: 'Remy Jupille Uses Us', size: 'big', points: 1000 },
+    { id: 'a17', name: 'Yomi Denzel Uses Us', size: 'big', points: 1250 },
+    { id: 'a18', name: 'Iman Gadzhi Uses Us', size: 'big', points: 1500 },
+    { id: 'a19', name: 'Charlie Morgan Uses Us', size: 'big', points: 1500 },
+    { id: 'a20', name: 'Viral Video (1M+ views)', size: 'big', points: 2000 },
+    { id: 'a21', name: 'Gary Vee Notice', size: 'big', points: 3000 },
+    { id: 'a22', name: 'Alex Hormozi Notice', size: 'big', points: 3000 },
+    { id: 'a23', name: 'Wikipedia Page', size: 'big', points: 5000 },
+    { id: 'a24', name: 'Customer Tattoos Logo', size: 'big', points: 10000 },
   ],
 };
 
@@ -197,6 +195,7 @@ interface Goal {
   description?: string;
   realWorldReward?: string;
   points?: number;
+  targetDate?: string;
 }
 
 interface Goals {
@@ -581,6 +580,7 @@ function App() {
   const [showUserSelect, setShowUserSelect] = useState(!state.currentUser);
   const [showPlanetCreator, setShowPlanetCreator] = useState(false);
   const [showShop, setShowShop] = useState(false);
+  const [showControlHub, setShowControlHub] = useState(false);
   const [shopTab, setShopTab] = useState<'stats' | 'cosmetics' | 'weapons' | 'utility'>('stats');
   const [musicEnabled, setMusicEnabled] = useState(soundManager.isMusicEnabled());
   const [sfxEnabled, setSfxEnabled] = useState(soundManager.isSfxEnabled());
@@ -597,6 +597,7 @@ function App() {
   const [isLoadingBreakdown, setIsLoadingBreakdown] = useState(false);
   const [editingGoal, setEditingGoal] = useState<any | null>(null);
   const [landedPlanet, setLandedPlanet] = useState<Planet | null>(null);
+  const [missionFilters, setMissionFilters] = useState<Set<string>>(new Set(['business', 'product', 'achievement', 'notion']));
 
   // Planet creator form state
   const [newPlanet, setNewPlanet] = useState<Partial<CustomPlanet>>({
@@ -776,6 +777,41 @@ function App() {
     playerId: currentDbPlayerId,
     username: state.currentUser || 'anonymous',
   });
+
+  // Next missions - up to 5 closest upcoming dated, uncompleted goals (filtered by type)
+  const nextMissions = useMemo(() => {
+    const entries: { name: string; targetDate: string; type: string }[] = [];
+    for (const type of ['business', 'product', 'achievement'] as const) {
+      if (!missionFilters.has(type)) continue;
+      for (const goal of goals[type]) {
+        if (goal.targetDate && !state.completedPlanets.includes(goal.id)) {
+          entries.push({ name: goal.name, targetDate: goal.targetDate, type });
+        }
+      }
+    }
+    // Include notion planets if filter is on
+    if (missionFilters.has('notion')) {
+      for (const np of notionGamePlanets) {
+        if ((np as any).targetDate && !np.completed) {
+          entries.push({ name: np.name, targetDate: (np as any).targetDate, type: 'notion' });
+        }
+      }
+    }
+    if (entries.length === 0) return null;
+    entries.sort((a, b) =>
+      new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime()
+    );
+    return entries.slice(0, 5).map(({ name, targetDate, type }) => {
+      const daysLeft = Math.ceil((new Date(targetDate + 'T00:00:00').getTime() - Date.now()) / 86400000);
+      let urgencyColor: string;
+      if (daysLeft <= 0) urgencyColor = '#ff4444';
+      else if (daysLeft <= 3) urgencyColor = '#ffa500';
+      else if (daysLeft <= 7) urgencyColor = '#dddd00';
+      else if (daysLeft <= 14) urgencyColor = '#aadd00';
+      else urgencyColor = '#4ade80';
+      return { name, daysLeft, urgencyColor, type };
+    });
+  }, [goals, state.completedPlanets, missionFilters, notionGamePlanets]);
 
   // Prompt history hook - tracks all AI generation prompts
   const { recordPrompt } = usePromptHistory({
@@ -2085,6 +2121,12 @@ function App() {
       return;
     }
 
+    // Check if this is the Control Hub
+    if (planet.id === 'control-hub') {
+      setShowControlHub(true);
+      return;
+    }
+
     // Check if this is a user's personal planet
     if (planet.id.startsWith('user-planet-')) {
       const planetOwnerId = planet.id.replace('user-planet-', '');
@@ -2171,6 +2213,10 @@ function App() {
       setShowPlanetCreator(true);
       return;
     }
+    if (planet.id === 'control-hub') {
+      setShowControlHub(true);
+      return;
+    }
     // User planets open terraform modal
     if (planet.id.startsWith('user-planet-')) {
       const planetOwnerId = planet.id.replace('user-planet-', '');
@@ -2196,7 +2242,7 @@ function App() {
     if (planet.completed) return;
 
     // Special planets cannot be completed
-    const specialPlanets = ['shop-station', 'planet-builder'];
+    const specialPlanets = ['shop-station', 'planet-builder', 'control-hub'];
     if (specialPlanets.includes(planet.id) || planet.id.startsWith('user-planet-')) {
       return;
     }
@@ -2359,7 +2405,7 @@ function App() {
     if (!planet.completed && !isUnassigned) return;
 
     // Special planets cannot be destroyed
-    const specialPlanets = ['shop-station', 'planet-builder'];
+    const specialPlanets = ['shop-station', 'planet-builder', 'control-hub'];
     if (specialPlanets.includes(planet.id) || planet.id.startsWith('user-planet-')) {
       return;
     }
@@ -2429,7 +2475,7 @@ function App() {
       if (e.key === 'Escape' && !isUpgrading) {
         const isGameLanded = gameRef.current?.isPlayerLanded();
         const hasOpenModal = editingGoal || showSettings || showGameSettings || showTerraform ||
-          viewingPlanetOwner || showShop || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal || showReassignModal;
+          viewingPlanetOwner || showShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal || showReassignModal;
 
         if (hasOpenModal) {
           e.preventDefault();
@@ -2440,6 +2486,7 @@ function App() {
           setShowTerraform(false);
           setViewingPlanetOwner(null);
           setShowShop(false);
+          setShowControlHub(false);
           setShowPlanetCreator(false);
           setLandedPlanet(null);
           setShowQuickTaskModal(false);
@@ -2456,7 +2503,7 @@ function App() {
         const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
         const isGameLanded = gameRef.current?.isPlayerLanded();
         const hasOpenModal = editingGoal || showSettings || showGameSettings || showTerraform ||
-          viewingPlanetOwner || showShop || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal ||
+          viewingPlanetOwner || showShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal ||
           showWelcome || showUserSelect || showLeaderboard || showPointsHistory || showReassignModal;
 
         if (!isTyping && !hasOpenModal && !isUpgrading) {
@@ -2468,7 +2515,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showTerraform, viewingPlanetOwner, showShop, showPlanetCreator, showSettings, showGameSettings, editingGoal, landedPlanet, isUpgrading, showQuickTaskModal, showWelcome, showUserSelect, showLeaderboard, showPointsHistory, showReassignModal]);
+  }, [showTerraform, viewingPlanetOwner, showShop, showControlHub, showPlanetCreator, showSettings, showGameSettings, editingGoal, landedPlanet, isUpgrading, showQuickTaskModal, showWelcome, showUserSelect, showLeaderboard, showPointsHistory, showReassignModal]);
 
   // Buy visual upgrade from shop (AI-generated changes to ship appearance)
   const buyVisualUpgrade = async () => {
@@ -3375,6 +3422,61 @@ function App() {
         </div>
       )}
 
+      {/* Next Missions widget */}
+      {!editingGoal && !showSettings && !showGameSettings && !showTerraform && !showShop && !showControlHub && !showPlanetCreator && !showLeaderboard && !showPointsHistory && (
+        <div style={{
+          position: 'absolute', left: 20, top: team && teamPlayers.filter(p => p.isOnline && p.username !== state.currentUser).length > 0 ? 150 : 70,
+          background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '8px 12px',
+          border: '1px solid rgba(255,255,255,0.08)', minWidth: 140, maxWidth: 200,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ color: '#666', fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              Next Missions
+            </div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {([
+                { key: 'business', color: '#4ade80' },
+                { key: 'product', color: '#5490ff' },
+                { key: 'achievement', color: '#ffd700' },
+                { key: 'notion', color: '#94a3b8' },
+              ] as const).map(f => (
+                <div
+                  key={f.key}
+                  onClick={() => setMissionFilters(prev => {
+                    const next = new Set(prev);
+                    if (next.has(f.key)) next.delete(f.key); else next.add(f.key);
+                    return next;
+                  })}
+                  title={f.key}
+                  style={{
+                    width: 7, height: 7, borderRadius: '50%', cursor: 'pointer',
+                    background: missionFilters.has(f.key) ? f.color : 'transparent',
+                    border: `1.5px solid ${missionFilters.has(f.key) ? f.color : f.color + '40'}`,
+                    transition: 'all 0.15s ease',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+          {nextMissions ? nextMissions.map((m, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: i < nextMissions.length - 1 ? 5 : 0 }}>
+              <div style={{ color: '#fff', fontSize: '0.75rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {m.name}
+              </div>
+              <div style={{ color: m.urgencyColor, fontSize: '0.65rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                {m.daysLeft < 0
+                  ? `${Math.abs(m.daysLeft)}d late`
+                  : m.daysLeft === 0
+                    ? 'TODAY'
+                    : `${m.daysLeft}d`}
+              </div>
+            </div>
+          )) : (
+            <div style={{ color: '#555', fontSize: '0.7rem', fontStyle: 'italic' }}>No dated missions</div>
+          )}
+        </div>
+      )}
+
       {/* Stats */}
       <div style={styles.stats}>
         <div style={styles.statItem}>
@@ -3449,7 +3551,7 @@ function App() {
       </button>
 
       {/* Quick Task FAB - hidden when modals are open */}
-      {!editingGoal && !showSettings && !showGameSettings && !showTerraform && !viewingPlanetOwner && !showShop && !showPlanetCreator && !landedPlanet && !showQuickTaskModal && !showLeaderboard && !showPointsHistory && !showShipHistory && !gameRef.current?.isPlayerLanded() && (
+      {!editingGoal && !showSettings && !showGameSettings && !showTerraform && !viewingPlanetOwner && !showShop && !showControlHub && !showPlanetCreator && !landedPlanet && !showQuickTaskModal && !showLeaderboard && !showPointsHistory && !showShipHistory && !gameRef.current?.isPlayerLanded() && (
         <button
           style={{
             position: 'fixed',
@@ -4474,6 +4576,50 @@ function App() {
         </div>
       )}
 
+      {/* Control Hub Modal */}
+      {showControlHub && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.modal, maxWidth: 520 }}>
+            <h2 style={{ ...styles.modalTitle, color: '#00c8ff' }}>Control Hub</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+              {[
+                { label: 'CURRENT CUSTOMERS', value: '847', color: '#00c8ff' },
+                { label: 'MRR', value: '$42,350', color: '#00e676' },
+                { label: 'TOTAL LEADS', value: '15,420', color: '#ffa500' },
+                { label: 'NEW THIS WEEK', value: '23', color: '#00c8ff' },
+                { label: 'NEW LAST WEEK', value: '18', color: '#666' },
+                { label: 'CHURN', value: '12', color: '#ff4444' },
+              ].map((card) => (
+                <div key={card.label} style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  borderRadius: 12,
+                  padding: '1rem',
+                  border: `1px solid ${card.color}33`,
+                }}>
+                  <div style={{
+                    fontFamily: 'Space Grotesk',
+                    fontSize: '0.7rem',
+                    color: '#888',
+                    letterSpacing: '0.05em',
+                    marginBottom: '0.4rem',
+                    textTransform: 'uppercase' as const,
+                  }}>{card.label}</div>
+                  <div style={{
+                    fontFamily: 'Orbitron',
+                    fontSize: '1.6rem',
+                    color: card.color,
+                    fontWeight: 700,
+                  }}>{card.value}</div>
+                </div>
+              ))}
+            </div>
+            <button style={{ ...styles.cancelButton, width: '100%', marginTop: '1rem' }} onClick={() => { setShowControlHub(false); gameRef.current?.clearLandedState(); }}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Planet Creator Modal */}
       {showPlanetCreator && (
         <div style={styles.modalOverlay}>
@@ -5190,6 +5336,34 @@ function App() {
                                   {goal.name}
                                 </span>
                                 <span style={styles.goalSize}>{goal.size}</span>
+                                {goal.targetDate && (
+                                  <span style={{
+                                    fontSize: '0.65rem',
+                                    padding: '1px 6px',
+                                    borderRadius: 4,
+                                    background: (() => {
+                                      const days = Math.ceil((new Date(goal.targetDate + 'T00:00:00').getTime() - Date.now()) / 86400000);
+                                      if (days <= 0) return 'rgba(255,60,60,0.2)';
+                                      if (days <= 3) return 'rgba(255,165,0,0.2)';
+                                      if (days <= 7) return 'rgba(255,255,0,0.15)';
+                                      return 'rgba(255,255,255,0.1)';
+                                    })(),
+                                    color: (() => {
+                                      const days = Math.ceil((new Date(goal.targetDate + 'T00:00:00').getTime() - Date.now()) / 86400000);
+                                      if (days <= 0) return '#ff4444';
+                                      if (days <= 3) return '#ffa500';
+                                      if (days <= 7) return '#ffdd00';
+                                      return '#888';
+                                    })(),
+                                  }}>
+                                    {(() => {
+                                      const days = Math.ceil((new Date(goal.targetDate + 'T00:00:00').getTime() - Date.now()) / 86400000);
+                                      if (days < 0) return `${Math.abs(days)}d overdue`;
+                                      if (days === 0) return 'Due today';
+                                      return `${days}d left`;
+                                    })()}
+                                  </span>
+                                )}
                               </div>
                               <div style={styles.goalActions}>
                                 <button
@@ -5641,6 +5815,15 @@ function App() {
                     </select>
                   </div>
 
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Target Date (optional)</label>
+                    <input
+                      type="date"
+                      style={styles.input}
+                      value={editingGoal.targetDate || ''}
+                      onChange={e => setEditingGoal({ ...editingGoal, targetDate: e.target.value || undefined })}
+                    />
+                  </div>
                 </div>
 
                 <div style={styles.formGroup}>
@@ -5666,6 +5849,7 @@ function App() {
                         description: editingGoal.description,
                         size: editingGoal.size,
                         realWorldReward: editingGoal.realWorldReward,
+                        targetDate: editingGoal.targetDate,
                       });
                       setEditingGoal(null);
                     }}
