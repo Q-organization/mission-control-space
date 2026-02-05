@@ -14,6 +14,7 @@ import { QuickTaskModal } from './components/QuickTaskModal';
 import { ReassignTaskModal } from './components/ReassignTaskModal';
 import { EditTaskModal } from './components/EditTaskModal';
 import type { EditTaskUpdates } from './components/EditTaskModal';
+import { LandedPlanetModal } from './components/LandedPlanetModal';
 import { ControlHubDashboard } from './components/ControlHubDashboard';
 
 const FAL_API_KEY = 'c2df5aba-75d9-4626-95bb-aa366317d09e:8f90bb335a773f0ce3f261354107daa6';
@@ -2239,18 +2240,27 @@ function App() {
       return;
     }
 
+    // For Notion planets, suppress the canvas panel so React modal handles it
+    if (planet.type === 'notion') {
+      gameRef.current?.setSuppressLandedPanel(true);
+    }
+
     // For all other planets, show the landed panel
     setLandedPlanet(planet);
   }, [state.currentUser]);
 
   // Handle takeoff from a planet
   const handleTakeoff = useCallback(() => {
+    gameRef.current?.setSuppressLandedPanel(false);
     setLandedPlanet(null);
   }, []);
 
   // Handle colonizing a planet (completing it) or claiming an unassigned mission
   const handleColonize = useCallback(async (planet: Planet) => {
     if (planet.completed) return;
+
+    // Clear suppress flag in case called from React modal
+    gameRef.current?.setSuppressLandedPanel(false);
 
     // Special planets cannot be completed
     const specialPlanets = ['shop-station', 'planet-builder', 'control-hub'];
@@ -2326,6 +2336,9 @@ function App() {
     if (!state.currentUser) return;
 
     console.log('[ClaimRequest] Starting claim for planet:', planet.id, 'at position:', planet.x, planet.y);
+
+    // Clear suppress flag in case called from React modal
+    gameRef.current?.setSuppressLandedPanel(false);
 
     // Start animation immediately for instant feedback
     gameRef.current?.startClaimAnimation(planet);
@@ -2456,6 +2469,83 @@ function App() {
     setEditPlanet(null);
   }, [editPlanet, updateNotionPlanet]);
 
+  // Handle take-off from React landed modal
+  const handleModalTakeOff = useCallback(() => {
+    gameRef.current?.setSuppressLandedPanel(false);
+    gameRef.current?.clearLandedState();
+    setLandedPlanet(null);
+  }, []);
+
+  // Handle send from React landed modal
+  const handleLandedSend = useCallback(async (planet: Planet, newOwner: string) => {
+    // Close modal first
+    gameRef.current?.setSuppressLandedPanel(false);
+    gameRef.current?.clearLandedState();
+    setLandedPlanet(null);
+
+    // Start rocket animation + sound
+    gameRef.current?.startSendAnimation(planet);
+    soundManager.playSendVoiceLine();
+
+    if (!newOwner) {
+      // Unassigning
+      setEventNotification({ message: `Unassigning task...`, type: 'mission' });
+      const result = await updateNotionPlanet(planet.id, { assigned_to: null });
+      if (result?.success && result.new_position) {
+        gameRef.current?.setSendTarget(result.new_position.x, result.new_position.y);
+        setEventNotification({ message: `Task unassigned`, type: 'mission' });
+      } else {
+        setEventNotification({ message: `Failed to unassign task`, type: 'blackhole' });
+      }
+      setTimeout(() => setEventNotification(null), 3000);
+    } else {
+      const ownerName = newOwner.charAt(0).toUpperCase() + newOwner.slice(1);
+      setEventNotification({ message: `Sending task to ${ownerName}...`, type: 'mission' });
+      const newPosition = await reassignNotionPlanet(planet.id, newOwner);
+      if (newPosition) {
+        gameRef.current?.setSendTarget(newPosition.x, newPosition.y);
+        setEventNotification({ message: `Task sent to ${ownerName}!`, type: 'mission' });
+      } else {
+        setEventNotification({ message: `Failed to send task`, type: 'blackhole' });
+      }
+      setTimeout(() => setEventNotification(null), 3000);
+    }
+  }, [updateNotionPlanet, reassignNotionPlanet]);
+
+  // Handle delete from React landed modal
+  const handleLandedDelete = useCallback((planet: Planet) => {
+    // Close modal first
+    gameRef.current?.setSuppressLandedPanel(false);
+    gameRef.current?.clearLandedState();
+    setLandedPlanet(null);
+
+    // Start destroy animation (the animation callback will call handleDestroyPlanet)
+    gameRef.current?.startDestroyAnimation(planet);
+  }, []);
+
+  // Handle inline field update from React landed modal
+  const handleLandedUpdate = useCallback(async (updates: EditTaskUpdates) => {
+    if (!landedPlanet) return;
+
+    // Check if assignee changed — if so, close modal and animate
+    const assigneeChanged = updates.assigned_to !== undefined &&
+      (updates.assigned_to || '') !== (landedPlanet.ownerId || '');
+
+    if (assigneeChanged) {
+      // Close modal and send
+      handleLandedSend(landedPlanet, updates.assigned_to || '');
+      return;
+    }
+
+    const result = await updateNotionPlanet(landedPlanet.id, updates);
+    if (result?.success) {
+      setEventNotification({ message: `Task updated`, type: 'mission' });
+    } else {
+      setEventNotification({ message: `Failed to update task`, type: 'blackhole' });
+    }
+    setTimeout(() => setEventNotification(null), 3000);
+  }, [landedPlanet, updateNotionPlanet, handleLandedSend]);
+
   // Handle terraforming a user planet
   const handleTerraform = useCallback((planet: Planet) => {
     if (!planet.id.startsWith('user-planet-')) return;
@@ -2477,8 +2567,8 @@ function App() {
     const isNotionPlanet = planet.id.startsWith('notion-');
     const isUnassigned = isNotionPlanet && (!planet.ownerId || planet.ownerId === '');
 
-    // Allow destroying: completed planets OR unassigned tasks
-    if (!planet.completed && !isUnassigned) return;
+    // Allow destroying: any uncompleted Notion planet, or completed planets, or unassigned
+    if (!planet.completed && !isNotionPlanet && !isUnassigned) return;
 
     // Special planets cannot be destroyed
     const specialPlanets = ['shop-station', 'planet-builder', 'control-hub'];
@@ -2572,6 +2662,7 @@ function App() {
           setShowEditModal(false);
           setEditPlanet(null);
           // Also clear SpaceGame's internal landed state
+          gameRef.current?.setSuppressLandedPanel(false);
           gameRef.current?.clearLandedState();
         }
       }
@@ -3742,6 +3833,22 @@ function App() {
           }}
           onSave={handleEditSave}
           planet={editPlanet}
+        />
+      )}
+
+      {/* Landed Planet Modal (Notion planets only) */}
+      {landedPlanet && landedPlanet.type === 'notion' && (
+        <LandedPlanetModal
+          planet={landedPlanet}
+          currentUser={state.currentUser || ''}
+          destroyCanonEquipped={getCurrentUserShip().effects.destroyCanonEquipped}
+          onComplete={handleColonize}
+          onClaim={handleClaimRequest}
+          onSend={handleLandedSend}
+          onOpenNotion={handleOpenNotion}
+          onDelete={handleLandedDelete}
+          onTakeOff={handleModalTakeOff}
+          onUpdate={handleLandedUpdate}
         />
       )}
 

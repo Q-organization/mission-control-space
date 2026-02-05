@@ -210,6 +210,7 @@ export class SpaceGame {
   private onBlackHoleDeath: (() => void) | null = null;
   private onReassignRequest: ((planet: Planet) => void) | null = null; // Called when user wants to reassign task to another user
   private onEditRequest: ((planet: Planet) => void) | null = null; // Called when user wants to edit task properties
+  private suppressLandedPanel: boolean = false; // When true, React modal handles landed UI instead of canvas
 
   // Destroy animation state (explosion effect)
   private isDestroying: boolean = false;
@@ -986,6 +987,10 @@ export class SpaceGame {
     this.landedPanelBounds = null;
   }
 
+  public setSuppressLandedPanel(suppress: boolean): void {
+    this.suppressLandedPanel = suppress;
+  }
+
   private setupInput() {
     window.addEventListener('keydown', (e) => {
       // Don't capture keys when typing in input fields
@@ -1760,6 +1765,9 @@ export class SpaceGame {
     this.state.ship.vx = 0;
     this.state.ship.vy = 0;
     this.state.ship.rotation = -Math.PI / 2; // Pointing up
+
+    // When React modal handles the landed UI, skip all keyboard handling
+    if (this.suppressLandedPanel) return;
 
     // Handle Space key - close panel and resume normal controls
     if (this.keys.has(' ')) {
@@ -4218,7 +4226,7 @@ export class SpaceGame {
   // ==================== END ROCKET LAUNCHER SYSTEM ====================
 
   // Start destroy animation (for cleaning up completed planets)
-  private startDestroyAnimation(planet: Planet, fromRifle: boolean = false) {
+  public startDestroyAnimation(planet: Planet, fromRifle: boolean = false) {
     this.isDestroying = true;
     this.destroyProgress = fromRifle ? 0.6 : 0; // Skip charging phase for rifle
     this.destroyPlanet = planet;
@@ -5326,7 +5334,7 @@ export class SpaceGame {
     // Station planets (shop-station, planet-builder, user-planet-*) don't show the landed panel - they only have shop functionality
     if (this.isLanded && this.landedPlanet) {
       const isStation = this.landedPlanet.id === 'shop-station' || this.landedPlanet.id === 'planet-builder' || this.landedPlanet.id === 'control-hub' || this.landedPlanet.id.startsWith('user-planet-');
-      if (!isStation) {
+      if (!isStation && !this.suppressLandedPanel) {
         this.drawLandedPanel(this.landedPlanet);
       }
     } else if (state.nearbyPlanet) {
