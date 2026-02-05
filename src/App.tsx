@@ -2356,6 +2356,7 @@ function App() {
     // Start animation immediately for instant feedback
     gameRef.current?.startClaimAnimation(planet);
     soundManager.playTeleport();
+    soundManager.playClaimVoiceLine();
     setLandedPlanet(null);
 
     // Call API in parallel - animation will wait during charging phase if needed
@@ -3415,9 +3416,6 @@ function App() {
     if (currentShip.effects) {
       game.updateShipEffects(currentShip.effects);
     }
-
-    // Load rocket image for send animation
-    game.setSendRocketImage('/rocket-push.png');
 
     state.completedPlanets.forEach(id => game.completePlanet(id));
     game.start();

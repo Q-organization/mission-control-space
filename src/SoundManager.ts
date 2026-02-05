@@ -162,6 +162,12 @@ const TASK_VOICE_LINES = [
   `${SOUNDS_PATH}tasks/vcWj8PPN9-U6V3BZHV73p_music_generated.mp3`,
 ];
 
+// Voice lines for claiming/pulling planets to home zone ("Coming home!", "Mine now!", etc.)
+const CLAIM_VOICE_LINES: string[] = [
+  `${SOUNDS_PATH}delivery/home/siQYcJsrJE84Vc6sSMNZm_music_generated.mp3`,
+  `${SOUNDS_PATH}delivery/home/w0ym-zYNjTxo8ljg87ZHb_music_generated.mp3`,
+];
+
 // Voice lines for sending/reassigning tasks ("Special delivery!", "Coming through!", etc.)
 const SEND_VOICE_LINES: string[] = [
   `${SOUNDS_PATH}delivery/3altLuDQSB4XYsds8Wn0n_music_generated.mp3`,
@@ -192,10 +198,12 @@ export class SoundManager {
   private planetVoiceLines: Howl[] = [];
   private taskVoiceLines: Howl[] = [];
   private sendVoiceLines: Howl[] = [];
+  private claimVoiceLines: Howl[] = [];
   private shipVoiceIndex = 0;
   private planetVoiceIndex = 0;
   private taskVoiceIndex = 0;
   private sendVoiceIndex = 0;
+  private claimVoiceIndex = 0;
 
   // Track playing instances for looping sounds
   private thrustId: number | null = null;
@@ -315,11 +323,19 @@ export class SoundManager {
       preload: true,
     }));
 
+    // Claim voice lines (for claiming planets to home zone)
+    this.claimVoiceLines = CLAIM_VOICE_LINES.map(src => new Howl({
+      src: [src],
+      volume: 0.8,
+      preload: true,
+    }));
+
     // Shuffle indices for variety
     this.shipVoiceIndex = Math.floor(Math.random() * SHIP_VOICE_LINES.length);
     this.planetVoiceIndex = Math.floor(Math.random() * PLANET_VOICE_LINES.length);
     this.taskVoiceIndex = Math.floor(Math.random() * TASK_VOICE_LINES.length);
     this.sendVoiceIndex = Math.floor(Math.random() * Math.max(1, SEND_VOICE_LINES.length));
+    this.claimVoiceIndex = Math.floor(Math.random() * Math.max(1, CLAIM_VOICE_LINES.length));
 
     this.initialized = true;
   }
@@ -456,6 +472,13 @@ export class SoundManager {
     const voice = this.sendVoiceLines[this.sendVoiceIndex];
     if (voice) voice.play();
     this.sendVoiceIndex = (this.sendVoiceIndex + 1) % this.sendVoiceLines.length;
+  }
+
+  public playClaimVoiceLine() {
+    if (!this.initialized || !this.prefs.sfxEnabled || this.claimVoiceLines.length === 0) return;
+    const voice = this.claimVoiceLines[this.claimVoiceIndex];
+    if (voice) voice.play();
+    this.claimVoiceIndex = (this.claimVoiceIndex + 1) % this.claimVoiceLines.length;
   }
 
   // Teleport/claim sound

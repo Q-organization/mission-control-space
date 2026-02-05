@@ -267,7 +267,6 @@ export class SpaceGame {
   private sendRocketFlame: number = 0;
   private sendPendingPlanet: Planet | null = null; // Updated planet data to add after animation
   private sendTrailPoints: { x: number; y: number; size: number; alpha: number }[] = [];
-  private sendRocketImage: HTMLImageElement | null = null;
 
   // Upgrading animation state (orbiting satellites/robots)
   private isUpgrading: boolean = false;
@@ -2061,14 +2060,6 @@ export class SpaceGame {
     this.sendTargetReady = true;
   }
 
-  // Public method to load custom rocket image
-  public setSendRocketImage(imageUrl: string) {
-    const img = new Image();
-    img.src = imageUrl;
-    img.onload = () => {
-      this.sendRocketImage = img;
-    };
-  }
 
   // Update send/reassign animation - rocket pushing planet across map
   private updateSendAnimation() {
@@ -2187,18 +2178,18 @@ export class SpaceGame {
 
     const rocketX = planet.radius + 10;
 
-    if (this.sendRocketImage) {
-      // Draw custom rocket image
-      const imgSize = 40;
+    if (this.shipImage) {
+      // Draw mini version of the player's current ship
+      const shipSize = 36;
       ctx.drawImage(
-        this.sendRocketImage,
-        rocketX - imgSize * 0.3,
-        -imgSize / 2,
-        imgSize,
-        imgSize
+        this.shipImage,
+        rocketX - shipSize * 0.3,
+        -shipSize / 2,
+        shipSize,
+        shipSize
       );
 
-      // Still draw flame behind it
+      // Draw flame behind it
       const flameLength = 12 + this.sendRocketFlame * 15;
       ctx.beginPath();
       ctx.moveTo(rocketX + 15, 0);
@@ -2213,57 +2204,30 @@ export class SpaceGame {
       ctx.fillStyle = flameGradient;
       ctx.fill();
     } else {
-      // Draw cartoon rocket (fallback)
-      const rocketSize = 16;
+      // Fallback: simple triangle ship shape
+      const shipSize = 16;
 
-      // Rocket flame
+      // Flame
       const flameLength = 12 + this.sendRocketFlame * 18;
       ctx.beginPath();
-      ctx.moveTo(rocketX + rocketSize * 0.7, 0);
-      ctx.lineTo(rocketX + rocketSize * 0.7 + flameLength, -4 - Math.random() * 2);
-      ctx.lineTo(rocketX + rocketSize * 0.7 + flameLength * 0.6, 0);
-      ctx.lineTo(rocketX + rocketSize * 0.7 + flameLength, 4 + Math.random() * 2);
+      ctx.moveTo(rocketX + shipSize * 0.7, 0);
+      ctx.lineTo(rocketX + shipSize * 0.7 + flameLength, -4 - Math.random() * 2);
+      ctx.lineTo(rocketX + shipSize * 0.7 + flameLength * 0.6, 0);
+      ctx.lineTo(rocketX + shipSize * 0.7 + flameLength, 4 + Math.random() * 2);
       ctx.closePath();
-      const flameGradient = ctx.createLinearGradient(rocketX + rocketSize, 0, rocketX + rocketSize + flameLength, 0);
+      const flameGradient = ctx.createLinearGradient(rocketX + shipSize, 0, rocketX + shipSize + flameLength, 0);
       flameGradient.addColorStop(0, '#ffff00');
       flameGradient.addColorStop(0.4, '#ff8800');
       flameGradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
       ctx.fillStyle = flameGradient;
       ctx.fill();
 
-      // Rocket body
-      ctx.fillStyle = '#e74c3c';
+      // Simple ship body
+      ctx.fillStyle = '#aaaacc';
       ctx.beginPath();
-      ctx.ellipse(rocketX, 0, rocketSize, rocketSize * 0.45, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Nose cone
-      ctx.fillStyle = '#c0392b';
-      ctx.beginPath();
-      ctx.moveTo(rocketX - rocketSize, 0);
-      ctx.lineTo(rocketX - rocketSize - 8, -3);
-      ctx.lineTo(rocketX - rocketSize - 8, 3);
-      ctx.closePath();
-      ctx.fill();
-
-      // Window
-      ctx.fillStyle = '#85c1e9';
-      ctx.beginPath();
-      ctx.arc(rocketX - 2, 0, 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Fins
-      ctx.fillStyle = '#c0392b';
-      ctx.beginPath();
-      ctx.moveTo(rocketX + rocketSize * 0.4, -rocketSize * 0.35);
-      ctx.lineTo(rocketX + rocketSize * 0.9, -rocketSize * 0.7);
-      ctx.lineTo(rocketX + rocketSize * 0.7, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(rocketX + rocketSize * 0.4, rocketSize * 0.35);
-      ctx.lineTo(rocketX + rocketSize * 0.9, rocketSize * 0.7);
-      ctx.lineTo(rocketX + rocketSize * 0.7, 0);
+      ctx.moveTo(rocketX - shipSize, 0);
+      ctx.lineTo(rocketX + shipSize * 0.5, -shipSize * 0.5);
+      ctx.lineTo(rocketX + shipSize * 0.5, shipSize * 0.5);
       ctx.closePath();
       ctx.fill();
     }
