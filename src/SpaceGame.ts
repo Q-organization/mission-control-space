@@ -2180,14 +2180,19 @@ export class SpaceGame {
 
     if (this.shipImage) {
       // Draw mini version of the player's current ship
+      // Ship image points up by default, rotate -90° so it faces the push direction (left)
       const shipSize = 36;
+      ctx.save();
+      ctx.translate(rocketX - shipSize * 0.3 + shipSize / 2, 0);
+      ctx.rotate(-Math.PI / 2);
       ctx.drawImage(
         this.shipImage,
-        rocketX - shipSize * 0.3,
+        -shipSize / 2,
         -shipSize / 2,
         shipSize,
         shipSize
       );
+      ctx.restore();
 
       // Draw flame behind it
       const flameLength = 12 + this.sendRocketFlame * 15;
