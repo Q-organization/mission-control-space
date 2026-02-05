@@ -167,6 +167,7 @@ export class SpaceGame {
   private ctx: CanvasRenderingContext2D;
   private state: GameState;
   private keys: Set<string> = new Set();
+  private keyboardLayout: 'qwerty' | 'azerty' = 'qwerty';
   private animationId: number = 0;
   private onDock: (planet: Planet) => void;
   private logoImage: HTMLImageElement | null = null;
@@ -348,6 +349,10 @@ export class SpaceGame {
     this.ctx = canvas.getContext('2d')!;
     this.onDock = onDock;
     this.currentUser = currentUser;
+
+    // Load keyboard layout preference
+    const savedLayout = localStorage.getItem('mission-control-keyboard-layout');
+    if (savedLayout === 'azerty') this.keyboardLayout = 'azerty';
 
     // Initialize state
     const basePlanets = this.createPlanets(goals);
@@ -990,6 +995,16 @@ export class SpaceGame {
     this.suppressLandedPanel = suppress;
   }
 
+  public setKeyboardLayout(layout: 'qwerty' | 'azerty'): void {
+    this.keyboardLayout = layout;
+  }
+
+  private get layoutKeys() {
+    return this.keyboardLayout === 'azerty'
+      ? { thrust: 'z', left: 'q', brake: 's', right: 'd' }
+      : { thrust: 'w', left: 'a', brake: 's', right: 'd' };
+  }
+
   private setupInput() {
     window.addEventListener('keydown', (e) => {
       // Don't capture keys when typing in input fields
@@ -999,7 +1014,7 @@ export class SpaceGame {
       }
 
       this.keys.add(e.key.toLowerCase());
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'c', 'n', 't'].includes(e.key.toLowerCase())) {
+      if (['w', 'a', 's', 'd', 'z', 'q', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'c', 'n', 't'].includes(e.key.toLowerCase())) {
         e.preventDefault();
       }
     });
@@ -1265,10 +1280,10 @@ export class SpaceGame {
     }
 
     // Handle rotation
-    if (this.keys.has('a') || this.keys.has('arrowleft')) {
+    if (this.keys.has(this.layoutKeys.left) || this.keys.has('arrowleft')) {
       ship.rotation -= SHIP_ROTATION_SPEED;
     }
-    if (this.keys.has('d') || this.keys.has('arrowright')) {
+    if (this.keys.has(this.layoutKeys.right) || this.keys.has('arrowright')) {
       ship.rotation += SHIP_ROTATION_SPEED;
     }
 
@@ -1280,7 +1295,7 @@ export class SpaceGame {
 
     // Handle thrust
     const wasThrusting = ship.thrusting;
-    ship.thrusting = this.keys.has('w') || this.keys.has('arrowup');
+    ship.thrusting = this.keys.has(this.layoutKeys.thrust) || this.keys.has('arrowup');
     if (ship.thrusting) {
       ship.vx += Math.cos(ship.rotation) * acceleration;
       ship.vy += Math.sin(ship.rotation) * acceleration;
@@ -1298,7 +1313,7 @@ export class SpaceGame {
     }
 
     // Brake
-    if (this.keys.has('s') || this.keys.has('arrowdown')) {
+    if (this.keys.has(this.layoutKeys.brake) || this.keys.has('arrowdown')) {
       ship.vx *= 0.94;
       ship.vy *= 0.94;
     }

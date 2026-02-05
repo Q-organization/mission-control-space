@@ -596,6 +596,9 @@ function App() {
   const [upgradePrompt, setUpgradePrompt] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showGameSettings, setShowGameSettings] = useState(false);
+  const [keyboardLayout, setKeyboardLayout] = useState<'qwerty' | 'azerty'>(
+    () => (localStorage.getItem('mission-control-keyboard-layout') as 'qwerty' | 'azerty') || 'qwerty'
+  );
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showPointsHistory, setShowPointsHistory] = useState(false);
   const [pointsHistoryTab, setPointsHistoryTab] = useState<'personal' | 'team'>('personal');
@@ -3932,6 +3935,39 @@ function App() {
               </div>
             </div>
 
+            {/* Keyboard Layout */}
+            <div>
+              <h3 style={{ color: '#888', fontSize: '0.85rem', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Keyboard Layout</h3>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {(['qwerty', 'azerty'] as const).map((layout) => (
+                  <button
+                    key={layout}
+                    style={{
+                      flex: 1,
+                      padding: '10px 16px',
+                      background: keyboardLayout === layout ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.05)',
+                      border: `1px solid ${keyboardLayout === layout ? '#4ade80' : 'rgba(255,255,255,0.1)'}`,
+                      borderRadius: '8px',
+                      color: keyboardLayout === layout ? '#4ade80' : '#fff',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: keyboardLayout === layout ? 600 : 400,
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px',
+                      fontFamily: 'Orbitron, sans-serif',
+                    }}
+                    onClick={() => {
+                      setKeyboardLayout(layout);
+                      localStorage.setItem('mission-control-keyboard-layout', layout);
+                      gameRef.current?.setKeyboardLayout(layout);
+                    }}
+                  >
+                    {layout}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Controls */}
             <div>
               <h3 style={{ color: '#888', fontSize: '0.85rem', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Controls</h3>
@@ -3943,8 +3979,8 @@ function App() {
                 lineHeight: '1.8',
               }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', color: '#ccc' }}>
-                  <span style={{ color: '#888' }}>W / ↑</span><span>Thrust</span>
-                  <span style={{ color: '#888' }}>A / ←</span><span>Rotate Left</span>
+                  <span style={{ color: '#888' }}>{keyboardLayout === 'azerty' ? 'Z' : 'W'} / ↑</span><span>Thrust</span>
+                  <span style={{ color: '#888' }}>{keyboardLayout === 'azerty' ? 'Q' : 'A'} / ←</span><span>Rotate Left</span>
                   <span style={{ color: '#888' }}>D / →</span><span>Rotate Right</span>
                   <span style={{ color: '#888' }}>S / ↓</span><span>Brake</span>
                   <span style={{ color: '#888' }}>SHIFT</span><span>Boost</span>
