@@ -2394,7 +2394,12 @@ function App() {
 
     // Start the rocket animation and play voice line immediately
     gameRef.current?.startSendAnimation(reassignPlanet);
-    soundManager.playSendVoiceLine(); // "Special delivery!", "Coming through!", etc.
+    const isSelf = newOwner === state.currentUser;
+    if (isSelf) {
+      soundManager.playClaimVoiceLine();
+    } else {
+      soundManager.playSendVoiceLine();
+    }
 
     if (!newOwner) {
       // Unassigning - use notion-update edge function
@@ -2453,9 +2458,14 @@ function App() {
     if (assigneeChanged && updates.assigned_to) {
       // Start rocket animation for reassignment
       gameRef.current?.startSendAnimation(editPlanet);
-      soundManager.playSendVoiceLine();
+      const isSelf = updates.assigned_to === state.currentUser;
+      if (isSelf) {
+        soundManager.playClaimVoiceLine();
+      } else {
+        soundManager.playSendVoiceLine();
+      }
       const ownerName = updates.assigned_to.charAt(0).toUpperCase() + updates.assigned_to.slice(1);
-      setEventNotification({ message: `Sending task to ${ownerName}...`, type: 'mission' });
+      setEventNotification({ message: isSelf ? `Claiming task...` : `Sending task to ${ownerName}...`, type: 'mission' });
     }
 
     const result = await updateNotionPlanet(editPlanet.id, updates);
@@ -2497,7 +2507,12 @@ function App() {
 
     // Start rocket animation + sound
     gameRef.current?.startSendAnimation(planet);
-    soundManager.playSendVoiceLine();
+    const isSelf = newOwner === state.currentUser;
+    if (isSelf) {
+      soundManager.playClaimVoiceLine();
+    } else {
+      soundManager.playSendVoiceLine();
+    }
 
     if (!newOwner) {
       // Unassigning
@@ -2512,17 +2527,17 @@ function App() {
       setTimeout(() => setEventNotification(null), 3000);
     } else {
       const ownerName = newOwner.charAt(0).toUpperCase() + newOwner.slice(1);
-      setEventNotification({ message: `Sending task to ${ownerName}...`, type: 'mission' });
+      setEventNotification({ message: isSelf ? `Claiming task...` : `Sending task to ${ownerName}...`, type: 'mission' });
       const newPosition = await reassignNotionPlanet(planet.id, newOwner);
       if (newPosition) {
         gameRef.current?.setSendTarget(newPosition.x, newPosition.y);
-        setEventNotification({ message: `Task sent to ${ownerName}!`, type: 'mission' });
+        setEventNotification({ message: isSelf ? `Task claimed!` : `Task sent to ${ownerName}!`, type: 'mission' });
       } else {
-        setEventNotification({ message: `Failed to send task`, type: 'blackhole' });
+        setEventNotification({ message: isSelf ? `Failed to claim task` : `Failed to send task`, type: 'blackhole' });
       }
       setTimeout(() => setEventNotification(null), 3000);
     }
-  }, [updateNotionPlanet, reassignNotionPlanet]);
+  }, [state.currentUser, updateNotionPlanet, reassignNotionPlanet]);
 
   // Handle delete from React landed modal
   const handleLandedDelete = useCallback((planet: Planet) => {
