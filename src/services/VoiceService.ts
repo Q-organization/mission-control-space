@@ -3,6 +3,9 @@ const ELEVENLABS_VOICE = 'CwhRBWXzGAHq8TQ4Fs17'; // Roger
 const SUPABASE_URL = 'https://qdizfhhsqolvuddoxugj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkaXpmaGhzcW9sdnVkZG94dWdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4NzY1MjMsImV4cCI6MjA4NTQ1MjUyM30.W00V-_gmfGT19HcSfpwmFNEDlXg6Wt6rZCE_gVPj4fw';
 
+export type UpgradeType = 'ship' | 'planet';
+export type UpgradePhase = 'start' | 'done';
+
 export interface GreetingContext {
   playerName: string;
   playerRank: number;
@@ -60,6 +63,47 @@ class VoiceService {
       console.log(`[Voice] Total: ${Math.round(t2 - t0)}ms`);
     } catch (e) {
       console.error('[Voice] Greeting failed:', e);
+    }
+  }
+
+  async commentOnUpgrade(type: UpgradeType, phase: UpgradePhase, prompt: string, imageUrl?: string): Promise<void> {
+    if (!this.enabled || this.speaking) return;
+
+    const t0 = performance.now();
+    try {
+      console.log('[Voice] Upgrade comment:', { type, phase, prompt, imageUrl: imageUrl ? '(provided)' : '(none)' });
+
+      const body: Record<string, string> = {
+        mode: phase === 'done' ? 'upgrade_review' : 'upgrade_react',
+        userMessage: `Type: ${type} upgrade. Player's prompt: "${prompt}"`,
+      };
+      if (phase === 'done' && imageUrl) {
+        body.imageUrl = imageUrl;
+      }
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-greeting`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        console.error('[Voice] Upgrade comment error:', res.status);
+        return;
+      }
+
+      const data = await res.json();
+      const text = data.text;
+      if (!text) return;
+
+      console.log(`[Voice] OpenAI: ${Math.round(performance.now() - t0)}ms → "${text}"`);
+      await this.tts(text);
+      console.log(`[Voice] Total: ${Math.round(performance.now() - t0)}ms`);
+    } catch (e) {
+      console.error('[Voice] Upgrade comment failed:', e);
     }
   }
 

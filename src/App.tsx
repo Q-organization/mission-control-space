@@ -1834,6 +1834,7 @@ function App() {
     setUpgradeMessage('Terraforming planet...');
     gameRef.current?.startUpgradeAnimation(planetId);
     broadcastUpgradeState(true, planetId);
+    voiceService.commentOnUpgrade('planet', 'start', promptText);
 
     try {
       // Get current planet image
@@ -1918,6 +1919,8 @@ function App() {
           sourceImageUrl: currentPlanet.imageUrl,
           resultImageUrl: newImageUrl,
         });
+
+        voiceService.commentOnUpgrade('planet', 'done', promptText, newImageUrl);
       }
 
       setIsUpgrading(false);
@@ -2830,6 +2833,7 @@ function App() {
     setUpgradeMessage('Modifying your vessel...');
     gameRef.current?.startUpgradeAnimation();
     broadcastUpgradeState(true, null); // null = ship upgrade
+    voiceService.commentOnUpgrade('ship', 'start', promptText);
 
     try {
       const currentShip = getCurrentUserShip();
@@ -2927,6 +2931,8 @@ function App() {
           sourceImageUrl: currentShip.currentImage,
           resultImageUrl: newImageUrl,
         });
+
+        voiceService.commentOnUpgrade('ship', 'done', promptText, newImageUrl);
       }
 
       setIsUpgrading(false);
