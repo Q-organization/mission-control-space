@@ -130,6 +130,51 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
+      // Weapon fire broadcast (projectile spawn data)
+      if (msg.type === 'weapon_fire' && teamId) {
+        const teamPlayers = teams.get(teamId);
+        if (!teamPlayers) return;
+
+        const payload = JSON.stringify({
+          type: 'weapon_fire',
+          playerId: playerId,
+          weaponType: msg.weaponType,
+          x: msg.x,
+          y: msg.y,
+          vx: msg.vx,
+          vy: msg.vy,
+          rotation: msg.rotation,
+          targetPlanetId: msg.targetPlanetId || null,
+        });
+
+        for (const [otherPlayerId, otherWs] of teamPlayers) {
+          if (otherPlayerId !== playerId && otherWs.readyState === WebSocket.OPEN) {
+            otherWs.send(payload);
+          }
+        }
+        return;
+      }
+
+      // Planet destroy broadcast (explosion animation)
+      if (msg.type === 'planet_destroy' && teamId) {
+        const teamPlayers = teams.get(teamId);
+        if (!teamPlayers) return;
+
+        const payload = JSON.stringify({
+          type: 'planet_destroy',
+          playerId: playerId,
+          planetId: msg.planetId,
+          fromRifle: msg.fromRifle || false,
+        });
+
+        for (const [otherPlayerId, otherWs] of teamPlayers) {
+          if (otherPlayerId !== playerId && otherWs.readyState === WebSocket.OPEN) {
+            otherWs.send(payload);
+          }
+        }
+        return;
+      }
+
     } catch (err) {
       console.error('[ERROR] Failed to parse message:', err.message);
     }

@@ -55,6 +55,23 @@ type SendAnimationCallback = (playerId: string, data: {
   targetY?: number;
 }) => void;
 
+// Callback type for weapon fire updates (remote projectile spawn)
+type WeaponFireCallback = (playerId: string, data: {
+  weaponType: 'rifle' | 'plasma' | 'rocket';
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  targetPlanetId: string | null;
+}) => void;
+
+// Callback type for planet destroy updates (remote explosion animation)
+type PlanetDestroyCallback = (playerId: string, data: {
+  planetId: string;
+  fromRifle: boolean;
+}) => void;
+
 interface ShipState {
   x: number;
   y: number;
@@ -71,9 +88,13 @@ interface UsePlayerPositionsReturn {
   broadcastUpgradeState: (isUpgrading: boolean, targetPlanetId?: string | null) => void;
   broadcastSendStart: (planetId: string, velocityX: number, velocityY: number) => void;
   broadcastSendTarget: (planetId: string, targetX: number, targetY: number) => void;
+  broadcastWeaponFire: (weaponType: 'rifle' | 'plasma' | 'rocket', x: number, y: number, vx: number, vy: number, rotation: number, targetPlanetId?: string | null) => void;
+  broadcastPlanetDestroy: (planetId: string, fromRifle: boolean) => void;
   setPositionUpdateCallback: (callback: PositionUpdateCallback | null) => void;
   setUpgradeUpdateCallback: (callback: UpgradeUpdateCallback | null) => void;
   setSendAnimationCallback: (callback: SendAnimationCallback | null) => void;
+  setWeaponFireCallback: (callback: WeaponFireCallback | null) => void;
+  setPlanetDestroyCallback: (callback: PlanetDestroyCallback | null) => void;
 }
 
 interface CachedPosition {
@@ -127,6 +148,10 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
   const upgradeUpdateCallbackRef = useRef<UpgradeUpdateCallback | null>(null);
   // Direct callback for send animation updates (planet push)
   const sendAnimationCallbackRef = useRef<SendAnimationCallback | null>(null);
+  // Direct callback for weapon fire updates (remote projectile spawn)
+  const weaponFireCallbackRef = useRef<WeaponFireCallback | null>(null);
+  // Direct callback for planet destroy updates (remote explosion)
+  const planetDestroyCallbackRef = useRef<PlanetDestroyCallback | null>(null);
 
   // Set the callback for direct position updates
   const setPositionUpdateCallback = useCallback((callback: PositionUpdateCallback | null) => {
@@ -141,6 +166,16 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
   // Set the callback for send animation updates
   const setSendAnimationCallback = useCallback((callback: SendAnimationCallback | null) => {
     sendAnimationCallbackRef.current = callback;
+  }, []);
+
+  // Set the callback for weapon fire updates
+  const setWeaponFireCallback = useCallback((callback: WeaponFireCallback | null) => {
+    weaponFireCallbackRef.current = callback;
+  }, []);
+
+  // Set the callback for planet destroy updates
+  const setPlanetDestroyCallback = useCallback((callback: PlanetDestroyCallback | null) => {
+    planetDestroyCallbackRef.current = callback;
   }, []);
 
   // Keep players ref updated without triggering effects
@@ -264,6 +299,37 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
         planetId,
         targetX,
         targetY,
+      }));
+    }
+  }, [playerId]);
+
+  // Broadcast weapon fire (projectile spawn data for other players)
+  const broadcastWeaponFire = useCallback((weaponType: 'rifle' | 'plasma' | 'rocket', x: number, y: number, vx: number, vy: number, rotation: number, targetPlanetId: string | null = null) => {
+    if (!playerId) return;
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'weapon_fire',
+        weaponType,
+        x,
+        y,
+        vx,
+        vy,
+        rotation,
+        targetPlanetId,
+      }));
+    }
+  }, [playerId]);
+
+  // Broadcast planet destroy (explosion animation for other players)
+  const broadcastPlanetDestroy = useCallback((planetId: string, fromRifle: boolean) => {
+    if (!playerId) return;
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'planet_destroy',
+        planetId,
+        fromRifle,
       }));
     }
   }, [playerId]);
@@ -477,6 +543,31 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
               });
             }
           }
+
+          if (data.type === 'weapon_fire') {
+            if (data.playerId === playerId) return;
+            if (weaponFireCallbackRef.current) {
+              weaponFireCallbackRef.current(data.playerId, {
+                weaponType: data.weaponType,
+                x: data.x,
+                y: data.y,
+                vx: data.vx,
+                vy: data.vy,
+                rotation: data.rotation,
+                targetPlanetId: data.targetPlanetId,
+              });
+            }
+          }
+
+          if (data.type === 'planet_destroy') {
+            if (data.playerId === playerId) return;
+            if (planetDestroyCallbackRef.current) {
+              planetDestroyCallbackRef.current(data.playerId, {
+                planetId: data.planetId,
+                fromRifle: data.fromRifle,
+              });
+            }
+          }
         } catch (err) {
           console.error('[WS] Failed to parse message:', err);
         }
@@ -639,8 +730,12 @@ export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlaye
     broadcastUpgradeState,
     broadcastSendStart,
     broadcastSendTarget,
+    broadcastWeaponFire,
+    broadcastPlanetDestroy,
     setPositionUpdateCallback,
     setUpgradeUpdateCallback,
     setSendAnimationCallback,
+    setWeaponFireCallback,
+    setPlanetDestroyCallback,
   };
 }
