@@ -4007,6 +4007,7 @@ function App() {
           onTakeOff={handleModalTakeOff}
           onUpdate={handleLandedUpdate}
           onFeatureToggle={handleFeatureToggle}
+          featuredPlanetIds={featuredPlanetIds}
         />
       )}
 
@@ -4034,6 +4035,7 @@ function App() {
             setTimeout(() => setEventNotification(null), 3000);
           }}
           onFeatureToggle={handleFeatureToggle}
+          featuredPlanetIds={featuredPlanetIds}
         />
       )}
 

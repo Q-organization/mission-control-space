@@ -21,6 +21,7 @@ interface LandedPlanetModalProps {
   onTakeOff: () => void;
   onUpdate: (updates: EditTaskUpdates) => void;
   onFeatureToggle?: (planet: Planet) => void;
+  featuredPlanetIds?: Set<string>;
 }
 
 const TEAM_MEMBERS = [
@@ -95,6 +96,7 @@ export function LandedPlanetModal({
   onTakeOff,
   onUpdate,
   onFeatureToggle,
+  featuredPlanetIds,
 }: LandedPlanetModalProps) {
   const [editingField, setEditingField] = useState<EditingField>(null);
   const [editName, setEditName] = useState(planet.name || '');
@@ -484,6 +486,11 @@ export function LandedPlanetModal({
             {showNotion && (
               <span style={{ ...styles.actionText, color: '#5490ff' }} onClick={() => planet.notionUrl && onOpenNotion(planet.notionUrl)}>
                 [ N ] Notion
+              </span>
+            )}
+            {isOwn && onFeatureToggle && (
+              <span style={{ ...styles.actionText, color: '#ffd700' }} onClick={() => onFeatureToggle(planet)}>
+                [ F ] {featuredPlanetIds?.has(planet.id) ? 'Unpin' : 'Pin to HUD'}
               </span>
             )}
           </div>
