@@ -246,6 +246,7 @@ interface ParsedNotionPage {
   created_by_notion_id?: string;
   status?: string;
   url?: string;
+  due_date?: string;
 }
 
 // Parse a Notion page into our format
@@ -328,6 +329,9 @@ function parseNotionPage(page: any): ParsedNotionPage | null {
     status = props['Status'].status.name.toLowerCase();
   }
 
+  // Extract Due Date
+  const dueDate = props['Due Date']?.date?.start || null;
+
   return {
     id: page.id,
     name: name,
@@ -339,6 +343,7 @@ function parseNotionPage(page: any): ParsedNotionPage | null {
     created_by_notion_id: createdByNotionId || undefined,
     status: status || undefined,
     url: page.url || undefined,
+    due_date: dueDate || undefined,
   };
 }
 
@@ -616,6 +621,7 @@ Deno.serve(async (req) => {
             priority: parsed.priority || null,
             points: points,
             notion_url: parsed.url || null,
+            due_date: parsed.due_date || null,
           };
 
           if (needsReposition) {
@@ -659,6 +665,7 @@ Deno.serve(async (req) => {
               x: Math.round(position.x),
               y: Math.round(position.y),
               completed: false,
+              due_date: parsed.due_date || null,
             })
             .select('id')
             .single();

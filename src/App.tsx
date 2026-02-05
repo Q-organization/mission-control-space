@@ -6247,8 +6247,8 @@ styleSheet.textContent = `
   @keyframes spin { to { transform: rotate(360deg); } }
   button:hover { transform: scale(1.02); }
   select option { background: #1a1a2e; }
-  .hidden-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
-  .hidden-scrollbar::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; -ms-overflow-style: none; }
+  *::-webkit-scrollbar { display: none; }
 `;
 document.head.appendChild(styleSheet);
 

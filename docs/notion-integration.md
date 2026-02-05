@@ -479,6 +479,7 @@ The `notion_planets` table requires specific configuration for full functionalit
 | `20250131000000_create_notion_planets.sql` | Creates table, indexes, basic RLS |
 | `20250203120000_add_notion_planets_delete_policy.sql` | Adds DELETE RLS policy |
 | `20250203130000_fix_notion_planets_replica_identity.sql` | Enables REPLICA IDENTITY FULL |
+| `20250205000000_add_notion_planets_due_date.sql` | Adds `due_date` column for Notion Due Date |
 
 ## Error Handling
 

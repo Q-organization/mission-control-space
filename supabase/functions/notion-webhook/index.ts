@@ -25,6 +25,7 @@ interface NotionWebhookPayload {
   created_by_notion_id?: string; // Notion user ID for mapping
   status?: string;
   url?: string;
+  due_date?: string; // ISO date from Notion "Due Date" property
 }
 
 interface ExistingPlanet {
@@ -321,6 +322,9 @@ function parseNativeNotionPayload(raw: any): NotionWebhookPayload | null {
   // Log the raw status property for debugging
   console.log('RAW STATUS PROPERTY:', JSON.stringify(statusProp));
 
+  // Extract Due Date
+  const dueDate = props['Due Date']?.date?.start || null;
+
   return {
     id: data.id,
     name: name || 'Untitled',
@@ -332,6 +336,7 @@ function parseNativeNotionPayload(raw: any): NotionWebhookPayload | null {
     created_by_notion_id: createdByNotionId || undefined,
     status: status || undefined,
     url: data.url || undefined,
+    due_date: dueDate || undefined,
   };
 }
 
@@ -763,6 +768,7 @@ Deno.serve(async (req) => {
         priority: payload.priority || null,
         points: points,
         notion_url: payload.url || null,
+        due_date: payload.due_date || null,
       };
 
       if (positionNeedsFix) {
@@ -809,6 +815,7 @@ Deno.serve(async (req) => {
           x: Math.round(position.x),
           y: Math.round(position.y),
           completed: false,
+          due_date: payload.due_date || null,
         })
         .select()
         .single();
