@@ -164,10 +164,19 @@ const TASK_VOICE_LINES = [
 
 // Voice lines for claiming/pulling planets to home zone ("Coming home!", "Mine now!", etc.)
 const CLAIM_VOICE_LINES: string[] = [
-  `${SOUNDS_PATH}delivery/home/siQYcJsrJE84Vc6sSMNZm_music_generated.mp3`,
-  `${SOUNDS_PATH}delivery/home/w0ym-zYNjTxo8ljg87ZHb_music_generated.mp3`,
-  `${SOUNDS_PATH}delivery/home/8Fk0McAR4hh-MEoZc3lTb_music_generated.mp3`,
-  `${SOUNDS_PATH}delivery/home/_UIStZKzzdLuYMqSE1OCw_music_generated.mp3`,
+  `${SOUNDS_PATH}delivery/home/didnt vote for you .mp3`,
+  `${SOUNDS_PATH}delivery/home/du travaille encore du tr.mp3`,
+  `${SOUNDS_PATH}delivery/home/i guess i can .mp3`,
+  `${SOUNDS_PATH}delivery/home/more work?.mp3`,
+  `${SOUNDS_PATH}delivery/home/no time for play.mp3`,
+  `${SOUNDS_PATH}delivery/home/off i go then .mp3`,
+  `${SOUNDS_PATH}delivery/home/okidoki.mp3`,
+  `${SOUNDS_PATH}delivery/home/paysan fr1.mp3`,
+  `${SOUNDS_PATH}delivery/home/Paysan fr2.mp3`,
+  `${SOUNDS_PATH}delivery/home/Paysan fr3.mp3`,
+  `${SOUNDS_PATH}delivery/home/repressed.mp3`,
+  `${SOUNDS_PATH}delivery/home/somthing need doing? .mp3`,
+  `${SOUNDS_PATH}delivery/home/wokr wokrk.mp3`,
 ];
 
 // Voice lines for sending/reassigning tasks ("Special delivery!", "Coming through!", etc.)
