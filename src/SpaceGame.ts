@@ -6250,7 +6250,7 @@ export class SpaceGame {
       ctx.fillStyle = typeColors[planet.type] || '#94a3b8';
       ctx.font = '10px Space Grotesk';
       const typeLabel = planet.type === 'notion' ? 'NOTION TASK' : planet.type.toUpperCase();
-      const ownerText = ownerName ? ` • ${ownerName}'s Task` : ' • Shared Task';
+      const ownerText = planet.type === 'station' ? '' : (ownerName ? ` • ${ownerName}'s Task` : ' • Shared Task');
       ctx.fillText(typeLabel + ownerText, canvas.width / 2, boxY + 40);
 
       // Due date

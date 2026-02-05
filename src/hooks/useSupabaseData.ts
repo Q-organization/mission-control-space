@@ -44,6 +44,9 @@ interface MascotHistoryEntry {
   earnedBy: string;
 }
 
+// Bump this version when DEFAULT_GOALS change to force Supabase refresh
+const GOALS_VERSION = 2;
+
 // Default goals
 const DEFAULT_GOALS: Goals = {
   business: [
@@ -107,6 +110,16 @@ const DEFAULT_GOALS: Goals = {
   ],
 };
 
+// Sort goals by targetDate (goals without dates go to the end)
+const sortGoalsByDate = (goals: Goal[]): Goal[] => {
+  return [...goals].sort((a, b) => {
+    if (!a.targetDate && !b.targetDate) return 0;
+    if (!a.targetDate) return 1;
+    if (!b.targetDate) return -1;
+    return a.targetDate.localeCompare(b.targetDate);
+  });
+};
+
 interface UseSupabaseDataOptions {
   teamId: string | null;
   playerId: string | null;
@@ -165,15 +178,25 @@ export function useSupabaseData(options: UseSupabaseDataOptions): UseSupabaseDat
       if (teamError) {
         console.error('[useSupabaseData] Error fetching team:', teamError);
       } else if (teamData) {
-        // Only use Supabase goals if they exist and have content
+        // Only use Supabase goals if they exist, have content, and match current version
         if (teamData.goals && typeof teamData.goals === 'object') {
-          const supabaseGoals = teamData.goals as Goals;
-          // Check if goals have actual content (not just empty arrays)
+          const supabaseGoals = teamData.goals as Goals & { _version?: number };
           const hasContent = supabaseGoals.business?.length > 0 ||
                             supabaseGoals.product?.length > 0 ||
                             supabaseGoals.achievement?.length > 0;
-          if (hasContent) {
-            setGoals(supabaseGoals);
+          if (hasContent && supabaseGoals._version === GOALS_VERSION) {
+            // Sort dated categories by targetDate
+            setGoals({
+              business: sortGoalsByDate(supabaseGoals.business || []),
+              product: sortGoalsByDate(supabaseGoals.product || []),
+              achievement: supabaseGoals.achievement || [],
+            });
+          } else if (!hasContent || supabaseGoals._version !== GOALS_VERSION) {
+            // Goals are outdated or empty — push new defaults to Supabase
+            console.log('[useSupabaseData] Goals version mismatch, updating to v' + GOALS_VERSION);
+            const goalsWithVersion = { ...DEFAULT_GOALS, _version: GOALS_VERSION };
+            setGoals(DEFAULT_GOALS);
+            await supabase.from('teams').update({ goals: goalsWithVersion }).eq('id', teamId);
           }
         }
         if (teamData.custom_planets && Array.isArray(teamData.custom_planets)) {
@@ -234,7 +257,7 @@ export function useSupabaseData(options: UseSupabaseDataOptions): UseSupabaseDat
     try {
       const { error } = await supabase
         .from('teams')
-        .update({ goals: newGoals })
+        .update({ goals: { ...newGoals, _version: GOALS_VERSION } })
         .eq('id', teamId);
 
       if (error) {
