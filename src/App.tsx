@@ -86,7 +86,6 @@ const USERS = [
   { id: 'alex', name: 'Alex', color: '#5490ff' },
   { id: 'milya', name: 'Milya', color: '#ff6b9d' },
   { id: 'hugues', name: 'Hugues', color: '#8b5cf6' },
-  { id: 'testpilot', name: 'Jack', color: '#888888' },
 ];
 
 const TEST_PLAYER_ID = 'testpilot';
