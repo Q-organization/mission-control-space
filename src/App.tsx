@@ -2302,7 +2302,7 @@ function App() {
       const unowned: string[] = [];
       // Weapons
       if (!effects.hasSpaceRifle) unowned.push('Space Rifle');
-      if (!effects.hasSpaceTNT) unowned.push('Space TNT');
+      if (!effects.hasDestroyCanon) unowned.push('Space TNT');
       if (!effects.hasPlasmaCanon) unowned.push('Plasma Canon');
       if (!effects.hasRocketLauncher) unowned.push('Rocket Launcher');
       // Utilities
@@ -2313,13 +2313,15 @@ function App() {
       if ((effects.speedBonus || 0) < 10) unowned.push('Speed upgrade');
       if ((effects.landingSpeedBonus || 0) < 5) unowned.push('Landing Speed upgrade');
       // Cosmetics
-      if (!effects.orangeGlow) unowned.push('Orange Glow');
-      if (!effects.blueGlow) unowned.push('Blue Glow');
-      if (!effects.purpleGlow) unowned.push('Purple Glow');
-      if (!effects.greenGlow) unowned.push('Green Glow');
-      if (!effects.fireTrail) unowned.push('Fire Trail');
-      if (!effects.iceTrail) unowned.push('Ice Trail');
-      if (!effects.rainbowTrail) unowned.push('Rainbow Trail');
+      const ownedGlows = effects.ownedGlows || [];
+      if (!ownedGlows.includes('orange')) unowned.push('Orange Glow');
+      if (!ownedGlows.includes('blue')) unowned.push('Blue Glow');
+      if (!ownedGlows.includes('purple')) unowned.push('Purple Glow');
+      if (!ownedGlows.includes('green')) unowned.push('Green Glow');
+      const ownedTrails = effects.ownedTrails || [];
+      if (!ownedTrails.includes('fire')) unowned.push('Fire Trail');
+      if (!ownedTrails.includes('ice')) unowned.push('Ice Trail');
+      if (!ownedTrails.includes('rainbow')) unowned.push('Rainbow Trail');
       unowned.push('Visual upgrade');
       voiceService.shopGreeting({
         playerName: USERS.find(u => u.id === state.currentUser)?.name || state.currentUser || 'friend',
