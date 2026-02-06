@@ -207,6 +207,10 @@ export class SpaceGame {
   private onLand: ((planet: Planet) => void) | null = null;
   private onShopApproach: (() => void) | null = null;
   private shopApproachFired = false;
+  private onCollisionVoice: (() => void) | null = null;
+  private collisionBumpCount = 0;
+  private collisionBumpTimer = 0;
+  private lastCollisionVoice = 0;
   private onTakeoff: (() => void) | null = null;
   private onColonize: ((planet: Planet) => void) | null = null;
   private onClaimRequest: ((planet: Planet) => void) | null = null; // Called when user wants to claim - App handles API then calls startClaimToPosition
@@ -1066,6 +1070,7 @@ export class SpaceGame {
     onEditRequest?: (planet: Planet) => void;
     onFeatureToggle?: (planet: Planet) => void;
     onShopApproach?: () => void;
+    onCollisionVoice?: () => void;
   }) {
     this.onLand = callbacks.onLand || null;
     this.onTakeoff = callbacks.onTakeoff || null;
@@ -1079,6 +1084,7 @@ export class SpaceGame {
     this.onEditRequest = callbacks.onEditRequest || null;
     this.onFeatureToggle = callbacks.onFeatureToggle || null;
     this.onShopApproach = callbacks.onShopApproach || null;
+    this.onCollisionVoice = callbacks.onCollisionVoice || null;
   }
 
   public setFeaturedPlanetIds(ids: Set<string>) {
@@ -1489,6 +1495,21 @@ export class SpaceGame {
 
         // Sound: collision
         soundManager.playCollision();
+
+        // Collision voice: trigger on boost-speed hit or 10+ bumps in 3s
+        const isBoosting = this.keys.has('shift');
+        const now = performance.now();
+        if (now - this.collisionBumpTimer > 3000) {
+          this.collisionBumpCount = 0;
+        }
+        this.collisionBumpCount++;
+        this.collisionBumpTimer = now;
+
+        if ((isBoosting || this.collisionBumpCount >= 10) && this.onCollisionVoice && now - this.lastCollisionVoice > 5000) {
+          this.collisionBumpCount = 0;
+          this.lastCollisionVoice = now;
+          this.onCollisionVoice();
+        }
       }
     }
 

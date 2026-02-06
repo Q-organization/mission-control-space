@@ -1,6 +1,25 @@
 const ELEVENLABS_KEY = 'sk_3d39d8b1fae43e41bc56d8f67e1890fac778d2dcb464a69c';
 const ELEVENLABS_VOICE = 'CwhRBWXzGAHq8TQ4Fs17'; // Roger - default ship AI
 const ELEVENLABS_SHOP_VOICE = 'Z7RrOqZFTyLpIlzCgfsp'; // Toby - Little Mythical Monster (shop merchant goblin)
+const ELEVENLABS_COLLISION_VOICE = 'JBFqnCBsd6RMkjVDRZzb'; // George - British collision commentator
+
+const COLLISION_LINES = [
+  "You can't park there, mate.",
+  "Oi! That's a planet, not a parking spot.",
+  "Bit close, don't you think?",
+  "Steady on! That planet was here first.",
+  "Right, that's not how landing works.",
+  "Have you considered using the brakes?",
+  "That'll buff right out. Probably.",
+  "Brilliant flying. Truly.",
+  "Perhaps try going around it next time?",
+  "I don't think the planet appreciated that.",
+  "Were you aiming for that?",
+  "That's going on your insurance.",
+  "Lovely. More dents for the collection.",
+  "Do you always fly like this?",
+  "The planet sends its regards.",
+];
 const SUPABASE_URL = 'https://qdizfhhsqolvuddoxugj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkaXpmaGhzcW9sdnVkZG94dWdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4NzY1MjMsImV4cCI6MjA4NTQ1MjUyM30.W00V-_gmfGT19HcSfpwmFNEDlXg6Wt6rZCE_gVPj4fw';
 
@@ -285,6 +304,27 @@ class VoiceService {
       await this.tts(text);
     } catch (e) {
       console.error('[Voice] Speak failed:', e);
+    }
+  }
+
+  private lastCollisionLine = -1;
+
+  async collisionComment(): Promise<void> {
+    if (!this.enabled || this.speaking) return;
+
+    // Pick a random line, avoid repeating the last one
+    let idx = Math.floor(Math.random() * COLLISION_LINES.length);
+    if (idx === this.lastCollisionLine) {
+      idx = (idx + 1) % COLLISION_LINES.length;
+    }
+    this.lastCollisionLine = idx;
+    const line = COLLISION_LINES[idx];
+
+    console.log(`[Voice] Collision: "${line}"`);
+    try {
+      await this.tts(line, ELEVENLABS_COLLISION_VOICE);
+    } catch (e) {
+      console.error('[Voice] Collision comment failed:', e);
     }
   }
 

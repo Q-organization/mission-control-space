@@ -481,6 +481,7 @@ function App() {
     onEditRequest: (planet: Planet) => void;
     onFeatureToggle: (planet: Planet) => void;
     onShopApproach: () => void;
+    onCollisionVoice: () => void;
   }>({
     onLand: () => {},
     onTakeoff: () => {},
@@ -494,6 +495,7 @@ function App() {
     onEditRequest: () => {},
     onFeatureToggle: () => {},
     onShopApproach: () => {},
+    onCollisionVoice: () => {},
   });
   const [state, setState] = useState<SavedState>(loadState);
   const [customPlanets, setCustomPlanets] = useState<CustomPlanet[]>([]); // Loaded from Supabase
@@ -2827,6 +2829,9 @@ function App() {
           unownedItems: unowned,
         });
       },
+      onCollisionVoice: () => {
+        voiceService.collisionComment();
+      },
     };
   });
 
@@ -3604,6 +3609,7 @@ function App() {
       onEditRequest: (planet) => landingCallbacksRef.current.onEditRequest(planet),
       onFeatureToggle: (planet) => landingCallbacksRef.current.onFeatureToggle(planet),
       onShopApproach: () => landingCallbacksRef.current.onShopApproach(),
+      onCollisionVoice: () => landingCallbacksRef.current.onCollisionVoice(),
     });
 
     // Set up weapon fire broadcast callback (game → WS)
