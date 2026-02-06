@@ -279,10 +279,10 @@ export function useSupabaseData(options: UseSupabaseDataOptions): UseSupabaseDat
     init();
   }, [teamId, fetchFromSupabase]);
 
-  // Reset initialLoadDone when teamId changes
+  // Reset initialLoadDone when teamId or username changes (so data re-fetches for the correct user)
   useEffect(() => {
     initialLoadDone.current = false;
-  }, [teamId]);
+  }, [teamId, username]);
 
   // Subscribe to real-time updates for team data
   useEffect(() => {
