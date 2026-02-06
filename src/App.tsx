@@ -480,6 +480,7 @@ function App() {
     onReassignRequest: (planet: Planet) => void;
     onEditRequest: (planet: Planet) => void;
     onFeatureToggle: (planet: Planet) => void;
+    onShopApproach: () => void;
   }>({
     onLand: () => {},
     onTakeoff: () => {},
@@ -492,6 +493,7 @@ function App() {
     onReassignRequest: () => {},
     onEditRequest: () => {},
     onFeatureToggle: () => {},
+    onShopApproach: () => {},
   });
   const [state, setState] = useState<SavedState>(loadState);
   const [customPlanets, setCustomPlanets] = useState<CustomPlanet[]>([]); // Loaded from Supabase
@@ -1877,6 +1879,9 @@ function App() {
         const bgData = await bgResponse.json();
         const bgRemovedUrl = bgData.image?.url || newImageUrl;
 
+        // Start voice review generation in parallel with saving
+        const voicePromise = voiceService.prepareUpgradeReview('planet', promptText, bgRemovedUrl);
+
         // Save locally
         setUpgradeMessage('Saving...');
         const base64Image = await getImageAsBase64(bgRemovedUrl);
@@ -1920,7 +1925,11 @@ function App() {
           resultImageUrl: newImageUrl,
         });
 
-        voiceService.commentOnUpgrade('planet', 'done', promptText, newImageUrl);
+        // Play pre-generated voice (should be ready by now)
+        if (voicePromise) {
+          const voiceBlob = await voicePromise;
+          if (voiceBlob) voiceService.playBlob(voiceBlob);
+        }
       }
 
       setIsUpgrading(false);
@@ -2789,8 +2798,37 @@ function App() {
       onReassignRequest: handleReassignRequest,
       onEditRequest: handleEditRequest,
       onFeatureToggle: handleFeatureToggle,
+      onShopApproach: () => {
+        const currentShip = getCurrentUserShip();
+        const effects = currentShip.effects || {};
+        const unowned: string[] = [];
+        if (!effects.hasSpaceRifle) unowned.push('Space Rifle');
+        if (!effects.hasDestroyCanon) unowned.push('Space TNT');
+        if (!effects.hasPlasmaCanon) unowned.push('Plasma Canon');
+        if (!effects.hasRocketLauncher) unowned.push('Rocket Launcher');
+        if (!effects.hasWarpDrive) unowned.push('Warp Drive');
+        if (!effects.hasMissionControlPortal) unowned.push('Mission Control Portal');
+        if ((effects.sizeBonus || 0) < 10) unowned.push('Size upgrade');
+        if ((effects.speedBonus || 0) < 10) unowned.push('Speed upgrade');
+        if ((effects.landingSpeedBonus || 0) < 5) unowned.push('Landing Speed upgrade');
+        const ownedGlows = effects.ownedGlows || [];
+        if (!ownedGlows.includes('orange')) unowned.push('Orange Glow');
+        if (!ownedGlows.includes('blue')) unowned.push('Blue Glow');
+        if (!ownedGlows.includes('purple')) unowned.push('Purple Glow');
+        if (!ownedGlows.includes('green')) unowned.push('Green Glow');
+        const ownedTrails = effects.ownedTrails || [];
+        if (!ownedTrails.includes('fire')) unowned.push('Fire Trail');
+        if (!ownedTrails.includes('ice')) unowned.push('Ice Trail');
+        if (!ownedTrails.includes('rainbow')) unowned.push('Rainbow Trail');
+        unowned.push('Visual upgrade');
+        voiceService.prepareShopGreeting({
+          playerName: USERS.find(u => u.id === state.currentUser)?.name || state.currentUser || 'friend',
+          credits: personalPoints,
+          unownedItems: unowned,
+        });
+      },
     };
-  }, [handleLand, handleTakeoff, handleColonize, handleClaimRequest, handleOpenNotion, handleTerraform, handleDestroyPlanet, handleBlackHoleDeath, handleReassignRequest, handleEditRequest, handleFeatureToggle]);
+  });
 
   // Keyboard shortcuts: Escape to close modals, T to open quick task
   useEffect(() => {
@@ -2893,6 +2931,7 @@ function App() {
 
       const data = await response.json();
       let newImageUrl = data.images?.[0]?.url;
+      let voicePromise: Promise<Blob | null> | null = null;
 
       // Remove background to get transparent PNG
       if (newImageUrl) {
@@ -2907,6 +2946,9 @@ function App() {
         });
         const bgData = await bgResponse.json();
         const bgRemovedUrl = bgData.image?.url || newImageUrl;
+
+        // Start voice review generation in parallel with saving
+        voicePromise = voiceService.prepareUpgradeReview('ship', promptText, bgRemovedUrl);
 
         // Save to local filesystem
         setUpgradeMessage('Saving...');
@@ -2963,7 +3005,11 @@ function App() {
           resultImageUrl: newImageUrl,
         });
 
-        voiceService.commentOnUpgrade('ship', 'done', promptText, newImageUrl);
+        // Play pre-generated voice (should be ready by now)
+        if (voicePromise) {
+          const voiceBlob = await voicePromise;
+          if (voiceBlob) voiceService.playBlob(voiceBlob);
+        }
       }
 
       setIsUpgrading(false);
@@ -3557,6 +3603,7 @@ function App() {
       onReassignRequest: (planet) => landingCallbacksRef.current.onReassignRequest(planet),
       onEditRequest: (planet) => landingCallbacksRef.current.onEditRequest(planet),
       onFeatureToggle: (planet) => landingCallbacksRef.current.onFeatureToggle(planet),
+      onShopApproach: () => landingCallbacksRef.current.onShopApproach(),
     });
 
     // Set up weapon fire broadcast callback (game → WS)

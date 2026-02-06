@@ -205,6 +205,8 @@ export class SpaceGame {
 
   // Callbacks for landing interactions
   private onLand: ((planet: Planet) => void) | null = null;
+  private onShopApproach: (() => void) | null = null;
+  private shopApproachFired = false;
   private onTakeoff: (() => void) | null = null;
   private onColonize: ((planet: Planet) => void) | null = null;
   private onClaimRequest: ((planet: Planet) => void) | null = null; // Called when user wants to claim - App handles API then calls startClaimToPosition
@@ -1063,6 +1065,7 @@ export class SpaceGame {
     onReassignRequest?: (planet: Planet) => void;
     onEditRequest?: (planet: Planet) => void;
     onFeatureToggle?: (planet: Planet) => void;
+    onShopApproach?: () => void;
   }) {
     this.onLand = callbacks.onLand || null;
     this.onTakeoff = callbacks.onTakeoff || null;
@@ -1075,6 +1078,7 @@ export class SpaceGame {
     this.onReassignRequest = callbacks.onReassignRequest || null;
     this.onEditRequest = callbacks.onEditRequest || null;
     this.onFeatureToggle = callbacks.onFeatureToggle || null;
+    this.onShopApproach = callbacks.onShopApproach || null;
   }
 
   public setFeaturedPlanetIds(ids: Set<string>) {
@@ -1657,6 +1661,16 @@ export class SpaceGame {
         }
       }
 
+      // Shop approach — fire once when entering docking range
+      if (closestPlanet.id === 'shop-station' && closestDist < closestPlanet.radius + DOCKING_DISTANCE) {
+        if (!this.shopApproachFired && this.onShopApproach) {
+          this.shopApproachFired = true;
+          this.onShopApproach();
+        }
+      } else if (closestPlanet.id !== 'shop-station') {
+        this.shopApproachFired = false;
+      }
+
       // Shop/station proximity sound
       const isStation = closestPlanet.id === 'shop-station' || closestPlanet.id === 'planet-builder' || closestPlanet.id === 'control-hub' || closestPlanet.id.startsWith('user-planet-');
       if (isStation) {
@@ -1665,6 +1679,7 @@ export class SpaceGame {
         soundManager.updateShopProximity(proximity);
       } else {
         soundManager.updateShopProximity(0);
+        this.shopApproachFired = false;
       }
     } else {
       soundManager.updateShopProximity(0);

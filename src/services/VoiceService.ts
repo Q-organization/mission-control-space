@@ -1,5 +1,5 @@
 const ELEVENLABS_KEY = 'sk_3d39d8b1fae43e41bc56d8f67e1890fac778d2dcb464a69c';
-const ELEVENLABS_VOICE = 'CwhRBWXzGAHq8TQ4Fs17'; // Roger - default ship AI
+const ELEVENLABS_VOICE = 'TDmjk7hPaTls0MPeE6PT'; // Lucien - ship AI
 const ELEVENLABS_SHOP_VOICE = 'Z7RrOqZFTyLpIlzCgfsp'; // Toby - Little Mythical Monster (shop merchant goblin)
 const SUPABASE_URL = 'https://qdizfhhsqolvuddoxugj.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkaXpmaGhzcW9sdnVkZG94dWdqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk4NzY1MjMsImV4cCI6MjA4NTQ1MjUyM30.W00V-_gmfGT19HcSfpwmFNEDlXg6Wt6rZCE_gVPj4fw';
@@ -73,7 +73,73 @@ class VoiceService {
     }
   }
 
+  private pendingShopAudio: Promise<Blob | null> | null = null;
+
+  prepareShopGreeting(ctx: ShopContext): void {
+    if (!this.enabled) return;
+
+    const t0 = performance.now();
+    const parts = [`Player: ${ctx.playerName}. Credits: ${ctx.credits}.`];
+    if (ctx.unownedItems.length > 0) {
+      parts.push(`Available to buy: ${ctx.unownedItems.join(', ')}.`);
+    } else {
+      parts.push('Owns everything in the shop.');
+    }
+    const userMessage = parts.join(' ');
+    console.log('[Voice] Pre-generating shop greeting...');
+    console.log('[Voice] Shop context:', ctx);
+
+    this.pendingShopAudio = fetch(`${SUPABASE_URL}/functions/v1/voice-greeting`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userMessage, mode: 'shop' }),
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        const text = data?.text;
+        if (!text) return null;
+        console.log(`[Voice] Shop pre-gen OpenAI: ${Math.round(performance.now() - t0)}ms → "${text}"`);
+        return fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_SHOP_VOICE}?output_format=mp3_22050_32`,
+          {
+            method: 'POST',
+            headers: { 'xi-api-key': ELEVENLABS_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
+          }
+        );
+      })
+      .then(res => res && res.ok ? res.blob() : null)
+      .then(blob => {
+        if (blob) console.log(`[Voice] Shop pre-gen total: ${Math.round(performance.now() - t0)}ms`);
+        return blob;
+      })
+      .catch(e => {
+        console.error('[Voice] Shop pre-gen failed:', e);
+        return null;
+      });
+  }
+
+  async playShopGreeting(): Promise<void> {
+    if (!this.enabled || this.speaking || !this.pendingShopAudio) return;
+    try {
+      const blob = await this.pendingShopAudio;
+      this.pendingShopAudio = null;
+      if (blob) await this.playBlob(blob);
+    } catch (e) {
+      console.error('[Voice] Shop greeting play failed:', e);
+    }
+  }
+
   async shopGreeting(ctx: ShopContext): Promise<void> {
+    // If we have a pre-generated greeting ready, play it
+    if (this.pendingShopAudio) {
+      await this.playShopGreeting();
+      return;
+    }
+    // Otherwise generate and play inline (fallback)
     if (!this.enabled || this.speaking) return;
 
     const t0 = performance.now();
@@ -85,8 +151,7 @@ class VoiceService {
         parts.push('Owns everything in the shop.');
       }
       const userMessage = parts.join(' ');
-      console.log('[Voice] Shop greeting:', ctx);
-      console.log('[Voice] Shop prompt:', userMessage);
+      console.log('[Voice] Shop greeting (not pre-generated):', ctx);
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/voice-greeting`, {
         method: 'POST',
@@ -152,6 +217,67 @@ class VoiceService {
       console.log(`[Voice] Total: ${Math.round(performance.now() - t0)}ms`);
     } catch (e) {
       console.error('[Voice] Upgrade comment failed:', e);
+    }
+  }
+
+  // Pre-generate the review voice line (text + TTS audio blob) while image is being saved
+  prepareUpgradeReview(type: UpgradeType, prompt: string, imageUrl: string): Promise<Blob | null> {
+    if (!this.enabled) return Promise.resolve(null);
+
+    const t0 = performance.now();
+    console.log('[Voice] Pre-generating review audio...');
+
+    return fetch(`${SUPABASE_URL}/functions/v1/voice-greeting`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        mode: 'upgrade_review',
+        userMessage: `Type: ${type} upgrade. Player's prompt: "${prompt}"`,
+        imageUrl,
+      }),
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        const text = data?.text;
+        if (!text) return null;
+        console.log(`[Voice] Pre-gen OpenAI: ${Math.round(performance.now() - t0)}ms → "${text}"`);
+        return fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE}?output_format=mp3_22050_32`,
+          {
+            method: 'POST',
+            headers: { 'xi-api-key': ELEVENLABS_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
+          }
+        );
+      })
+      .then(res => res && res.ok ? res.blob() : null)
+      .then(blob => {
+        if (blob) console.log(`[Voice] Pre-gen total: ${Math.round(performance.now() - t0)}ms`);
+        return blob;
+      })
+      .catch(e => {
+        console.error('[Voice] Pre-gen failed:', e);
+        return null;
+      });
+  }
+
+  // Play a pre-generated audio blob
+  async playBlob(blob: Blob): Promise<void> {
+    if (!this.enabled || this.speaking) return;
+    this.speaking = true;
+    try {
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      await new Promise<void>((resolve, reject) => {
+        audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+        audio.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+        audio.play().catch(reject);
+      });
+    } finally {
+      this.speaking = false;
     }
   }
 
