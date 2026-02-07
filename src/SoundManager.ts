@@ -202,6 +202,55 @@ const SEND_VOICE_LINES: string[] = [
   `${SOUNDS_PATH}delivery/YdYmi-dGTUzKN7_gm0v29_music_generated.mp3`,
 ];
 
+// Shop purchase voice lines - keyed by purchase type
+const SHOP_PURCHASE_VOICE_LINES: Record<string, string> = {
+  // Ship Size (10 levels)
+  'size-1': `${SOUNDS_PATH}shop-purchase/size-1.mp3`,
+  'size-2': `${SOUNDS_PATH}shop-purchase/size-2.mp3`,
+  'size-3': `${SOUNDS_PATH}shop-purchase/size-3.mp3`,
+  'size-4': `${SOUNDS_PATH}shop-purchase/size-4.mp3`,
+  'size-5': `${SOUNDS_PATH}shop-purchase/size-5.mp3`,
+  'size-6': `${SOUNDS_PATH}shop-purchase/size-6.mp3`,
+  'size-7': `${SOUNDS_PATH}shop-purchase/size-7.mp3`,
+  'size-8': `${SOUNDS_PATH}shop-purchase/size-8.mp3`,
+  'size-9': `${SOUNDS_PATH}shop-purchase/size-9.mp3`,
+  'size-10': `${SOUNDS_PATH}shop-purchase/size-10.mp3`,
+  // Ship Speed (10 levels)
+  'speed-1': `${SOUNDS_PATH}shop-purchase/speed-1.mp3`,
+  'speed-2': `${SOUNDS_PATH}shop-purchase/speed-2.mp3`,
+  'speed-3': `${SOUNDS_PATH}shop-purchase/speed-3.mp3`,
+  'speed-4': `${SOUNDS_PATH}shop-purchase/speed-4.mp3`,
+  'speed-5': `${SOUNDS_PATH}shop-purchase/speed-5.mp3`,
+  'speed-6': `${SOUNDS_PATH}shop-purchase/speed-6.mp3`,
+  'speed-7': `${SOUNDS_PATH}shop-purchase/speed-7.mp3`,
+  'speed-8': `${SOUNDS_PATH}shop-purchase/speed-8.mp3`,
+  'speed-9': `${SOUNDS_PATH}shop-purchase/speed-9.mp3`,
+  'speed-10': `${SOUNDS_PATH}shop-purchase/speed-10.mp3`,
+  // Landing Speed (5 levels)
+  'landing-1': `${SOUNDS_PATH}shop-purchase/landing-1.mp3`,
+  'landing-2': `${SOUNDS_PATH}shop-purchase/landing-2.mp3`,
+  'landing-3': `${SOUNDS_PATH}shop-purchase/landing-3.mp3`,
+  'landing-4': `${SOUNDS_PATH}shop-purchase/landing-4.mp3`,
+  'landing-5': `${SOUNDS_PATH}shop-purchase/landing-5.mp3`,
+  // Glows
+  'glow-orange': `${SOUNDS_PATH}shop-purchase/glow-orange.mp3`,
+  'glow-blue': `${SOUNDS_PATH}shop-purchase/glow-blue.mp3`,
+  'glow-purple': `${SOUNDS_PATH}shop-purchase/glow-purple.mp3`,
+  'glow-green': `${SOUNDS_PATH}shop-purchase/glow-green.mp3`,
+  // Trails
+  'trail-fire': `${SOUNDS_PATH}shop-purchase/trail-fire.mp3`,
+  'trail-ice': `${SOUNDS_PATH}shop-purchase/trail-ice.mp3`,
+  'trail-rainbow': `${SOUNDS_PATH}shop-purchase/trail-rainbow.mp3`,
+  // Weapons
+  'weapon-rifle': `${SOUNDS_PATH}shop-purchase/weapon-rifle.mp3`,
+  'weapon-tnt': `${SOUNDS_PATH}shop-purchase/weapon-tnt.mp3`,
+  'weapon-plasma': `${SOUNDS_PATH}shop-purchase/weapon-plasma.mp3`,
+  'weapon-rocket': `${SOUNDS_PATH}shop-purchase/weapon-rocket.mp3`,
+  // Utility
+  'warp-drive': `${SOUNDS_PATH}shop-purchase/warp-drive.mp3`,
+  'portal': `${SOUNDS_PATH}shop-purchase/portal.mp3`,
+};
+
 export class SoundManager {
   private sounds: Map<string, Howl> = new Map();
   private music: Map<string, Howl> = new Map();
@@ -218,6 +267,7 @@ export class SoundManager {
   private taskVoiceLines: Howl[] = [];
   private sendVoiceLines: Howl[] = [];
   private claimVoiceLines: Howl[] = [];
+  private shopPurchaseVoices: Map<string, Howl> = new Map();
   private shipVoiceIndex = 0;
   private planetVoiceIndex = 0;
   private taskVoiceIndex = 0;
@@ -348,6 +398,15 @@ export class SoundManager {
       volume: 0.8,
       preload: true,
     }));
+
+    // Shop purchase voice lines (Toby merchant voice per item/level)
+    for (const [key, src] of Object.entries(SHOP_PURCHASE_VOICE_LINES)) {
+      this.shopPurchaseVoices.set(key, new Howl({
+        src: [src],
+        volume: 0.8,
+        preload: true,
+      }));
+    }
 
     // Shuffle indices for variety
     this.shipVoiceIndex = Math.floor(Math.random() * SHIP_VOICE_LINES.length);
@@ -506,6 +565,14 @@ export class SoundManager {
     const voice = this.claimVoiceLines[this.claimVoiceIndex];
     if (voice) voice.play();
     this.claimVoiceIndex = (this.claimVoiceIndex + 1) % this.claimVoiceLines.length;
+  }
+
+  // Shop purchase voice (Toby merchant) - plays specific line for the purchased item
+  // Delayed by 1s so the upgrade SFX plays first
+  public playShopPurchaseVoice(key: string) {
+    if (!this.initialized || !this.prefs.sfxEnabled) return;
+    const voice = this.shopPurchaseVoices.get(key);
+    if (voice) setTimeout(() => voice.play(), 1000);
   }
 
   // Teleport/claim sound

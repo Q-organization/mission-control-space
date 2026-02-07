@@ -3056,6 +3056,7 @@ function App() {
     updateRemotePersonalPoints(-cost, `Ship size upgrade (level ${currentLevel + 1})`);
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
+    soundManager.playShopPurchaseVoice(`size-${currentLevel + 1}`);
   };
 
   // Buy speed upgrade (max 10 levels)
@@ -3076,6 +3077,7 @@ function App() {
     updateRemotePersonalPoints(-cost, `Ship speed upgrade (level ${currentLevel + 1})`);
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
+    soundManager.playShopPurchaseVoice(`speed-${currentLevel + 1}`);
   };
 
   // Buy landing speed upgrade (faster landing animation)
@@ -3096,6 +3098,7 @@ function App() {
     updateRemotePersonalPoints(-cost, `Landing speed upgrade (level ${currentLevel + 1})`);
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
+    soundManager.playShopPurchaseVoice(`landing-${currentLevel + 1}`);
   };
 
   // Buy or switch glow
@@ -3127,6 +3130,8 @@ function App() {
       updateRemotePersonalPoints(-glow.cost, `Ship glow: ${glow.name}`);
       updateUserShipEffects(userId, currentShip, newEffects);
       soundManager.playShipUpgrade();
+      // Map glow id to voice key: glow_orange -> glow-orange
+      soundManager.playShopPurchaseVoice(glow.id.replace('_', '-'));
     }
   };
 
@@ -3159,6 +3164,8 @@ function App() {
       updateRemotePersonalPoints(-trail.cost, `Ship trail: ${trail.name}`);
       updateUserShipEffects(userId, currentShip, newEffects);
       soundManager.playShipUpgrade();
+      // Map trail id to voice key: trail_fire -> trail-fire
+      soundManager.playShopPurchaseVoice(trail.id.replace('_', '-'));
     }
   };
 
@@ -3187,6 +3194,7 @@ function App() {
     updateRemotePersonalPoints(-SPACE_TNT_COST, 'Space TNT');
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
+    soundManager.playShopPurchaseVoice('weapon-tnt');
   };
 
   // Toggle Space TNT equip state (only one weapon at a time)
@@ -3236,6 +3244,7 @@ function App() {
     updateRemotePersonalPoints(-SPACE_RIFLE_COST, 'Space Rifle');
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
+    soundManager.playShopPurchaseVoice('weapon-rifle');
   };
 
   // Toggle Space Rifle equip state (only one weapon at a time)
@@ -3284,6 +3293,7 @@ function App() {
     updateRemotePersonalPoints(-PLASMA_CANON_COST, 'Plasma Canon');
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
+    soundManager.playShopPurchaseVoice('weapon-plasma');
   };
 
   // Toggle Plasma Canon equip state (only one weapon at a time)
@@ -3332,6 +3342,7 @@ function App() {
     updateRemotePersonalPoints(-ROCKET_LAUNCHER_COST, 'Rocket Launcher');
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
+    soundManager.playShopPurchaseVoice('weapon-rocket');
   };
 
   // Toggle Rocket Launcher equip state (only one weapon at a time)
@@ -3375,6 +3386,7 @@ function App() {
     updateRemotePersonalPoints(-WARP_DRIVE_COST, 'Warp Drive');
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
+    soundManager.playShopPurchaseVoice('warp-drive');
   };
 
   // Buy Mission Control Portal (one-time purchase - teleport to MC from home planet with G key)
@@ -3396,6 +3408,7 @@ function App() {
     updateRemotePersonalPoints(-MISSION_CONTROL_PORTAL_COST, 'Mission Control Portal');
     updateUserShipEffects(userId, currentShip, newEffects);
     soundManager.playShipUpgrade();
+    soundManager.playShopPurchaseVoice('portal');
   };
 
   // Helper to get effects with defaults
