@@ -3885,7 +3885,7 @@ function App() {
             {eventNotification.message}
           </span>
           {eventNotification.url && (
-            <span style={{ marginLeft: 8, opacity: 0.5, fontSize: '0.75rem' }}>↗</span>
+            <span style={{ marginLeft: 8, opacity: 0.5, fontSize: '0.75rem' }}>🔗</span>
           )}
         </div>
       )}
