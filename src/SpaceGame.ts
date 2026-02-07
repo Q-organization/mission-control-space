@@ -1522,7 +1522,7 @@ export class SpaceGame {
         const currentMaxSpeed = (isBoosting ? SHIP_BOOST_MAX_SPEED : SHIP_MAX_SPEED) * collisionSpeedMultiplier;
         const isFullSpeed = preCollisionSpeed >= currentMaxSpeed * 0.8;
 
-        if ((isFullSpeed || this.collisionBumpCount >= 100) && this.onCollisionVoice && now - this.lastCollisionVoice > 5000) {
+        if ((isFullSpeed || this.collisionBumpCount >= 100) && this.onCollisionVoice && now - this.lastCollisionVoice > 30000) {
           this.collisionBumpCount = 0;
           this.lastCollisionVoice = now;
           this.onCollisionVoice();
