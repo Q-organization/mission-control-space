@@ -7291,7 +7291,7 @@ export class SpaceGame {
       };
       const typeLabels: Record<string, string> = {
         'bug': 'Bug',
-        'feature': 'Feature',
+        'feature': 'Enhancement',
         'enhancement': 'Enhancement',
         'task': 'Task',
         'epic': 'Epic',

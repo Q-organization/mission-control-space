@@ -9,7 +9,7 @@ interface SoundConfig {
 }
 
 // Audio preferences storage key
-const AUDIO_PREFS_KEY = 'mission-control-audio-prefs';
+const AUDIO_PREFS_KEY = 'mission-control-audio-prefs-v2';
 
 export interface AudioPreferences {
   musicEnabled: boolean;

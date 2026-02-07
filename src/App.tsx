@@ -605,7 +605,7 @@ function App() {
 
   // Multiplayer state
   const [pointToast, setPointToast] = useState<PointTx | null>(null);
-  const [eventNotification, setEventNotification] = useState<{ message: string; type: 'join' | 'leave' | 'blackhole' | 'upgrade' | 'mission' } | null>(null);
+  const [eventNotification, setEventNotification] = useState<{ message: string; type: 'join' | 'leave' | 'blackhole' | 'upgrade' | 'mission'; url?: string } | null>(null);
   const positionBroadcastRef = useRef<number>(0);
 
   // Black hole death messages (randomly selected)
@@ -732,8 +732,8 @@ function App() {
   } = useNotionPlanets({
     teamId: team?.id || null,
     onPlanetCreated: (planet) => {
-      setEventNotification({ message: `New mission: ${planet.name}`, type: 'mission' });
-      setTimeout(() => setEventNotification(null), 4000);
+      setEventNotification({ message: `New mission: ${planet.name}`, type: 'mission', url: planet.notion_url || undefined });
+      setTimeout(() => setEventNotification(null), 5000);
     },
   });
 
@@ -2689,6 +2689,19 @@ function App() {
       return;
     }
 
+    // Optimistically update landedPlanet so modal reflects changes immediately
+    setLandedPlanet(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        ...(updates.name !== undefined && { name: updates.name }),
+        ...(updates.description !== undefined && { description: updates.description }),
+        ...(updates.task_type !== undefined && { taskType: updates.task_type }),
+        ...(updates.priority !== undefined && { priority: updates.priority }),
+        ...(updates.due_date !== undefined && { targetDate: updates.due_date || undefined }),
+      };
+    });
+
     const result = await updateNotionPlanet(landedPlanet.id, updates);
     if (result?.success) {
       setEventNotification({ message: `Task updated`, type: 'mission' });
@@ -3713,6 +3726,7 @@ function App() {
         <button style={styles.startButton} onClick={() => {
           soundManager.init();
           soundManager.playSelect();
+          soundManager.playBlackHoleSuck();
           setShowWelcome(false);
 
           // Build greeting context from already-loaded data
@@ -3840,16 +3854,25 @@ function App() {
 
       {/* Event notification (join/leave/blackhole/upgrade/mission) */}
       {eventNotification && (
-        <div style={{
-          ...styles.eventNotification,
-          borderColor: {
-            join: '#4ade80',
-            leave: '#666',
-            blackhole: '#8b5cf6',
-            upgrade: '#22d3ee',
-            mission: '#f59e0b',
-          }[eventNotification.type],
-        }}>
+        <div
+          style={{
+            ...styles.eventNotification,
+            borderColor: {
+              join: '#4ade80',
+              leave: '#666',
+              blackhole: '#8b5cf6',
+              upgrade: '#22d3ee',
+              mission: '#f59e0b',
+            }[eventNotification.type],
+            cursor: eventNotification.url ? 'pointer' : 'default',
+          }}
+          onClick={() => {
+            if (eventNotification.url) {
+              window.open(eventNotification.url, '_blank');
+              setEventNotification(null);
+            }
+          }}
+        >
           <span style={{
             color: {
               join: '#4ade80',
@@ -3861,6 +3884,9 @@ function App() {
           }}>
             {eventNotification.message}
           </span>
+          {eventNotification.url && (
+            <span style={{ marginLeft: 8, opacity: 0.5, fontSize: '0.75rem' }}>↗</span>
+          )}
         </div>
       )}
 
@@ -4217,6 +4243,18 @@ function App() {
           onDelete={() => {}}
           onTakeOff={() => setFeaturedViewPlanet(null)}
           onUpdate={async (updates) => {
+            // Optimistic update for featured view
+            setFeaturedViewPlanet(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                ...(updates.name !== undefined && { name: updates.name }),
+                ...(updates.description !== undefined && { description: updates.description }),
+                ...(updates.task_type !== undefined && { taskType: updates.task_type }),
+                ...(updates.priority !== undefined && { priority: updates.priority }),
+                ...(updates.due_date !== undefined && { targetDate: updates.due_date || undefined }),
+              };
+            });
             const result = await updateNotionPlanet(featuredViewPlanet.id, updates);
             if (result?.success) {
               setEventNotification({ message: 'Task updated', type: 'mission' });
@@ -5353,7 +5391,7 @@ function App() {
                         >
                           <option value="task">📋 Task</option>
                           <option value="bug">🐛 Bug</option>
-                          <option value="feature">✨ Feature</option>
+                          <option value="feature">✨ Enhancement</option>
                         </select>
                       </div>
                       <div style={styles.formGroup}>
@@ -5618,10 +5656,6 @@ function App() {
                     </div>
                   </div>
                 )}
-
-                <p style={{ color: '#888', fontSize: '0.8rem', marginBottom: '0.75rem', textAlign: 'center' }}>
-                  Terraform: 50 ⭐
-                </p>
 
                 <div style={styles.formGroup}>
                   <textarea

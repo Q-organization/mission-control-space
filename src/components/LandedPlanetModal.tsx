@@ -36,7 +36,7 @@ const TEAM_MEMBERS = [
 const TASK_TYPES = [
   { value: 'task', label: 'Task', image: '/notion-task.png' },
   { value: 'bug', label: 'Bug', image: '/notion-bug.png' },
-  { value: 'feature', label: 'Feature', image: '/notion-enhancement.png' },
+  { value: 'feature', label: 'Enhancement', image: '/notion-enhancement.png' },
 ];
 
 const PRIORITIES: { value: string; label: string; points: number }[] = [
