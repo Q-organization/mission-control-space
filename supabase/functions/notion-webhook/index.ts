@@ -584,63 +584,87 @@ Deno.serve(async (req) => {
           .in('id', planetIds);
         console.log(`Marked ${incompletePlanets.length} planet(s) for "${payload.name}" as completed - status is Archived`);
 
-        // Award personal points to EACH assigned player
+        // Award personal points to EACH assigned player (matches notion-complete logic)
         const pointsAwarded: string[] = [];
-        for (const planet of incompletePlanets) {
-          if (planet.assigned_to) {
-            const player = await findPlayerByNotionUser(
-              supabase,
-              team.id,
-              undefined,
-              planet.assigned_to
-            );
+        for (const incompletePlanet of incompletePlanets) {
+          const assignedTo = incompletePlanet.assigned_to;
+          console.log(`[POINTS] Processing planet ${incompletePlanet.id}, assigned_to="${assignedTo}"`);
 
-            if (player) {
-              // Get points from planet or calculate from priority
-              const { data: planetData } = await supabase
-                .from('notion_planets')
-                .select('points')
-                .eq('id', planet.id)
-                .single();
+          if (!assignedTo) {
+            console.log(`[POINTS] Skipping - no assigned_to`);
+            continue;
+          }
 
-              const points = planetData?.points || calculatePoints(payload.priority);
+          // Find player directly by username (same approach as notion-complete)
+          const { data: player, error: playerError } = await supabase
+            .from('players')
+            .select('id, username, personal_points')
+            .eq('team_id', team.id)
+            .ilike('username', assignedTo)
+            .single();
 
-              // Check for duplicate transaction
-              const { data: existingTx } = await supabase
-                .from('point_transactions')
-                .select('id')
-                .eq('notion_task_id', normalizedTaskId)
-                .eq('player_id', player.id)
-                .ilike('task_name', 'Completed:%')
-                .single();
+          if (playerError || !player) {
+            console.error(`[POINTS] Could not find player "${assignedTo}" in team ${team.id}:`, playerError?.message);
+            continue;
+          }
 
-              if (!existingTx) {
-                await supabase.from('point_transactions').insert({
-                  team_id: team.id,
-                  player_id: player.id,
-                  source: 'notion',
-                  notion_task_id: normalizedTaskId,
-                  task_name: `Completed: ${payload.name}`,
-                  points: points,
-                  point_type: 'personal',
-                });
+          console.log(`[POINTS] Found player: ${player.username} (${player.id}), current pts: ${player.personal_points}`);
 
-                // Update player's personal points
-                const { data: playerPointsData } = await supabase
-                  .from('players')
-                  .select('personal_points')
-                  .eq('id', player.id)
-                  .single();
+          // Get points from planet
+          const { data: planetData } = await supabase
+            .from('notion_planets')
+            .select('points')
+            .eq('id', incompletePlanet.id)
+            .single();
 
-                await supabase
-                  .from('players')
-                  .update({ personal_points: (playerPointsData?.personal_points || 0) + points })
-                  .eq('id', player.id);
+          const points = planetData?.points || calculatePoints(payload.priority);
+          console.log(`[POINTS] Points to award: ${points}`);
 
-                pointsAwarded.push(`${player.username}: +${points}`);
-                console.log(`Awarded ${points} personal points to ${player.username} for completing "${payload.name}"`);
-              }
-            }
+          // Check for duplicate transaction
+          const { data: existingTx } = await supabase
+            .from('point_transactions')
+            .select('id')
+            .eq('notion_task_id', normalizedTaskId)
+            .eq('player_id', player.id)
+            .ilike('task_name', 'Completed:%')
+            .single();
+
+          if (existingTx) {
+            console.log(`[POINTS] Already awarded to ${player.username} for this task - skipping`);
+            continue;
+          }
+
+          // Insert point transaction
+          const txData = {
+            team_id: team.id,
+            player_id: player.id,
+            source: 'notion',
+            notion_task_id: normalizedTaskId,
+            task_name: `Completed: ${payload.name}`,
+            points: points,
+            point_type: 'personal',
+          };
+          console.log(`[POINTS] Inserting transaction:`, JSON.stringify(txData));
+
+          const { error: txError } = await supabase.from('point_transactions').insert(txData);
+
+          if (txError) {
+            console.error(`[POINTS] Failed to insert transaction:`, JSON.stringify(txError));
+            continue;
+          }
+
+          // Update player's personal points
+          const newPoints = (player.personal_points || 0) + points;
+          const { error: updateError } = await supabase
+            .from('players')
+            .update({ personal_points: newPoints })
+            .eq('id', player.id);
+
+          if (updateError) {
+            console.error(`[POINTS] Failed to update player points:`, JSON.stringify(updateError));
+          } else {
+            pointsAwarded.push(`${player.username}: +${points}`);
+            console.log(`[POINTS] Awarded ${points} pts to ${player.username} (${player.personal_points} -> ${newPoints})`);
           }
         }
 
@@ -786,6 +810,47 @@ Deno.serve(async (req) => {
         .eq('id', existingPlanet.id);
 
       updatedPlanets.push(assignee.username || 'unassigned');
+
+      // When resetting a completed planet back to Ticket Open, clean up old point transactions
+      // so that re-archiving can award fresh points (otherwise duplicate check blocks it)
+      if (isTicketOpen && existingPlanet.completed && existingPlanet.assigned_to) {
+        console.log(`[POINTS-CLEANUP] Resetting "${payload.name}" from completed → active for ${existingPlanet.assigned_to}`);
+        const { data: cleanupPlayer } = await supabase
+          .from('players')
+          .select('id, username, personal_points')
+          .eq('team_id', team.id)
+          .ilike('username', existingPlanet.assigned_to)
+          .single();
+
+        if (cleanupPlayer) {
+          const { data: oldTxs } = await supabase
+            .from('point_transactions')
+            .select('id, points')
+            .eq('notion_task_id', normalizedTaskId)
+            .eq('player_id', cleanupPlayer.id)
+            .ilike('task_name', 'Completed:%');
+
+          if (oldTxs && oldTxs.length > 0) {
+            const totalPoints = oldTxs.reduce((sum, tx) => sum + (tx.points || 0), 0);
+            const txIds = oldTxs.map(tx => tx.id);
+
+            await supabase
+              .from('point_transactions')
+              .delete()
+              .in('id', txIds);
+
+            const newPoints = Math.max(0, (cleanupPlayer.personal_points || 0) - totalPoints);
+            await supabase
+              .from('players')
+              .update({ personal_points: newPoints })
+              .eq('id', cleanupPlayer.id);
+
+            console.log(`[POINTS-CLEANUP] Deleted ${oldTxs.length} old "Completed:" tx, subtracted ${totalPoints} pts from ${cleanupPlayer.username} (${cleanupPlayer.personal_points} -> ${newPoints})`);
+          } else {
+            console.log(`[POINTS-CLEANUP] No old "Completed:" transactions found for ${cleanupPlayer.username}`);
+          }
+        }
+      }
     }
 
     // Create planets for new assignees

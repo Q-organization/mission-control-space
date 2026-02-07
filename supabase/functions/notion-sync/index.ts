@@ -656,6 +656,43 @@ Deno.serve(async (req) => {
           } else {
             updated.push(`${parsed.name} (${assigneeKey || 'unassigned'})`);
 
+            // When resetting a completed planet back to active, clean up old point transactions
+            if (!isArchived && existingPlanet.completed && assigneeKey) {
+              const cleanupPlayer = await findPlayerByNotionUser(supabase, team.id, undefined, assigneeKey);
+              if (cleanupPlayer) {
+                const { data: oldTxs } = await supabase
+                  .from('point_transactions')
+                  .select('id, points')
+                  .eq('notion_task_id', parsed.id)
+                  .eq('player_id', cleanupPlayer.id)
+                  .ilike('task_name', 'Completed:%');
+
+                if (oldTxs && oldTxs.length > 0) {
+                  const totalPoints = oldTxs.reduce((sum, tx) => sum + (tx.points || 0), 0);
+                  const txIds = oldTxs.map(tx => tx.id);
+
+                  await supabase
+                    .from('point_transactions')
+                    .delete()
+                    .in('id', txIds);
+
+                  const { data: playerData } = await supabase
+                    .from('players')
+                    .select('personal_points')
+                    .eq('id', cleanupPlayer.id)
+                    .single();
+
+                  const newPoints = Math.max(0, (playerData?.personal_points || 0) - totalPoints);
+                  await supabase
+                    .from('players')
+                    .update({ personal_points: newPoints })
+                    .eq('id', cleanupPlayer.id);
+
+                  console.log(`Sync: Cleaned up ${oldTxs.length} old "Completed:" tx for ${cleanupPlayer.username}, subtracted ${totalPoints} pts`);
+                }
+              }
+            }
+
             // Award completion points if transitioning to archived and not already awarded
             if (isArchived && !existingPlanet.completed && assigneeKey) {
               const player = await findPlayerByNotionUser(supabase, team.id, undefined, assigneeKey);
