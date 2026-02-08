@@ -9012,8 +9012,8 @@ export class SpaceGame {
 
       // Fade in/out
       if (this.spaceWhale.fadeIn) {
-        this.spaceWhale.alpha = Math.min(0.35, this.spaceWhale.alpha + 0.002 * this.dt);
-        if (this.spaceWhale.alpha >= 0.35) this.spaceWhale.fadeIn = false;
+        this.spaceWhale.alpha = Math.min(0.55, this.spaceWhale.alpha + 0.002 * this.dt);
+        if (this.spaceWhale.alpha >= 0.55) this.spaceWhale.fadeIn = false;
       }
 
       // Despawn when out of world bounds
@@ -9033,40 +9033,48 @@ export class SpaceGame {
     const sy = this.spaceWhale.y - camera.y;
 
     // Only render if on screen (with generous margin for the whale size)
-    if (sx < -300 || sx > this.canvas.width + 300 || sy < -200 || sy > this.canvas.height + 200) return;
+    if (sx < -400 || sx > this.canvas.width + 400 || sy < -300 || sy > this.canvas.height + 300) return;
+
+    const now = Date.now();
+    const breathe = 1 + Math.sin(now * 0.0015) * 0.03; // Subtle breathing scale pulse
+    const w = this.spaceWhaleImage.width * this.spaceWhale.scale * 0.5 * breathe;
+    const h = this.spaceWhaleImage.height * this.spaceWhale.scale * 0.5 * breathe;
+    const flipX = this.spaceWhale.vx < 0;
 
     ctx.save();
     ctx.globalAlpha = this.spaceWhale.alpha;
 
-    const w = this.spaceWhaleImage.width * this.spaceWhale.scale * 0.5;
-    const h = this.spaceWhaleImage.height * this.spaceWhale.scale * 0.5;
+    // Position at whale center, flip if needed
+    ctx.translate(sx, sy);
+    if (flipX) ctx.scale(-1, 1);
 
-    // Flip whale to face direction of travel
-    if (this.spaceWhale.vx < 0) {
-      ctx.translate(sx, sy);
-      ctx.scale(-1, 1);
-      ctx.drawImage(this.spaceWhaleImage, -w / 2, -h / 2, w, h);
-    } else {
-      ctx.drawImage(this.spaceWhaleImage, sx - w / 2, sy - h / 2, w, h);
+    // Draw whale in vertical slices with sine wave offset for swimming undulation
+    const slices = 20;
+    const sliceW = this.spaceWhaleImage.width / slices;
+    const destSliceW = w / slices;
+
+    for (let i = 0; i < slices; i++) {
+      // Progressive wave: tail (end) moves more than head (start)
+      const t = i / slices;
+      const waveAmp = t * t * 8; // Quadratic increase toward tail
+      const yOffset = Math.sin(now * 0.003 + t * Math.PI * 2) * waveAmp;
+
+      ctx.drawImage(
+        this.spaceWhaleImage,
+        sliceW * i, 0, sliceW + 1, this.spaceWhaleImage.height, // source (+1 to avoid gaps)
+        -w / 2 + destSliceW * i, -h / 2 + yOffset, destSliceW + 1, h // dest
+      );
     }
 
-    // Subtle bioluminescent glow
-    const glowAlpha = this.spaceWhale.alpha * 0.3 * (0.7 + Math.sin(Date.now() * 0.002) * 0.3);
+    // Bioluminescent glow that pulses
+    const glowAlpha = this.spaceWhale.alpha * 0.25 * (0.6 + Math.sin(now * 0.002) * 0.4);
     ctx.globalAlpha = glowAlpha;
-    const glow = ctx.createRadialGradient(
-      this.spaceWhale.vx < 0 ? 0 : sx, this.spaceWhale.vx < 0 ? sy : sy,
-      0,
-      this.spaceWhale.vx < 0 ? 0 : sx, this.spaceWhale.vx < 0 ? sy : sy,
-      w * 0.6
-    );
-    glow.addColorStop(0, 'rgba(100, 200, 255, 0.15)');
-    glow.addColorStop(1, 'rgba(100, 200, 255, 0)');
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.5);
+    glow.addColorStop(0, 'rgba(100, 200, 255, 0.2)');
+    glow.addColorStop(0.5, 'rgba(80, 160, 255, 0.08)');
+    glow.addColorStop(1, 'rgba(80, 160, 255, 0)');
     ctx.fillStyle = glow;
-    if (this.spaceWhale.vx < 0) {
-      ctx.fillRect(-w, sy - w * 0.6, w * 2, w * 1.2);
-    } else {
-      ctx.fillRect(sx - w, sy - w * 0.6, w * 2, w * 1.2);
-    }
+    ctx.fillRect(-w * 0.5, -w * 0.5, w, w);
 
     ctx.globalAlpha = 1;
     ctx.restore();
