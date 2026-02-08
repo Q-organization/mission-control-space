@@ -1677,6 +1677,12 @@ export class SpaceGame {
         this.onFeatureToggle(closestPlanet);
       }
 
+      // N key to open Notion URL directly without landing
+      if (this.keys.has('n') && closestPlanet.notionUrl && this.onOpenNotion) {
+        this.keys.delete('n');
+        this.onOpenNotion(closestPlanet.notionUrl);
+      }
+
       // Check if close enough to dock (and not completed)
       // Also check ownership: can interact with shared planets (ownerId null) or own planets
       // User planets can always be landed on (for viewing other players' planets)
@@ -6965,203 +6971,260 @@ export class SpaceGame {
     ctx.fillText('???', x, y + this.blackHole.radius + 25);
   }
 
+  // Word-wrap text for canvas rendering, returns array of lines capped at maxLines
+  private wrapCanvasText(text: string, font: string, maxWidth: number, maxLines: number): string[] {
+    this.ctx.font = font;
+    const words = text.split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    const lines: string[] = [];
+    let line = words[0];
+    for (let i = 1; i < words.length; i++) {
+      const test = line + ' ' + words[i];
+      if (this.ctx.measureText(test).width <= maxWidth) {
+        line = test;
+      } else {
+        lines.push(line);
+        line = words[i];
+      }
+    }
+    lines.push(line);
+    if (lines.length > maxLines) {
+      const hasOverflow = true;
+      lines.length = maxLines;
+      if (hasOverflow) {
+        let last = lines[maxLines - 1];
+        while (this.ctx.measureText(last + '…').width > maxWidth && last.length > 1) {
+          last = last.slice(0, -1);
+        }
+        lines[maxLines - 1] = last + '…';
+      }
+    }
+    return lines;
+  }
+
   private drawPlanetInfo(planet: Planet, canDock: boolean) {
     const { ctx, canvas } = this;
+    const centerX = canvas.width / 2;
 
-    // Check if this is a user planet
     const isUserPlanet = planet.id.startsWith('user-planet-');
     const isNotionPlanet = planet.id.startsWith('notion-');
-
-    // Check if this planet belongs to another player
     const isOwnedByOther = planet.ownerId !== null &&
                            planet.ownerId !== undefined &&
                            planet.ownerId !== this.currentUser;
-    // Notion planets owned by others are viewable (not locked), other types remain locked
     const isLocked = isOwnedByOther && !isNotionPlanet;
-    const isViewOnly = isOwnedByOther && isNotionPlanet; // Can view but not complete
+    const isViewOnly = isOwnedByOther && isNotionPlanet;
     const ownerName = planet.ownerId ? planet.ownerId.charAt(0).toUpperCase() + planet.ownerId.slice(1) : null;
 
-    const boxWidth = 320;
-    const maxTextWidth = boxWidth - 30;
-    const hasRealReward = planet.realWorldReward && !planet.completed;
-    const hasNotionUrl = planet.notionUrl && !planet.completed;
-    const hasTargetDate = !isUserPlanet && (planet as any).targetDate && !planet.completed;
-    const dateOffset = hasTargetDate ? 18 : 0;
-    let boxHeight = isUserPlanet ? 100 : 110;
-    if (hasTargetDate) boxHeight += 18;
-    if (hasRealReward) boxHeight += 30;
-    if (hasNotionUrl) boxHeight += 20;
-    if (isViewOnly) boxHeight += 15; // Extra space for owner info
-    if (isNotionPlanet && !isLocked && planet.ownerId === this.currentUser) boxHeight += 16; // Extra space for pin prompt
-    const boxX = canvas.width / 2 - boxWidth / 2;
+    // ---- User planets: compact card (unchanged) ----
+    if (isUserPlanet) {
+      const boxWidth = 320;
+      const boxHeight = 100;
+      const boxX = centerX - boxWidth / 2;
+      const boxY = canvas.height - boxHeight - 20;
+
+      ctx.fillStyle = 'rgba(10, 10, 20, 0.95)';
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 12);
+      ctx.fill();
+      ctx.strokeStyle = planet.completed ? '#4ade80' : planet.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 16px Space Grotesk';
+      ctx.textAlign = 'center';
+      let nameText = planet.name;
+      const maxW = boxWidth - 30;
+      if (ctx.measureText(nameText).width > maxW) {
+        while (ctx.measureText(nameText + '...').width > maxW && nameText.length > 0) nameText = nameText.slice(0, -1);
+        nameText += '...';
+      }
+      ctx.fillText(nameText, centerX, boxY + 24);
+
+      const userId = planet.id.replace('user-planet-', '');
+      const terraformCount = userPlanetTerraformCounts.get(userId) || 0;
+      const sizeLevel = userPlanetSizeLevels.get(userId) || 0;
+      let population = 0;
+      if (terraformCount >= 3) {
+        population = Math.floor(100 * Math.pow(2.5, terraformCount - 3) * Math.pow(3, sizeLevel));
+      }
+      if (population > 0) {
+        ctx.fillStyle = '#4ade80';
+        ctx.font = '12px Space Grotesk';
+        ctx.fillText(`🏘️ ${population.toLocaleString()} inhabitants`, centerX, boxY + 44);
+      }
+      ctx.fillStyle = '#aaa';
+      ctx.font = '11px Space Grotesk';
+      ctx.fillText(`🌱 ${terraformCount} terraform${terraformCount !== 1 ? 's' : ''}`, centerX, boxY + 62);
+
+      if (canDock) {
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Space Grotesk';
+        ctx.fillText('[ SPACE ] to dock', centerX, boxY + boxHeight - 18);
+      }
+      return;
+    }
+
+    // ---- All other planets: enhanced card ----
+    const boxWidth = 380;
+    const maxTextWidth = boxWidth - 40;
+
+    // Pre-compute wrapped text
+    const namePrefix = planet.completed ? '✓ ' : (isLocked ? '🔒 ' : (isViewOnly ? '👁 ' : ''));
+    const titleFont = 'bold 15px Space Grotesk';
+    const titleLines = this.wrapCanvasText(namePrefix + (planet.name || ''), titleFont, maxTextWidth, 2);
+
+    const descFont = '12px Space Grotesk';
+    const descLines = planet.description ? this.wrapCanvasText(planet.description, descFont, maxTextWidth, 2) : [];
+
+    const hasTargetDate = !!(planet as any).targetDate && !planet.completed;
+    const hasRealReward = !!planet.realWorldReward && !planet.completed;
+    const hasReward = !!planet.reward && !planet.completed;
+    const hasNotionUrl = !!planet.notionUrl;
+    const isOwnNotionPlanet = isNotionPlanet && !isLocked && planet.ownerId === this.currentUser;
+    const isPinned = this.featuredPlanetIds.has(planet.id);
+
+    // Build action hints
+    const actionHints: string[] = [];
+    if (hasNotionUrl && !isLocked) actionHints.push('[ N ] Notion');
+    if (isOwnNotionPlanet) actionHints.push(isPinned ? '[ F ] Unpin' : '[ F ] Pin');
+
+    // Calculate box height using same Y increments as drawing
+    let dy = 28; // top padding + type badge baseline
+    dy += titleLines.length * 20; // title lines
+    if (hasTargetDate) dy += 20;
+    if (descLines.length > 0) dy += 6 + descLines.length * 16;
+    if (hasReward) dy += 20;
+    if (hasRealReward) dy += 18;
+    if (actionHints.length > 0) dy += 22;
+    if (isViewOnly && canDock && !planet.completed) dy += 16;
+    dy += 20; // dock/status prompt
+    dy += 10; // bottom padding
+
+    const boxHeight = dy;
+    const boxX = centerX - boxWidth / 2;
     const boxY = canvas.height - boxHeight - 20;
 
-    // Background (slightly tinted for view-only planets)
+    // Background
     ctx.fillStyle = isLocked ? 'rgba(30, 10, 10, 0.95)' : (isViewOnly ? 'rgba(20, 15, 30, 0.95)' : 'rgba(10, 10, 20, 0.95)');
     ctx.beginPath();
     ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 12);
     ctx.fill();
 
-    // Border with planet color (dimmed if locked, player color if view-only)
+    // Border
     ctx.strokeStyle = isLocked ? '#ff4444' : (planet.completed ? '#4ade80' : planet.color);
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Planet name - truncate if too long (no lock icon for viewable Notion planets)
-    ctx.fillStyle = isLocked ? '#ff6666' : (planet.completed ? '#4ade80' : '#fff');
-    ctx.font = 'bold 16px Space Grotesk';
+    // --- Draw content (y = text baseline position) ---
     ctx.textAlign = 'center';
-    let nameText = planet.completed ? `✓ ${planet.name}` : (isLocked ? `🔒 ${planet.name}` : (isViewOnly ? `👁 ${planet.name}` : planet.name));
-    // Truncate name if too long
-    if (ctx.measureText(nameText).width > maxTextWidth) {
-      while (ctx.measureText(nameText + '...').width > maxTextWidth && nameText.length > 0) {
-        nameText = nameText.slice(0, -1);
-      }
-      nameText = nameText + '...';
+
+    // Type badge
+    let y = boxY + 28;
+    const typeColors: Record<string, string> = { business: '#4ade80', product: '#5490ff', achievement: '#ffd700', notion: '#94a3b8', station: '#a855f7' };
+    ctx.fillStyle = typeColors[planet.type] || '#94a3b8';
+    ctx.font = '10px Space Grotesk';
+    const typeLabel = planet.type === 'notion' ? 'NOTION TASK' : planet.type.toUpperCase();
+    const ownerBadge = planet.type === 'station' ? '' : (ownerName ? ` · ${ownerName}'s Task` : ' · Shared Task');
+    ctx.fillText(typeLabel + ownerBadge, centerX, y);
+
+    // Title (wrapped, max 2 lines)
+    ctx.fillStyle = isLocked ? '#ff6666' : (planet.completed ? '#4ade80' : '#fff');
+    ctx.font = titleFont;
+    for (const line of titleLines) {
+      y += 20;
+      ctx.fillText(line, centerX, y);
     }
-    ctx.fillText(nameText, canvas.width / 2, boxY + 24);
 
-    // User planet: show population and terraform count
-    if (isUserPlanet) {
-      const userId = planet.id.replace('user-planet-', '');
-      const terraformCount = userPlanetTerraformCounts.get(userId) || 0;
-      const sizeLevel = userPlanetSizeLevels.get(userId) || 0;
-
-      // Calculate population (same formula as App.tsx)
-      let population = 0;
-      if (terraformCount >= 3) {
-        const basePop = 100;
-        const terraformMultiplier = Math.pow(2.5, terraformCount - 3);
-        const sizeMultiplier = Math.pow(3, sizeLevel);
-        population = Math.floor(basePop * terraformMultiplier * sizeMultiplier);
-      }
-
-      // Show population if > 0
-      if (population > 0) {
-        ctx.fillStyle = '#4ade80';
-        ctx.font = '12px Space Grotesk';
-        ctx.fillText(`🏘️ ${population.toLocaleString()} inhabitants`, canvas.width / 2, boxY + 44);
-      }
-
-      // Show terraform count
-      ctx.fillStyle = '#aaa';
+    // Due date
+    if (hasTargetDate) {
+      y += 20;
+      const targetDate = new Date((planet as any).targetDate + 'T00:00:00');
+      const daysLeft = Math.ceil((targetDate.getTime() - Date.now()) / 86400000);
+      const dateStr = targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      let dateColor = '#4ade80';
+      let daysText = `${daysLeft}d left`;
+      if (daysLeft < 0) { dateColor = '#ff4444'; daysText = `${Math.abs(daysLeft)}d overdue`; }
+      else if (daysLeft === 0) { dateColor = '#ff4444'; daysText = 'due today'; }
+      else if (daysLeft <= 3) { dateColor = '#ffa500'; }
+      else if (daysLeft <= 7) { dateColor = '#dddd00'; }
+      else if (daysLeft <= 14) { dateColor = '#aadd00'; }
+      ctx.fillStyle = dateColor;
       ctx.font = '11px Space Grotesk';
-      ctx.fillText(`🌱 ${terraformCount} terraform${terraformCount !== 1 ? 's' : ''}`, canvas.width / 2, boxY + 62);
-    } else {
-      // Type badge + owner info (for non-user planets)
-      const typeColors: Record<string, string> = { business: '#4ade80', product: '#5490ff', achievement: '#ffd700', notion: '#94a3b8', station: '#a855f7' };
-      ctx.fillStyle = typeColors[planet.type] || '#94a3b8';
-      ctx.font = '10px Space Grotesk';
-      const typeLabel = planet.type === 'notion' ? 'NOTION TASK' : planet.type.toUpperCase();
-      const ownerText = planet.type === 'station' ? '' : (ownerName ? ` • ${ownerName}'s Task` : ' • Shared Task');
-      ctx.fillText(typeLabel + ownerText, canvas.width / 2, boxY + 40);
+      ctx.fillText(`📅 ${dateStr} · ${daysText}`, centerX, y);
+    }
 
-      // Due date
-      if (hasTargetDate) {
-        const targetDate = new Date((planet as any).targetDate + 'T00:00:00');
-        const daysLeft = Math.ceil((targetDate.getTime() - Date.now()) / 86400000);
-        const dateStr = targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        let dateColor = '#4ade80';
-        let daysText = `${daysLeft}d left`;
-        if (daysLeft < 0) { dateColor = '#ff4444'; daysText = `${Math.abs(daysLeft)}d overdue`; }
-        else if (daysLeft === 0) { dateColor = '#ff4444'; daysText = 'due today'; }
-        else if (daysLeft <= 3) { dateColor = '#ffa500'; }
-        else if (daysLeft <= 7) { dateColor = '#dddd00'; }
-        else if (daysLeft <= 14) { dateColor = '#aadd00'; }
-        ctx.fillStyle = dateColor;
-        ctx.font = '11px Space Grotesk';
-        ctx.fillText(`📅 ${dateStr} · ${daysText}`, canvas.width / 2, boxY + 55);
-      }
-
-      // Description - truncate if too long
-      if (planet.description) {
-        ctx.fillStyle = isLocked ? '#777' : '#aaa';
-        ctx.font = '12px Space Grotesk';
-        let descText = planet.description;
-        if (ctx.measureText(descText).width > maxTextWidth) {
-          while (ctx.measureText(descText + '...').width > maxTextWidth && descText.length > 0) {
-            descText = descText.slice(0, -1);
-          }
-          descText = descText + '...';
-        }
-        ctx.fillText(descText, canvas.width / 2, boxY + 60 + dateOffset);
-      }
-
-      // Reward type
-      if (planet.reward && !planet.completed) {
-        const rewardLabels: Record<string, string> = {
-          'speed_boost': '🚀 Speed Boost',
-          'acceleration': '⚡ Better Acceleration',
-          'handling': '🎯 Improved Handling',
-          'shield': '🛡️ Shield Effect',
-          'trail': '✨ Trail Effect',
-          'glow': '💫 Ship Glow',
-          'size': '📈 Ship Size Up',
-          'special': '🌟 Special Upgrade',
-        };
-        ctx.fillStyle = isLocked ? '#886600' : '#ffa500';
-        ctx.font = 'bold 11px Space Grotesk';
-        ctx.fillText(`Ship Reward: ${rewardLabels[planet.reward] || planet.reward}`, canvas.width / 2, boxY + 80 + dateOffset);
-      }
-
-      // Real world reward (view-only planets can see this too)
-      if (hasRealReward) {
-        ctx.fillStyle = isLocked ? '#884466' : '#ff6b9d';
-        ctx.font = 'bold 11px Space Grotesk';
-        ctx.fillText(`🎁 Real Reward: ${planet.realWorldReward}`, canvas.width / 2, boxY + 100 + dateOffset);
-      }
-
-      // Notion URL hint (not dimmed for view-only since they can still open it)
-      if (hasNotionUrl) {
-        ctx.fillStyle = isLocked ? '#555' : '#64748b';
-        ctx.font = '10px Space Grotesk';
-        const baseNotionY = hasRealReward ? boxY + 118 + dateOffset : boxY + 98 + dateOffset;
-        ctx.fillText('📋 Click to open in Notion', canvas.width / 2, baseNotionY);
+    // Description (wrapped, max 2 lines)
+    if (descLines.length > 0) {
+      y += 6;
+      ctx.fillStyle = isLocked ? '#777' : '#aaa';
+      ctx.font = descFont;
+      for (const line of descLines) {
+        y += 16;
+        ctx.fillText(line, centerX, y);
       }
     }
 
-    // Feature pin prompt for own Notion planets (above dock prompt)
-    const isOwnNotionPlanet = isNotionPlanet && !isLocked && planet.ownerId === this.currentUser;
-    if (isOwnNotionPlanet) {
-      const pinPromptY = boxY + boxHeight - 34;
-      const isPinned = this.featuredPlanetIds.has(planet.id);
-      ctx.fillStyle = '#ffd700';
+    // Ship reward
+    if (hasReward) {
+      y += 20;
+      const rewardLabels: Record<string, string> = {
+        'speed_boost': '🚀 Speed Boost', 'acceleration': '⚡ Better Acceleration',
+        'handling': '🎯 Improved Handling', 'shield': '🛡️ Shield Effect',
+        'trail': '✨ Trail Effect', 'glow': '💫 Ship Glow',
+        'size': '📈 Ship Size Up', 'special': '🌟 Special Upgrade',
+      };
+      ctx.fillStyle = isLocked ? '#886600' : '#ffa500';
+      ctx.font = 'bold 11px Space Grotesk';
+      ctx.fillText(`Ship Reward: ${rewardLabels[planet.reward!] || planet.reward}`, centerX, y);
+    }
+
+    // Real world reward
+    if (hasRealReward) {
+      y += 18;
+      ctx.fillStyle = isLocked ? '#884466' : '#ff6b9d';
+      ctx.font = 'bold 11px Space Grotesk';
+      ctx.fillText(`🎁 Real Reward: ${planet.realWorldReward}`, centerX, y);
+    }
+
+    // Action hints row ([ N ] Notion · [ F ] Pin)
+    if (actionHints.length > 0) {
+      y += 22;
       ctx.font = '10px Space Grotesk';
-      ctx.textAlign = 'center';
-      ctx.fillText(isPinned ? '[ F ] Unpin' : '[ F ] Pin to HUD', canvas.width / 2, pinPromptY);
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(actionHints.join('    ·    '), centerX, y);
+    }
+
+    // View-only owner info
+    if (isViewOnly && canDock && !planet.completed) {
+      y += 16;
+      ctx.fillStyle = '#a78bfa';
+      ctx.font = '10px Space Grotesk';
+      ctx.fillText(`Assigned to ${ownerName}`, centerX, y);
     }
 
     // Dock prompt / locked message / completed status
-    const promptY = boxY + boxHeight - 18;
-    if (isLocked && !isUserPlanet) {
+    y += 20;
+    if (isLocked) {
       ctx.fillStyle = '#ff4444';
       ctx.font = '11px Space Grotesk';
-      ctx.fillText(`This is ${ownerName}'s task`, canvas.width / 2, promptY);
+      ctx.fillText(`This is ${ownerName}'s task`, centerX, y);
     } else if (isViewOnly && canDock && !planet.completed) {
-      // View-only Notion planet - show owner and allow docking
-      ctx.fillStyle = '#a78bfa';
-      ctx.font = '10px Space Grotesk';
-      ctx.fillText(`Assigned to ${ownerName}`, canvas.width / 2, promptY - 14);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px Space Grotesk';
-      ctx.fillText('[ SPACE ] to view', canvas.width / 2, promptY);
+      ctx.fillText('[ SPACE ] to view', centerX, y);
     } else if (canDock && !planet.completed) {
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px Space Grotesk';
-      ctx.fillText('[ SPACE ] to dock', canvas.width / 2, promptY);
-    } else if (planet.completed && planet.id.startsWith('notion-') && canDock) {
-      // Completed Notion planet - can dock to destroy
+      ctx.fillText('[ SPACE ] to dock', centerX, y);
+    } else if (planet.completed && isNotionPlanet && canDock) {
       ctx.fillStyle = '#ff6600';
       ctx.font = 'bold 12px Space Grotesk';
-      ctx.fillText('[ SPACE ] to dock', canvas.width / 2, promptY);
+      ctx.fillText('[ SPACE ] to dock', centerX, y);
     } else if (planet.completed) {
       ctx.fillStyle = '#4ade80';
       ctx.font = '11px Space Grotesk';
-      ctx.fillText('Completed!', canvas.width / 2, promptY);
-    } else if (isUserPlanet && canDock) {
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 12px Space Grotesk';
-      ctx.fillText('[ SPACE ] to dock', canvas.width / 2, promptY);
+      ctx.fillText('Completed!', centerX, y);
     }
   }
 
