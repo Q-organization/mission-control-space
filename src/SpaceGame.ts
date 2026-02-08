@@ -8765,13 +8765,28 @@ export class SpaceGame {
   private renderCompletionEffects() {
     const { ctx, canvas } = this;
 
-    // Brief star brightness boost after completing a task
+    // Brief sparkle burst near ship after completing a task
     if (this.completionGlowTimer > 0) {
-      const glowAlpha = (this.completionGlowTimer / 90) * 0.08;
+      const { ship, camera } = this.state;
+      const sx = ship.x - camera.x;
+      const sy = ship.y - camera.y;
+      const progress = 1 - (this.completionGlowTimer / 90);
+
       ctx.save();
-      ctx.globalAlpha = glowAlpha;
-      ctx.fillStyle = '#ffd700';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const sparkCount = 6;
+      for (let i = 0; i < sparkCount; i++) {
+        const angle = (i / sparkCount) * Math.PI * 2 + progress * 2;
+        const dist = 30 + progress * 50;
+        const px = sx + Math.cos(angle) * dist;
+        const py = sy + Math.sin(angle) * dist;
+        const sparkAlpha = Math.max(0, 1 - progress * 1.3) * 0.6;
+
+        ctx.beginPath();
+        ctx.arc(px, py, 1.5 * (1 - progress), 0, Math.PI * 2);
+        ctx.fillStyle = '#ffd700';
+        ctx.globalAlpha = sparkAlpha;
+        ctx.fill();
+      }
       ctx.globalAlpha = 1;
       ctx.restore();
     }
