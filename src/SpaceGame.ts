@@ -473,7 +473,7 @@ export class SpaceGame {
   private remoteEmotes: Map<string, { type: string; timer: number }> = new Map();
   // No waypoints — merchant uses parametric path from Date.now() for deterministic sync
   private static readonly NOMAD_DOCKING_DISTANCE = 120;
-  private static readonly NOMAD_RENDER_SIZE = 120;
+  private static readonly NOMAD_RENDER_SIZE = 156;
 
   // Escort drones (permanent companions based on ship level)
   private escortDrones: EscortDrone[] = [];
@@ -1533,6 +1533,8 @@ export class SpaceGame {
       // Still update camera and particles
       this.updateCamera();
       this.updateParticles();
+      // Keep nomad music low during landing animation
+      if (this.landingPlanet?.id === '__nomad__') soundManager.updateNomadProximity(1, true);
       return;
     }
 
@@ -1541,6 +1543,8 @@ export class SpaceGame {
       this.updateLandedState();
       this.updateCamera();
       this.updateParticles();
+      // Keep nomad music low while in shop
+      if (this.landedOnNomad) soundManager.updateNomadProximity(1, true);
       return;
     }
 
@@ -9311,8 +9315,8 @@ export class SpaceGame {
       ship.vy = 0;
       ship.rotation = -Math.PI / 2; // Point up
 
-      // Jingle at full proximity when landed
-      soundManager.updateNomadProximity(1);
+      // Music at low volume when landed (in shop, don't overpower dialogue)
+      soundManager.updateNomadProximity(1, true);
       return; // ESC to leave is handled by App.tsx closing the modal
     }
 
@@ -9321,10 +9325,11 @@ export class SpaceGame {
     const shipDy = ship.y - nomad.y;
     const shipDist = Math.sqrt(shipDx * shipDx + shipDy * shipDy);
 
-    // Jingle proximity (within 600px)
+    // Music proximity (within 600px) — quiet during landing animation
+    const isLandingOnNomad = this.isLanding && this.landingPlanet?.id === '__nomad__';
     if (shipDist < 600) {
       const proximity = 1 - shipDist / 600;
-      soundManager.updateNomadProximity(proximity);
+      soundManager.updateNomadProximity(proximity, isLandingOnNomad);
     } else {
       soundManager.updateNomadProximity(0);
     }
@@ -9409,10 +9414,18 @@ export class SpaceGame {
     }
 
     // Draw nomad van image or fallback
-    ctx.translate(sx, sy);
-    ctx.rotate(nomad.rotation + Math.PI / 2);
+    // Lowrider bounce — bumping to the beat like a pimped car
+    const now = Date.now();
+    const beatBPM = 40; // slow lowrider bounce
+    const beatPhase = (now / 1000) * (beatBPM / 60) * Math.PI * 2;
+    const bounce = Math.abs(Math.sin(beatPhase)) * 4; // sharp upward bounce, 4px amplitude
+    const tilt = Math.sin(beatPhase * 0.5) * 0.04; // subtle side-to-side lean
+    const scaleBreath = 1 + Math.abs(Math.sin(beatPhase)) * 0.03; // tiny scale pulse on beat
+
+    ctx.translate(sx, sy - bounce);
+    ctx.rotate(nomad.rotation + Math.PI / 2 + tilt);
     if (this.neonNomadImage) {
-      const size = SpaceGame.NOMAD_RENDER_SIZE;
+      const size = SpaceGame.NOMAD_RENDER_SIZE * scaleBreath;
       ctx.drawImage(this.neonNomadImage, -size / 2, -size / 2, size, size);
     } else {
       // Fallback: colored diamond shape
@@ -9437,7 +9450,7 @@ export class SpaceGame {
       ctx.shadowColor = '#00ffff';
       ctx.shadowBlur = 6;
       ctx.fillStyle = '#00ffff';
-      ctx.fillText('[ SPACE ] Pimp My Ship', sx, sy + SpaceGame.NOMAD_RENDER_SIZE / 2 + 20);
+      ctx.fillText('[ SPACE ]', sx, sy + SpaceGame.NOMAD_RENDER_SIZE / 2 + 20);
       ctx.shadowBlur = 0;
     }
 

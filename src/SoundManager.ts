@@ -149,7 +149,7 @@ const SOUND_CONFIGS: Record<string, SoundConfig> = {
 
   // Neon Nomad
   nomadJingle: {
-    src: [`${SOUNDS_PATH}nomad/nomad-jingle.mp3`],
+    src: [`${SOUNDS_PATH}nomad/nomad-pimp.mp3`],
     volume: 0,
     loop: true,
   },
@@ -874,12 +874,13 @@ export class SoundManager {
     return { ...this.prefs };
   }
 
-  // Neon Nomad proximity effect (jingle fades in/out)
-  public updateNomadProximity(proximity: number) {
+  // Neon Nomad proximity effect (music fades in/out, quiet when landed/in shop)
+  public updateNomadProximity(proximity: number, landed: boolean = false) {
     const sound = this.sounds.get('nomadJingle');
     if (!sound || this.nomadJingleId === null) return;
 
-    const volume = Math.pow(proximity, 2) * 0.4;
+    const maxVolume = landed ? 0.06 : 0.25;
+    const volume = Math.pow(proximity, 2) * maxVolume;
     sound.volume(volume, this.nomadJingleId);
   }
 
