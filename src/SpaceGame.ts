@@ -441,10 +441,10 @@ export class SpaceGame {
 
   // Space whale (rare ambient creature)
   private spaceWhaleImage: HTMLImageElement | null = null;
-  private spaceWhale: { x: number; y: number; vx: number; vy: number; alpha: number; scale: number; active: boolean; fadeIn: boolean } = {
-    x: 0, y: 0, vx: 0, vy: 0, alpha: 0, scale: 1, active: false, fadeIn: false
+  // Whale uses deterministic parametric path from Date.now() for multiplayer sync
+  private spaceWhale: { x: number; y: number; alpha: number; scale: number; rotation: number } = {
+    x: 0, y: 0, alpha: 0, scale: 0.8, rotation: 0
   };
-  private lastWhaleSpawn: number = 0;
   private whaleEncountered: boolean = false;
   private whaleEncounterTimer: number = 0;
   private whaleSoundPlayed: boolean = false;
@@ -9094,56 +9094,45 @@ export class SpaceGame {
   // ===== SPACE WHALE - Rare ambient creature =====
   private updateSpaceWhale() {
     const now = Date.now();
-    const spawnInterval = 180000 + Math.random() * 120000; // 3-5 minutes
+    const t = now / 1000;
 
-    if (!this.spaceWhale.active && now - this.lastWhaleSpawn > spawnInterval && this.spaceWhaleImage) {
-      // Spawn a whale somewhere in the world, drifting across
-      const edge = Math.floor(Math.random() * 4);
-      let wx = 0, wy = 0, wvx = 0, wvy = 0;
-      const speed = 0.3 + Math.random() * 0.2;
+    // Deterministic parametric position — slow, graceful drift synced across all clients
+    // Different frequencies than nomad so they move independently
+    const rawX = 5000
+      + 4200 * Math.sin(t * 0.0031 + 4.1)    // very slow sweep (~34 min)
+      + 2200 * Math.sin(t * 0.0079 + 1.9)    // medium sweep (~13 min)
+      + 500 * Math.sin(t * 0.0173 + 2.7);    // gentle jitter (~6 min)
+    const rawY = 5000
+      + 4200 * Math.cos(t * 0.0037 + 0.6)    // very slow sweep (~28 min)
+      + 2200 * Math.cos(t * 0.0067 + 3.4)    // medium sweep (~16 min)
+      + 500 * Math.cos(t * 0.0149 + 5.1);    // gentle jitter (~7 min)
 
-      if (edge === 0) { // from left
-        wx = -200; wy = 1000 + Math.random() * 8000;
-        wvx = speed; wvy = (Math.random() - 0.5) * 0.1;
-      } else if (edge === 1) { // from right
-        wx = 10200; wy = 1000 + Math.random() * 8000;
-        wvx = -speed; wvy = (Math.random() - 0.5) * 0.1;
-      } else if (edge === 2) { // from top
-        wx = 1000 + Math.random() * 8000; wy = -200;
-        wvx = (Math.random() - 0.5) * 0.1; wvy = speed;
-      } else { // from bottom
-        wx = 1000 + Math.random() * 8000; wy = 10200;
-        wvx = (Math.random() - 0.5) * 0.1; wvy = -speed;
-      }
+    // Wrap around map edges
+    this.spaceWhale.x = ((rawX % 10000) + 10000) % 10000;
+    this.spaceWhale.y = ((rawY % 10000) + 10000) % 10000;
 
-      this.spaceWhale = {
-        x: wx, y: wy, vx: wvx, vy: wvy,
-        alpha: 0, scale: 0.6 + Math.random() * 0.4,
-        active: true, fadeIn: true
-      };
-      this.lastWhaleSpawn = now;
-      this.whaleSoundPlayed = false;
-    }
+    // Velocity for rotation (analytical derivative)
+    const vx = 4200 * 0.0031 * Math.cos(t * 0.0031 + 4.1)
+      + 2200 * 0.0079 * Math.cos(t * 0.0079 + 1.9)
+      + 500 * 0.0173 * Math.cos(t * 0.0173 + 2.7);
+    const vy = -4200 * 0.0037 * Math.sin(t * 0.0037 + 0.6)
+      - 2200 * 0.0067 * Math.sin(t * 0.0067 + 3.4)
+      - 500 * 0.0149 * Math.sin(t * 0.0149 + 5.1);
 
-    if (this.spaceWhale.active) {
-      this.spaceWhale.x += this.spaceWhale.vx * this.dt;
-      this.spaceWhale.y += this.spaceWhale.vy * this.dt;
+    // Smooth rotation toward travel direction
+    const targetRot = Math.atan2(vy, vx);
+    let diff = targetRot - this.spaceWhale.rotation;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    this.spaceWhale.rotation += diff * 0.03;
 
-      // Gentle sine wave undulation perpendicular to travel direction
-      const travelAngle = Math.atan2(this.spaceWhale.vy, this.spaceWhale.vx);
-      const perpX = -Math.sin(travelAngle);
-      const perpY = Math.cos(travelAngle);
-      const wave = Math.sin(now * 0.0008) * 0.15 * this.dt;
-      this.spaceWhale.x += perpX * wave;
-      this.spaceWhale.y += perpY * wave;
+    // Visibility cycle: visible ~60% of the time, fading in/out gracefully
+    const visibilityCycle = Math.sin(t * 0.0052 + 0.8); // ~20 min full cycle
+    const whaleVisible = visibilityCycle > -0.2;
+    this.spaceWhale.alpha = whaleVisible ? Math.min(0.55, (visibilityCycle + 0.2) * 0.8) : 0;
 
-      // Fade in/out
-      if (this.spaceWhale.fadeIn) {
-        this.spaceWhale.alpha = Math.min(0.55, this.spaceWhale.alpha + 0.002 * this.dt);
-        if (this.spaceWhale.alpha >= 0.55) this.spaceWhale.fadeIn = false;
-      }
-
-      // Proximity to player - whale sound + encounter achievement
+    // Proximity to player - whale sound + encounter achievement (only when visible)
+    if (this.spaceWhale.alpha > 0.1 && this.spaceWhaleImage) {
       const { ship } = this.state;
       const dx = ship.x - this.spaceWhale.x;
       const dy = ship.y - this.spaceWhale.y;
@@ -9153,18 +9142,15 @@ export class SpaceGame {
         this.whaleSoundPlayed = true;
         soundManager.playSpaceWhale();
       }
+      if (dist > 600) {
+        this.whaleSoundPlayed = false;
+      }
 
       if (dist < 300 && !this.whaleEncountered) {
         this.whaleEncountered = true;
         this.whaleEncounterTimer = 240;
         this.tryUnlockAchievement('whale_encounter');
       }
-
-      // Wrap around map edges (toroidal)
-      if (this.spaceWhale.x < -200) this.spaceWhale.x += 10400;
-      else if (this.spaceWhale.x > 10200) this.spaceWhale.x -= 10400;
-      if (this.spaceWhale.y < -200) this.spaceWhale.y += 10400;
-      else if (this.spaceWhale.y > 10200) this.spaceWhale.y -= 10400;
     }
 
     // Achievement timer
@@ -9174,7 +9160,7 @@ export class SpaceGame {
   }
 
   private renderSpaceWhale() {
-    if (!this.spaceWhale.active || !this.spaceWhaleImage) return;
+    if (this.spaceWhale.alpha < 0.01 || !this.spaceWhaleImage) return;
 
     const { camera } = this.state;
     const ctx = this.ctx;
@@ -9189,14 +9175,13 @@ export class SpaceGame {
     const w = this.spaceWhaleImage.width * this.spaceWhale.scale * 0.5 * breathe;
     const h = this.spaceWhaleImage.height * this.spaceWhale.scale * 0.5 * breathe;
 
-    // Rotation: face direction of travel + gentle oscillation for swimming feel
-    const travelAngle = Math.atan2(this.spaceWhale.vy, this.spaceWhale.vx);
-    const swimOscillation = Math.sin(now * 0.002) * 0.06; // Subtle body sway
+    // Rotation from deterministic path + gentle oscillation for swimming feel
+    const swimOscillation = Math.sin(now * 0.002) * 0.06;
 
     ctx.save();
     ctx.globalAlpha = this.spaceWhale.alpha;
     ctx.translate(sx, sy);
-    ctx.rotate(travelAngle + swimOscillation);
+    ctx.rotate(this.spaceWhale.rotation + swimOscillation);
 
     // Draw whale (image faces right by default)
     ctx.drawImage(this.spaceWhaleImage, -w / 2, -h / 2, w, h);
