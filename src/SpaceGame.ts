@@ -8765,7 +8765,7 @@ export class SpaceGame {
   private renderCompletionEffects() {
     const { ctx, canvas } = this;
 
-    // Brief sparkle burst near ship after completing a task
+    // Orbital burst: light dots orbit the ship then shoot off
     if (this.completionGlowTimer > 0) {
       const { ship, camera } = this.state;
       const sx = ship.x - camera.x;
@@ -8773,19 +8773,59 @@ export class SpaceGame {
       const progress = 1 - (this.completionGlowTimer / 90);
 
       ctx.save();
-      const sparkCount = 6;
-      for (let i = 0; i < sparkCount; i++) {
-        const angle = (i / sparkCount) * Math.PI * 2 + progress * 2;
-        const dist = 30 + progress * 50;
-        const px = sx + Math.cos(angle) * dist;
-        const py = sy + Math.sin(angle) * dist;
-        const sparkAlpha = Math.max(0, 1 - progress * 1.3) * 0.6;
+      const dotCount = 4;
+      const orbitPhase = progress * Math.PI * 4; // 2 full orbits
+      const orbitRadius = 25 + progress * 10;
 
+      for (let i = 0; i < dotCount; i++) {
+        const baseAngle = (i / dotCount) * Math.PI * 2;
+        const dotAlpha = Math.max(0, 1 - progress * 1.2) * 0.8;
+
+        let px: number, py: number, dotSize: number;
+
+        if (progress < 0.65) {
+          // Orbiting phase - dots circle the ship
+          const angle = baseAngle + orbitPhase;
+          px = sx + Math.cos(angle) * orbitRadius;
+          py = sy + Math.sin(angle) * orbitRadius;
+          dotSize = 2.5;
+        } else {
+          // Launch phase - dots shoot outward
+          const launchProgress = (progress - 0.65) / 0.35;
+          const launchAngle = baseAngle + orbitPhase;
+          const launchDist = orbitRadius + launchProgress * 120;
+          px = sx + Math.cos(launchAngle) * launchDist;
+          py = sy + Math.sin(launchAngle) * launchDist;
+          dotSize = 2.5 * (1 - launchProgress);
+        }
+
+        // Dot glow
         ctx.beginPath();
-        ctx.arc(px, py, 1.5 * (1 - progress), 0, Math.PI * 2);
-        ctx.fillStyle = '#ffd700';
-        ctx.globalAlpha = sparkAlpha;
+        ctx.arc(px, py, dotSize + 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#88ccff';
+        ctx.globalAlpha = dotAlpha * 0.2;
         ctx.fill();
+
+        // Dot core
+        ctx.beginPath();
+        ctx.arc(px, py, dotSize, 0, Math.PI * 2);
+        ctx.fillStyle = '#ccddff';
+        ctx.globalAlpha = dotAlpha;
+        ctx.fill();
+
+        // Tiny trail behind each dot during orbit
+        if (progress < 0.65) {
+          const trailAngle = baseAngle + orbitPhase - 0.3;
+          const tx = sx + Math.cos(trailAngle) * orbitRadius;
+          const ty = sy + Math.sin(trailAngle) * orbitRadius;
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(px, py);
+          ctx.strokeStyle = '#88ccff';
+          ctx.globalAlpha = dotAlpha * 0.3;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
       }
       ctx.globalAlpha = 1;
       ctx.restore();
