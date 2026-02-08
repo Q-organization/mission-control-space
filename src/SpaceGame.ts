@@ -396,6 +396,24 @@ export class SpaceGame {
   private idleTimer: number = 0;
   private idleParticles: { angle: number; dist: number; speed: number; size: number; alpha: number }[] = [];
 
+  // Passive achievements & ambient dynamics
+  private visitedZones: Set<string> = new Set();
+  private explorerTriggered: boolean = false;
+  private explorerEffectTimer: number = 0;
+  private sessionCompletions: number = 0;
+  private completionGlowTimer: number = 0;
+  private completionMilestone: number = 0;
+  private completionMilestoneTimer: number = 0;
+  private blackHoleCloseCallCount: number = 0;
+  private wasInBlackHolePull: boolean = false;
+  private totalDistanceTraveled: number = 0;
+  private prevDistX: number = 0;
+  private prevDistY: number = 0;
+  private distanceMilestoneReached: number = 0;
+  private distanceMilestoneTimer: number = 0;
+  private milestoneText: string = '';
+  private milestoneColor: string = '#ffd700';
+
   // Escort drones (permanent companions based on ship level)
   private escortDrones: EscortDrone[] = [];
   private readonly DRONE_UNLOCK_INTERVAL: number = 5; // Unlock 1 drone every 5 ship levels
@@ -1232,6 +1250,20 @@ export class SpaceGame {
       planet.completed = true;
       this.state.completedCount++;
       // Note: shipLevel is only updated via upgradeShip/updateShipImage to match multiplayer sync
+
+      // Track session completions for passive achievements
+      this.sessionCompletions++;
+      this.completionGlowTimer = 90; // Brief glow for 1.5 seconds
+
+      // Milestone celebrations at 5, 10, 25, 50
+      const milestones = [5, 10, 25, 50];
+      for (const m of milestones) {
+        if (this.sessionCompletions === m && this.completionMilestone < m) {
+          this.completionMilestone = m;
+          this.completionMilestoneTimer = 180;
+          break;
+        }
+      }
     }
   }
 
@@ -1575,6 +1607,11 @@ export class SpaceGame {
         ship.vx += nx * pullStrength * this.dt;
         ship.vy += ny * pullStrength * this.dt;
 
+        // Track black hole close calls
+        if (!this.wasInBlackHolePull) {
+          this.wasInBlackHolePull = true;
+        }
+
         // Sound: update black hole proximity
         const proximity = 1 - (bhDist / this.blackHole.pullRadius);
         soundManager.updateBlackHoleProximity(proximity);
@@ -1604,6 +1641,12 @@ export class SpaceGame {
       } else {
         // Far from black hole - silence it
         soundManager.updateBlackHoleProximity(0);
+
+        // Escaped the pull radius - count as close call
+        if (this.wasInBlackHolePull) {
+          this.wasInBlackHolePull = false;
+          this.blackHoleCloseCallCount++;
+        }
       }
     } else {
       // Ship is being sucked in - animate and then rick roll
@@ -1684,6 +1727,7 @@ export class SpaceGame {
     this.updateZoneTitle();
     this.updateShootingStars();
     this.updateIdleEffect();
+    this.updatePassiveAchievements();
     if (this.konamiEffectTimer > 0) {
       this.konamiEffectTimer -= this.dt;
       if (this.konamiEffectTimer <= 0) {
@@ -5354,6 +5398,15 @@ export class SpaceGame {
       this.zoneTitleText = closestZone.name;
       this.zoneTitleColor = closestZone.color;
       this.zoneTitleOpacity = 1.0;
+
+      // Track zone visits for explorer achievement
+      this.visitedZones.add(closestZone.id);
+      // Check if all non-test zones visited (9 zones minus test = 8)
+      const requiredZones = ZONES.filter(z => z.ownerId !== TEST_PLAYER_ID || this.currentUser === TEST_PLAYER_ID);
+      if (!this.explorerTriggered && this.visitedZones.size >= requiredZones.length) {
+        this.explorerTriggered = true;
+        this.explorerEffectTimer = 240; // 4 seconds
+      }
     }
 
     // Fade out the title over time
@@ -6085,6 +6138,9 @@ export class SpaceGame {
     // Draw shooting stars (behind everything, just above stars)
     this.renderShootingStars();
 
+    // Draw speed lines when going fast
+    this.renderSpeedLines();
+
     // Draw zone backgrounds and boundaries
     this.drawZones();
 
@@ -6198,6 +6254,12 @@ export class SpaceGame {
 
     // Draw idle ship particles
     this.renderIdleEffect();
+
+    // Draw completion glow
+    this.renderCompletionEffects();
+
+    // Draw milestone/achievement text
+    this.renderMilestoneText();
 
     // Draw Konami code effect
     if (this.konamiActivated) {
@@ -7024,11 +7086,22 @@ export class SpaceGame {
 
     ctx.restore();
 
-    // Label (mysterious)
-    ctx.fillStyle = '#8844ff';
+    // Label (evolves with close calls)
     ctx.font = '12px Space Grotesk';
     ctx.textAlign = 'center';
-    ctx.fillText('???', x, y + this.blackHole.radius + 25);
+    if (this.blackHoleCloseCallCount >= 10) {
+      ctx.fillStyle = '#cc88ff';
+      ctx.fillText('The Maw', x, y + this.blackHole.radius + 25);
+    } else if (this.blackHoleCloseCallCount >= 5) {
+      ctx.fillStyle = '#aa66ff';
+      ctx.fillText('...it remembers', x, y + this.blackHole.radius + 25);
+    } else if (this.blackHoleCloseCallCount >= 3) {
+      ctx.fillStyle = '#9955ff';
+      ctx.fillText('??!', x, y + this.blackHole.radius + 25);
+    } else {
+      ctx.fillStyle = '#8844ff';
+      ctx.fillText('???', x, y + this.blackHole.radius + 25);
+    }
   }
 
   // Word-wrap text for canvas rendering, returns array of lines capped at maxLines
@@ -8605,5 +8678,208 @@ export class SpaceGame {
     }
 
     ctx.restore();
+  }
+
+  // ===== PASSIVE ACHIEVEMENTS & DYNAMICS =====
+
+  private updatePassiveAchievements() {
+    const { ship } = this.state;
+
+    // Track distance traveled
+    const dx = ship.x - this.prevDistX;
+    const dy = ship.y - this.prevDistY;
+    // Ignore large jumps (wrapping, teleporting)
+    if (Math.abs(dx) < 100 && Math.abs(dy) < 100) {
+      this.totalDistanceTraveled += Math.sqrt(dx * dx + dy * dy);
+    }
+    this.prevDistX = ship.x;
+    this.prevDistY = ship.y;
+
+    // Distance milestones (in pixels): 50k, 150k, 500k, 1M
+    const distMilestones = [
+      { dist: 50000, label: 'Voyager' },
+      { dist: 150000, label: 'Star Wanderer' },
+      { dist: 500000, label: 'Cosmic Drifter' },
+      { dist: 1000000, label: 'Light Traveler' },
+    ];
+    for (const m of distMilestones) {
+      if (this.totalDistanceTraveled >= m.dist && this.distanceMilestoneReached < m.dist) {
+        this.distanceMilestoneReached = m.dist;
+        this.distanceMilestoneTimer = 200;
+        this.milestoneText = m.label;
+        this.milestoneColor = '#88ccff';
+      }
+    }
+
+    // Decay timers
+    if (this.completionGlowTimer > 0) this.completionGlowTimer -= this.dt;
+    if (this.completionMilestoneTimer > 0) this.completionMilestoneTimer -= this.dt;
+    if (this.explorerEffectTimer > 0) this.explorerEffectTimer -= this.dt;
+    if (this.distanceMilestoneTimer > 0) this.distanceMilestoneTimer -= this.dt;
+  }
+
+  private renderSpeedLines() {
+    const { ctx, canvas, state } = this;
+    const { ship } = state;
+
+    const speed = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy);
+    const speedMultiplier = 1 + ((this.shipEffects.speedBonus || 0) * 0.2);
+    const maxSpeed = SHIP_BOOST_MAX_SPEED * speedMultiplier;
+    const speedRatio = speed / maxSpeed;
+
+    // Only show when going > 70% max speed
+    if (speedRatio < 0.7) return;
+
+    const intensity = (speedRatio - 0.7) / 0.3; // 0 to 1
+    const alpha = intensity * 0.15; // Very subtle
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const lineCount = Math.floor(8 + intensity * 12);
+
+    for (let i = 0; i < lineCount; i++) {
+      const angle = (i / lineCount) * Math.PI * 2 + Date.now() * 0.0003;
+      const innerR = canvas.width * 0.35;
+      const outerR = canvas.width * 0.55;
+
+      const x1 = centerX + Math.cos(angle) * innerR;
+      const y1 = centerY + Math.sin(angle) * innerR;
+      const x2 = centerX + Math.cos(angle) * outerR;
+      const y2 = centerY + Math.sin(angle) * outerR;
+
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  private renderCompletionEffects() {
+    const { ctx, canvas } = this;
+
+    // Brief star brightness boost after completing a task
+    if (this.completionGlowTimer > 0) {
+      const glowAlpha = (this.completionGlowTimer / 90) * 0.08;
+      ctx.save();
+      ctx.globalAlpha = glowAlpha;
+      ctx.fillStyle = '#ffd700';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Milestone celebration (golden sparkles)
+    if (this.completionMilestoneTimer > 0) {
+      const progress = 1 - (this.completionMilestoneTimer / 180);
+      ctx.save();
+
+      // Sparkle particles around screen edges
+      const sparkleCount = 15;
+      for (let i = 0; i < sparkleCount; i++) {
+        const t = (i / sparkleCount + progress * 0.5) % 1;
+        const sparkleAlpha = Math.max(0, 1 - progress) * 0.6 * (0.5 + 0.5 * Math.sin(t * Math.PI * 6 + Date.now() * 0.01));
+        const sparkleX = t * canvas.width;
+        const sparkleY = 20 + Math.sin(t * Math.PI * 3 + Date.now() * 0.002) * 15;
+
+        ctx.beginPath();
+        ctx.arc(sparkleX, sparkleY, 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffd700';
+        ctx.globalAlpha = sparkleAlpha;
+        ctx.fill();
+      }
+
+      // Show streak count
+      if (progress < 0.6) {
+        ctx.globalAlpha = Math.max(0, 1 - progress * 1.7) * 0.6;
+        ctx.font = '13px Orbitron';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText(`${this.completionMilestone} tasks`, canvas.width / 2, canvas.height * 0.18);
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  }
+
+  private renderMilestoneText() {
+    const { ctx, canvas } = this;
+
+    // Explorer achievement
+    if (this.explorerEffectTimer > 0) {
+      const progress = 1 - (this.explorerEffectTimer / 240);
+      ctx.save();
+
+      // Constellation-like dots connecting in a pattern
+      const dotCount = 8;
+      const centerX = canvas.width / 2;
+      const baseY = canvas.height * 0.15;
+      const radius = 40;
+
+      for (let i = 0; i < dotCount; i++) {
+        const angle = (i / dotCount) * Math.PI * 2 - Math.PI / 2;
+        const dotX = centerX + Math.cos(angle) * radius;
+        const dotY = baseY + Math.sin(angle) * radius * 0.5;
+        const dotAlpha = Math.max(0, Math.min(1, (progress * dotCount - i) * 2)) * Math.max(0, 1 - progress * 0.8);
+
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = '#88ccff';
+        ctx.globalAlpha = dotAlpha * 0.8;
+        ctx.fill();
+
+        // Connect to next dot
+        if (i > 0) {
+          const prevAngle = ((i - 1) / dotCount) * Math.PI * 2 - Math.PI / 2;
+          const prevX = centerX + Math.cos(prevAngle) * radius;
+          const prevY = baseY + Math.sin(prevAngle) * radius * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(prevX, prevY);
+          ctx.lineTo(dotX, dotY);
+          ctx.strokeStyle = '#88ccff';
+          ctx.globalAlpha = dotAlpha * 0.3;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+
+      if (progress > 0.3 && progress < 0.8) {
+        ctx.globalAlpha = Math.min(1, (progress - 0.3) * 4) * Math.max(0, 1 - (progress - 0.5) * 3.3) * 0.7;
+        ctx.font = '12px Orbitron';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#88ccff';
+        ctx.fillText('Explorer', canvas.width / 2, baseY + radius + 20);
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Distance milestones
+    if (this.distanceMilestoneTimer > 0) {
+      const progress = 1 - (this.distanceMilestoneTimer / 200);
+      ctx.save();
+
+      if (progress < 0.7) {
+        const fadeIn = Math.min(1, progress * 5);
+        const fadeOut = Math.max(0, 1 - (progress - 0.4) * 3.3);
+        ctx.globalAlpha = fadeIn * fadeOut * 0.5;
+        ctx.font = '11px Orbitron';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = this.milestoneColor;
+        ctx.fillText(this.milestoneText, canvas.width / 2, canvas.height * 0.85);
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
   }
 }
