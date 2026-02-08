@@ -2,7 +2,7 @@ const ELEVENLABS_KEY = 'sk_3d39d8b1fae43e41bc56d8f67e1890fac778d2dcb464a69c';
 const ELEVENLABS_VOICE = 'CwhRBWXzGAHq8TQ4Fs17'; // Roger - default ship AI
 const ELEVENLABS_SHOP_VOICE = 'Z7RrOqZFTyLpIlzCgfsp'; // Toby - Little Mythical Monster (shop merchant goblin)
 const ELEVENLABS_COLLISION_VOICE = 'JBFqnCBsd6RMkjVDRZzb'; // George - British collision commentator
-const ELEVENLABS_NOMAD_VOICE = 'nPczCjzI2devNBz1zQrb'; // Brian - high energy hype man
+const ELEVENLABS_NOMAD_VOICE = 'WOY6pnQ1WCg0mrOZ54lM'; // Nomad merchant voice
 
 const COLLISION_LINES = [
   "You can't park there, mate.",
@@ -222,7 +222,7 @@ class VoiceService {
     try {
       const blob = await this.pendingNomadAudio;
       this.pendingNomadAudio = null;
-      if (blob) await this.playBlob(blob);
+      if (blob) await this.playBlob(blob, 0.5);
     } catch (e) {
       console.error('[Voice] Nomad greeting play failed:', e);
     }
@@ -354,12 +354,13 @@ class VoiceService {
   }
 
   // Play a pre-generated audio blob
-  async playBlob(blob: Blob): Promise<void> {
+  async playBlob(blob: Blob, volume: number = 1): Promise<void> {
     if (!this.enabled || this.speaking) return;
     this.speaking = true;
     try {
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      audio.volume = Math.min(Math.max(volume, 0), 1);
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
         audio.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };

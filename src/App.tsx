@@ -133,25 +133,25 @@ const TRAIL_EFFECTS = [
 
 // Neon Nomad items (horns + emotes)
 const HORN_ITEMS = [
-  { id: 'air', name: 'Air Horn', icon: '\uD83D\uDCE2', cost: 50 },
-  { id: 'sad', name: 'Sad Trombone', icon: '\uD83C\uDFBA', cost: 75 },
-  { id: 'dolphin', name: 'Dolphin', icon: '\uD83D\uDC2C', cost: 100 },
-  { id: 'wilhelm', name: 'Wilhelm Scream', icon: '\uD83D\uDE31', cost: 100 },
-  { id: 'foghorn', name: 'Foghorn', icon: '\u26F5', cost: 75 },
-  { id: 'laser', name: 'Laser Pew', icon: '\uD83D\uDD2B', cost: 125 },
-  { id: 'duck', name: 'Duck Quack', icon: '\uD83E\uDD86', cost: 50 },
-  { id: 'dramatic', name: 'Dramatic', icon: '\uD83C\uDFAD', cost: 150 },
+  { id: 'air', name: 'Air Horn', icon: '\u{1F4E2}', cost: 200 },
+  { id: 'sad', name: 'Sad Trombone', icon: '\u{1F3BA}', cost: 300 },
+  { id: 'dolphin', name: 'Dolphin', icon: '\u{1F42C}', cost: 400 },
+  { id: 'wilhelm', name: 'Wilhelm Scream', icon: '\u{1F631}', cost: 500 },
+  { id: 'foghorn', name: 'Foghorn', icon: '\u26F5', cost: 350 },
+  { id: 'laser', name: 'Laser Pew', icon: '\u{1F52B}', cost: 600 },
+  { id: 'duck', name: 'Duck Quack', icon: '\u{1F986}', cost: 250 },
+  { id: 'dramatic', name: 'Dramatic', icon: '\u{1F3AD}', cost: 750 },
 ];
 
 const EMOTE_ITEMS = [
-  { id: 'neon_burst', name: 'Neon Burst', icon: '\uD83D\uDCA5', cost: 75 },
-  { id: 'rainbow_spin', name: 'Rainbow Spin', icon: '\uD83C\uDF08', cost: 100 },
-  { id: 'holo_heart', name: 'Holo Heart', icon: '\uD83D\uDC96', cost: 100 },
-  { id: 'flash_colors', name: 'Flash Colors', icon: '\uD83C\uDF86', cost: 75 },
-  { id: 'star_shower', name: 'Star Shower', icon: '\u2B50', cost: 125 },
-  { id: 'glitch_effect', name: 'Glitch', icon: '\uD83D\uDCBB', cost: 150 },
-  { id: 'fire_ring', name: 'Fire Ring', icon: '\uD83D\uDD25', cost: 150 },
-  { id: 'wave_emoji', name: 'Wave', icon: '\uD83D\uDC4B', cost: 75 },
+  { id: 'neon_burst', name: 'Neon Burst', icon: '\u{1F4A5}', cost: 300 },
+  { id: 'rainbow_spin', name: 'Rainbow Spin', icon: '\u{1F308}', cost: 500 },
+  { id: 'holo_heart', name: 'Holo Heart', icon: '\u{1F496}', cost: 400 },
+  { id: 'flash_colors', name: 'Flash Colors', icon: '\u{1F386}', cost: 350 },
+  { id: 'star_shower', name: 'Star Shower', icon: '\u2B50', cost: 600 },
+  { id: 'glitch_effect', name: 'Glitch', icon: '\u{1F4BB}', cost: 750 },
+  { id: 'fire_ring', name: 'Fire Ring', icon: '\u{1F525}', cost: 700 },
+  { id: 'wave_emoji', name: 'Wave', icon: '\u{1F44B}', cost: 300 },
 ];
 
 // Weapon costs (one-time purchases)
@@ -2439,6 +2439,11 @@ function App() {
         credits: personalPoints,
         unownedItems: unowned,
       });
+      return;
+    }
+    if (planet.id === '__nomad__') {
+      setShowNomadShop(true);
+      voiceService.playNomadGreeting();
       return;
     }
     if (planet.id === 'planet-builder') {
@@ -5538,15 +5543,15 @@ function App() {
         </div>
       )}
 
-      {/* Neon Nomad Shop Modal */}
+      {/* Pimp My Ship Modal */}
       {showNomadShop && (
-        <div style={styles.modalOverlay} onClick={() => setShowNomadShop(false)}>
-          <div style={{ ...styles.modal, maxWidth: 460, border: '1px solid #ff00ff33' }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ ...styles.modalTitle, color: '#ff00ff' }}>NEON NOMAD</h2>
-            <p style={{ ...styles.shopPoints, color: '#00ffff' }}>{'\u2B50'} {personalPoints} Points Available</p>
+        <div style={styles.modalOverlay} onClick={() => { setShowNomadShop(false); gameRef.current?.clearLandedState(); }}>
+          <div style={{ ...styles.modal, maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>Pimp My Ship</h2>
+            <p style={styles.shopPoints}>{'\u2B50'} {personalPoints} Your Points Available</p>
 
             {/* Tab Navigation */}
-            <div style={{ display: 'flex', gap: '4px', marginBottom: '1rem', background: 'rgba(255,0,255,0.05)', borderRadius: '8px', padding: '4px' }}>
+            <div style={{ display: 'flex', gap: '4px', marginBottom: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '4px' }}>
               {(['horns', 'emotes'] as const).map(tab => (
                 <button
                   key={tab}
@@ -5556,21 +5561,20 @@ function App() {
                     padding: '10px 12px',
                     border: 'none',
                     borderRadius: '6px',
-                    background: nomadShopTab === tab ? 'rgba(255, 0, 255, 0.2)' : 'transparent',
-                    color: nomadShopTab === tab ? '#ff00ff' : '#888',
+                    background: nomadShopTab === tab ? 'rgba(255, 165, 0, 0.2)' : 'transparent',
+                    color: nomadShopTab === tab ? '#ffa500' : '#888',
                     fontWeight: nomadShopTab === tab ? 600 : 400,
                     cursor: 'pointer',
-                    fontSize: '0.85rem',
+                    fontSize: '0.8rem',
                     transition: 'all 0.2s',
-                    fontFamily: 'Orbitron',
                   }}
                 >
-                  {tab === 'horns' ? '\uD83D\uDCE2 Horns' : '\u2728 Emotes'}
+                  {tab === 'horns' ? 'Horns' : 'Emotes'}
                 </button>
               ))}
             </div>
 
-            <div style={{ ...styles.shopGrid }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {(nomadShopTab === 'horns' ? HORN_ITEMS : EMOTE_ITEMS).map(item => {
                 const currentShip = getCurrentUserShip();
                 const effects = getEffectsWithDefaults(currentShip.effects);
@@ -5587,18 +5591,19 @@ function App() {
                       else buyEmote(item.id, item.cost);
                     }}
                     style={{
-                      ...styles.shopItem,
-                      border: equipped ? '1px solid #ff00ff' : owned ? '1px solid #00ffff33' : '1px solid #333',
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '8px 12px', borderRadius: 8, cursor: !owned && !canAfford ? 'not-allowed' : 'pointer',
+                      background: equipped ? 'rgba(255,165,0,0.1)' : 'rgba(255,255,255,0.03)',
+                      border: equipped ? '1px solid rgba(255,165,0,0.4)' : '1px solid #222',
                       opacity: !owned && !canAfford ? 0.5 : 1,
-                      cursor: !owned && !canAfford ? 'not-allowed' : 'pointer',
+                      transition: 'border-color 0.2s',
                     }}
                   >
-                    <span style={styles.shopIcon}>{item.icon}</span>
-                    <span style={{ ...styles.shopName, color: equipped ? '#ff00ff' : owned ? '#00ffff' : '#ccc' }}>{item.name}</span>
+                    <span style={{ fontSize: '1.2rem', flexShrink: 0, width: 28, textAlign: 'center' as const }}>{item.icon}</span>
+                    <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 500, color: equipped ? '#ffa500' : owned ? '#ccc' : '#aaa' }}>{item.name}</span>
                     <span style={{
-                      fontSize: '0.75rem',
-                      color: owned ? (equipped ? '#ff00ff' : '#00ffff') : canAfford ? '#ffd700' : '#666',
-                      fontWeight: 600,
+                      fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
+                      color: equipped ? '#ffa500' : owned ? '#888' : canAfford ? '#ffd700' : '#555',
                     }}>
                       {equipped ? 'EQUIPPED' : owned ? 'EQUIP' : `${item.cost} \u2B50`}
                     </span>
@@ -5607,11 +5612,11 @@ function App() {
               })}
             </div>
 
-            <div style={{ marginTop: '0.75rem', fontSize: '0.7rem', color: '#888', textAlign: 'center' as const }}>
-              {nomadShopTab === 'horns' ? 'Press G to honk' : 'Press V to emote'} {'\u2022'} Other players will see/hear it
+            <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: '#666', textAlign: 'center' as const }}>
+              {nomadShopTab === 'horns' ? 'Press G to honk' : 'Press V to emote'}
             </div>
 
-            <button style={{ ...styles.cancelButton, width: '100%', marginTop: '0.75rem', borderColor: '#ff00ff33' }} onClick={() => setShowNomadShop(false)}>
+            <button style={{ ...styles.cancelButton, width: '100%', marginTop: '0.75rem' }} onClick={() => { setShowNomadShop(false); gameRef.current?.clearLandedState(); }}>
               Close
             </button>
           </div>

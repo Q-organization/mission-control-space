@@ -453,14 +453,17 @@ export class SpaceGame {
   private unlockedAchievements: Set<string> = new Set();
   private onAchievement: ((achievementId: string) => void) | null = null;
 
-  // Neon Nomad (roaming merchant)
+  // Roaming merchant ship
   private neonNomadImage: HTMLImageElement | null = null;
+  private nomadVisible: boolean = true;
   private neonNomad: {
-    x: number; y: number; waypointIdx: number; rotation: number; scale: number;
-  } = { x: 3000, y: 5000, waypointIdx: 0, rotation: 0, scale: 1 };
+    x: number; y: number; rotation: number; scale: number;
+  } = { x: 5000, y: 5000, rotation: 0, scale: 1 };
   private nomadSparkles: { x: number; y: number; life: number; maxLife: number; color: string; size: number }[] = [];
   private nearNeonNomad: boolean = false;
   private nomadApproachFired: boolean = false;
+  private landedOnNomad: boolean = false;
+  // nomad landing uses the standard planet landing animation via startLandingAnimation()
   private onNomadDock: (() => void) | null = null;
   private onNomadApproach: (() => void) | null = null;
   private onHornActivate: (() => void) | null = null;
@@ -469,18 +472,9 @@ export class SpaceGame {
   private emoteCooldown: number = 0;
   private activeEmote: { type: string; timer: number } | null = null;
   private remoteEmotes: Map<string, { type: string; timer: number }> = new Map();
-  private static readonly NOMAD_WAYPOINTS: { x: number; y: number }[] = [
-    { x: 8000, y: 5000 },  // Quentin zone (East)
-    { x: 7100, y: 2900 },  // Alex zone (Northeast)
-    { x: 5000, y: 2000 },  // Armel zone (North)
-    { x: 2900, y: 2900 },  // Milya zone (Northwest)
-    { x: 2000, y: 5000 },  // Hugues zone (West)
-    { x: 5000, y: 8080 },  // Mission Control
-    { x: 3000, y: 7000 },  // South-west drift
-    { x: 7000, y: 7000 },  // South-east drift
-  ];
-  private static readonly NOMAD_SPEED = 0.8;
-  private static readonly NOMAD_DOCKING_DISTANCE = 80;
+  // No waypoints — merchant uses parametric path from Date.now() for deterministic sync
+  private static readonly NOMAD_DOCKING_DISTANCE = 120;
+  private static readonly NOMAD_RENDER_SIZE = 120;
 
   // Escort drones (permanent companions based on ship level)
   private escortDrones: EscortDrone[] = [];
@@ -1251,6 +1245,7 @@ export class SpaceGame {
     this.isLanded = false;
     this.landedPlanet = null;
     this.landedPanelBounds = null;
+    this.landedOnNomad = false;
   }
 
   public setSuppressLandedPanel(suppress: boolean): void {
@@ -2148,6 +2143,11 @@ export class SpaceGame {
           // Set landed state (player is now on planet)
           this.isLanded = true;
           this.landedPlanet = this.landingPlanet;
+
+          // If landing on nomad merchant, set flag so ship follows it
+          if (this.landingPlanet.id === '__nomad__') {
+            this.landedOnNomad = true;
+          }
 
           // Call onLand callback if set
           if (this.onLand) {
@@ -7986,18 +7986,20 @@ export class SpaceGame {
       canvas.height * scale
     );
 
-    // Neon Nomad on minimap (pulsing magenta dot)
-    const nomadMx = mapX + this.neonNomad.x * scale;
-    const nomadMy = mapY + this.neonNomad.y * scale;
-    const nomadPulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.004);
-    ctx.beginPath();
-    ctx.arc(nomadMx, nomadMy, 4 + nomadPulse, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255, 0, 255, ${0.3 + nomadPulse * 0.3})`;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(nomadMx, nomadMy, 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff00ff';
-    ctx.fill();
+    // Neon Nomad on minimap (pulsing magenta dot) — only when visible on map
+    if (this.nomadVisible) {
+      const nomadMx = mapX + this.neonNomad.x * scale;
+      const nomadMy = mapY + this.neonNomad.y * scale;
+      const nomadPulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.004);
+      ctx.beginPath();
+      ctx.arc(nomadMx, nomadMy, 4 + nomadPulse, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 0, 255, ${0.3 + nomadPulse * 0.3})`;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(nomadMx, nomadMy, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff00ff';
+      ctx.fill();
+    }
 
     // Label
     ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
@@ -9247,46 +9249,57 @@ export class SpaceGame {
 
   private updateNeonNomad() {
     const nomad = this.neonNomad;
-    const waypoints = SpaceGame.NOMAD_WAYPOINTS;
-    const target = waypoints[nomad.waypointIdx];
 
-    // Move toward current waypoint
-    const dx = target.x - nomad.x;
-    const dy = target.y - nomad.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    // Deterministic parametric position from Date.now()
+    // Overlapping sine waves create seemingly random movement, synced across all clients
+    const t = Date.now() / 1000;
+    const newX = 5000
+      + 3800 * Math.sin(t * 0.0047 + 1.7)    // slow large sweep (~22 min period)
+      + 1800 * Math.sin(t * 0.0113 + 0.5)    // medium sweep (~9 min)
+      + 600 * Math.sin(t * 0.0271 + 3.2);    // fast jitter (~4 min)
+    const newY = 5000
+      + 3800 * Math.cos(t * 0.0059 + 2.3)    // slow large sweep (~18 min)
+      + 1800 * Math.cos(t * 0.0097 + 1.1)    // medium sweep (~11 min)
+      + 600 * Math.cos(t * 0.0193 + 0.7);    // fast jitter (~5 min)
 
-    if (dist < 30) {
-      // Advance to next waypoint
-      nomad.waypointIdx = (nomad.waypointIdx + 1) % waypoints.length;
-    } else {
-      const speed = SpaceGame.NOMAD_SPEED * this.dt;
-      nomad.x += (dx / dist) * speed;
-      nomad.y += (dy / dist) * speed;
+    // Compute velocity for rotation (analytical derivative)
+    const vx = 3800 * 0.0047 * Math.cos(t * 0.0047 + 1.7)
+      + 1800 * 0.0113 * Math.cos(t * 0.0113 + 0.5)
+      + 600 * 0.0271 * Math.cos(t * 0.0271 + 3.2);
+    const vy = -3800 * 0.0059 * Math.sin(t * 0.0059 + 2.3)
+      - 1800 * 0.0097 * Math.sin(t * 0.0097 + 1.1)
+      - 600 * 0.0193 * Math.sin(t * 0.0193 + 0.7);
 
-      // Gentle sine-wave bob perpendicular to travel direction
-      const travelAngle = Math.atan2(dy, dx);
-      const bobAmount = Math.sin(Date.now() * 0.002) * 0.3;
-      nomad.x += Math.cos(travelAngle + Math.PI / 2) * bobAmount;
-      nomad.y += Math.sin(travelAngle + Math.PI / 2) * bobAmount;
+    nomad.x = newX;
+    nomad.y = newY;
 
-      // Smooth rotation toward travel direction
-      const targetRot = travelAngle;
-      let diff = targetRot - nomad.rotation;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      nomad.rotation += diff * 0.03;
+    // Rotation follows travel direction, smoothly interpolated
+    const targetRot = Math.atan2(vy, vx);
+    let diff = targetRot - nomad.rotation;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    nomad.rotation += diff * 0.05;
+
+    // Visible when within map bounds (with margin)
+    const margin = 200;
+    this.nomadVisible = newX > -margin && newX < 10000 + margin && newY > -margin && newY < 10000 + margin;
+
+    // If merchant left the map while player was docked, undock them
+    if (this.landedOnNomad && !this.nomadVisible) {
+      this.landedOnNomad = false;
+      this.clearLandedState();
     }
 
-    // Emit neon sparkle particles behind the van
-    if (Math.random() < 0.3) {
+    // Emit neon sparkle particles (only when visible)
+    if (this.nomadVisible && Math.random() < 0.4) {
       const colors = ['#ff00ff', '#00ffff', '#ffa500', '#ffff00', '#4ade80'];
       this.nomadSparkles.push({
-        x: nomad.x + (Math.random() - 0.5) * 30,
-        y: nomad.y + (Math.random() - 0.5) * 30,
+        x: nomad.x + (Math.random() - 0.5) * 50,
+        y: nomad.y + (Math.random() - 0.5) * 50,
         life: 40 + Math.random() * 30,
         maxLife: 40 + Math.random() * 30,
         color: colors[Math.floor(Math.random() * colors.length)],
-        size: 1.5 + Math.random() * 2,
+        size: 1.5 + Math.random() * 2.5,
       });
     }
 
@@ -9298,15 +9311,53 @@ export class SpaceGame {
       }
     }
 
-    // Proximity check
     const { ship } = this.state;
+
+    // G key to honk horn (2s cooldown = ~120 frames) — works anywhere
+    if (this.hornCooldown > 0) this.hornCooldown -= this.dt;
+    if (this.keys.has('g') && this.hornCooldown <= 0) {
+      this.keys.delete('g');
+      this.hornCooldown = 120;
+      this.onHornActivate?.();
+    }
+
+    // V key to trigger emote (3s cooldown = ~180 frames) — works anywhere
+    if (this.emoteCooldown > 0) this.emoteCooldown -= this.dt;
+    if (this.keys.has('v') && this.emoteCooldown <= 0) {
+      this.keys.delete('v');
+      this.emoteCooldown = 180;
+      this.onEmoteActivate?.();
+    }
+
+    // If landed on nomad: ship follows merchant position
+    if (this.landedOnNomad) {
+      const halfSize = SpaceGame.NOMAD_RENDER_SIZE / 2;
+      ship.x = nomad.x;
+      ship.y = nomad.y - halfSize - 25;
+      ship.vx = 0;
+      ship.vy = 0;
+      ship.rotation = -Math.PI / 2; // Point up
+
+      // Jingle at full proximity when landed
+      soundManager.updateNomadProximity(1);
+      return; // ESC to leave is handled by App.tsx closing the modal
+    }
+
+    // Skip proximity/docking when merchant is off-map
+    if (!this.nomadVisible) {
+      this.nearNeonNomad = false;
+      soundManager.updateNomadProximity(0);
+      return;
+    }
+
+    // Proximity check
     const shipDx = ship.x - nomad.x;
     const shipDy = ship.y - nomad.y;
     const shipDist = Math.sqrt(shipDx * shipDx + shipDy * shipDy);
 
-    // Jingle proximity (within 500px)
-    if (shipDist < 500) {
-      const proximity = 1 - shipDist / 500;
+    // Jingle proximity (within 600px)
+    if (shipDist < 600) {
+      const proximity = 1 - shipDist / 600;
       soundManager.updateNomadProximity(proximity);
     } else {
       soundManager.updateNomadProximity(0);
@@ -9316,33 +9367,24 @@ export class SpaceGame {
     this.nearNeonNomad = shipDist < SpaceGame.NOMAD_DOCKING_DISTANCE;
 
     // Approach callback (fire once)
-    if (shipDist < 300 && !this.nomadApproachFired) {
+    if (shipDist < 350 && !this.nomadApproachFired) {
       this.nomadApproachFired = true;
       this.onNomadApproach?.();
-    } else if (shipDist > 400) {
+    } else if (shipDist > 450) {
       this.nomadApproachFired = false;
     }
 
-    // C key to open shop when near nomad
-    if (this.nearNeonNomad && this.keys.has('c') && !this.isLanding && !this.isLanded) {
-      this.keys.delete('c');
-      this.onNomadDock?.();
-    }
-
-    // G key to honk horn (2s cooldown = ~120 frames)
-    if (this.hornCooldown > 0) this.hornCooldown -= this.dt;
-    if (this.keys.has('g') && this.hornCooldown <= 0) {
-      this.keys.delete('g');
-      this.hornCooldown = 120;
-      this.onHornActivate?.();
-    }
-
-    // V key to trigger emote (3s cooldown = ~180 frames)
-    if (this.emoteCooldown > 0) this.emoteCooldown -= this.dt;
-    if (this.keys.has('v') && this.emoteCooldown <= 0) {
-      this.keys.delete('v');
-      this.emoteCooldown = 180;
-      this.onEmoteActivate?.();
+    // SPACE key to land on merchant — use the real planet landing animation
+    if (this.nearNeonNomad && this.keys.has(' ') && !this.isLanding && !this.isLanded) {
+      this.keys.delete(' ');
+      // Create a fake Planet object so startLandingAnimation works
+      const halfSize = SpaceGame.NOMAD_RENDER_SIZE / 2;
+      const fakePlanet = {
+        id: '__nomad__', name: 'Merchant', x: nomad.x, y: nomad.y,
+        radius: halfSize, color: '#ff00ff', glowColor: '#00ffff',
+        completed: false, type: 'station' as const, size: 'medium' as const,
+      };
+      this.startLandingAnimation(fakePlanet as any);
     }
 
     // Update local active emote timer
@@ -9363,6 +9405,9 @@ export class SpaceGame {
   }
 
   private renderNeonNomad() {
+    // Don't render when merchant is off-map
+    if (!this.nomadVisible) return;
+
     const { camera } = this.state;
     const ctx = this.ctx;
     const nomad = this.neonNomad;
@@ -9376,14 +9421,15 @@ export class SpaceGame {
 
     // Pulsing underglow
     const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.003);
-    const gradient = ctx.createRadialGradient(sx, sy, 5, sx, sy, 60);
+    const glowRadius = SpaceGame.NOMAD_RENDER_SIZE * 0.9;
+    const gradient = ctx.createRadialGradient(sx, sy, 5, sx, sy, glowRadius);
     gradient.addColorStop(0, `rgba(255, 0, 255, ${0.3 * pulse})`);
     gradient.addColorStop(0.4, `rgba(0, 255, 255, ${0.15 * pulse})`);
     gradient.addColorStop(0.7, `rgba(255, 165, 0, ${0.08 * pulse})`);
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(sx, sy, 60, 0, Math.PI * 2);
+    ctx.arc(sx, sy, glowRadius, 0, Math.PI * 2);
     ctx.fill();
 
     // Sparkle particles
@@ -9403,16 +9449,16 @@ export class SpaceGame {
     ctx.translate(sx, sy);
     ctx.rotate(nomad.rotation + Math.PI / 2);
     if (this.neonNomadImage) {
-      const size = 60;
+      const size = SpaceGame.NOMAD_RENDER_SIZE;
       ctx.drawImage(this.neonNomadImage, -size / 2, -size / 2, size, size);
     } else {
       // Fallback: colored diamond shape
       ctx.fillStyle = '#ff00ff';
       ctx.beginPath();
-      ctx.moveTo(0, -20);
-      ctx.lineTo(12, 0);
-      ctx.lineTo(0, 20);
-      ctx.lineTo(-12, 0);
+      ctx.moveTo(0, -30);
+      ctx.lineTo(18, 0);
+      ctx.lineTo(0, 30);
+      ctx.lineTo(-18, 0);
       ctx.closePath();
       ctx.fill();
       ctx.strokeStyle = '#00ffff';
@@ -9421,20 +9467,15 @@ export class SpaceGame {
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // Label
-    ctx.font = 'bold 11px Orbitron';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = '#ff00ff';
-    ctx.shadowBlur = 8;
-    ctx.fillStyle = '#ff00ff';
-    ctx.fillText('NEON NOMAD', sx, sy - 40);
-    ctx.shadowBlur = 0;
-
-    // Dock prompt when in range
-    if (this.nearNeonNomad) {
-      ctx.font = 'bold 11px Space Grotesk';
+    // Dock prompt when in range (no name label)
+    if (this.nearNeonNomad && !this.landedOnNomad && !this.isLanding) {
+      ctx.font = 'bold 12px Space Grotesk';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 6;
       ctx.fillStyle = '#00ffff';
-      ctx.fillText('[ C ] Browse wares', sx, sy + 45);
+      ctx.fillText('[ SPACE ] Pimp My Ship', sx, sy + SpaceGame.NOMAD_RENDER_SIZE / 2 + 20);
+      ctx.shadowBlur = 0;
     }
 
     ctx.restore();
