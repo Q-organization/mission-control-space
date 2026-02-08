@@ -860,6 +860,104 @@ Deno.serve(async (req) => {
 
     console.log(`Sync complete: ${created.length} created, ${updated.length} updated, ${deleted.length} deleted, ${skipped.length} skipped, ${errors.length} errors`);
 
+    // ── Reposition pass: recalculate ALL planet positions deterministically ──
+    // This eliminates any overlaps caused by race conditions or stale data
+    console.log('Starting reposition pass...');
+
+    const { data: allRemainingPlanets } = await supabase
+      .from('notion_planets')
+      .select('id, assigned_to, completed, name')
+      .eq('team_id', team.id);
+
+    let repositioned = 0;
+
+    if (allRemainingPlanets && allRemainingPlanets.length > 0) {
+      // Group planets by assigned_to
+      const groups = new Map<string, typeof allRemainingPlanets>();
+      for (const planet of allRemainingPlanets) {
+        const key = (planet.assigned_to || '').toLowerCase();
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(planet);
+      }
+
+      const repositionUpdates: Array<{ id: string; x: number; y: number }> = [];
+
+      for (const [assignee, groupPlanets] of groups) {
+        // Stable sort: active planets first (inner rings), completed last (outer rings)
+        // Within each group, alphabetical by name for deterministic ordering
+        groupPlanets.sort((a, b) => {
+          if (a.completed !== b.completed) return a.completed ? 1 : -1;
+          return a.name.localeCompare(b.name);
+        });
+
+        const isUnassigned = !assignee || !PLAYER_ZONES[assignee];
+        const baseZone = isUnassigned ? DEFAULT_ZONE : PLAYER_ZONES[assignee];
+
+        if (isUnassigned) {
+          // Arcs above Mission Control (deterministic, no random jitter)
+          const baseDistance = 350;
+          const arcSpacing = 110;
+          const planetsPerArc = 5;
+
+          for (let i = 0; i < groupPlanets.length; i++) {
+            const arcIndex = Math.floor(i / planetsPerArc);
+            const posInArc = i % planetsPerArc;
+            const arcRadius = baseDistance + arcIndex * arcSpacing;
+
+            const arcSpread = Math.PI * 0.35;
+            const baseAngle = -Math.PI / 2;
+            const staggerOffset = (arcIndex % 2 === 1) ? 0.5 : 0;
+            const t = planetsPerArc > 1 ? (posInArc + staggerOffset) / planetsPerArc : 0.5;
+            const angle = baseAngle + (t - 0.5) * arcSpread * 2;
+
+            // Deterministic organic variation (seed-based, not random)
+            const seed = (i * 137.5) % 1;
+            const radiusVariation = (seed - 0.5) * 25;
+            const angleVariation = (((i * 97.3) % 1) - 0.5) * 0.06;
+
+            repositionUpdates.push({
+              id: groupPlanets[i].id,
+              x: Math.round(baseZone.x + Math.cos(angle + angleVariation) * (arcRadius + radiusVariation)),
+              y: Math.round(baseZone.y + Math.sin(angle + angleVariation) * (arcRadius + radiusVariation)),
+            });
+          }
+        } else {
+          // Rings around player's home planet (deterministic, no random jitter)
+          const baseRadius = 380;
+          const ringSpacing = 100;
+          const angleStep = 0.7; // ~40°, fits 9 planets per ring
+          const planetsPerRing = 9;
+
+          for (let i = 0; i < groupPlanets.length; i++) {
+            const ring = Math.floor(i / planetsPerRing);
+            const slotInRing = i % planetsPerRing;
+            const radius = baseRadius + ring * ringSpacing;
+            const angle = slotInRing * angleStep + (ring * 0.35); // Offset each ring
+
+            repositionUpdates.push({
+              id: groupPlanets[i].id,
+              x: Math.round(baseZone.x + Math.cos(angle) * radius),
+              y: Math.round(baseZone.y + Math.sin(angle) * radius),
+            });
+          }
+        }
+
+        console.log(`Reposition: ${assignee || 'unassigned'} → ${groupPlanets.length} planets`);
+      }
+
+      // Apply all position updates
+      for (const update of repositionUpdates) {
+        const { error: updateError } = await supabase
+          .from('notion_planets')
+          .update({ x: update.x, y: update.y })
+          .eq('id', update.id);
+
+        if (!updateError) repositioned++;
+      }
+
+      console.log(`Repositioned ${repositioned}/${repositionUpdates.length} planets`);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -871,6 +969,7 @@ Deno.serve(async (req) => {
           skipped: skipped.length,
           errors: errors.length,
           creator_points_awarded: totalCreatorPoints,
+          repositioned,
         },
         created,
         updated,
