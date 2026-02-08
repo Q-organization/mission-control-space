@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import confetti from 'canvas-confetti';
+
 import { SpaceGame } from './SpaceGame';
 import { Planet, RewardType, OtherPlayer, PointTransaction as PointTx, ShipEffects as TypedShipEffects } from './types';
 import { soundManager } from './SoundManager';
@@ -2202,21 +2202,6 @@ function App() {
     soundManager.playPlanetUpgrade();
   };
 
-  // Fire confetti based on size
-  const fireConfetti = (size: 'small' | 'medium' | 'big') => {
-    const base = { origin: { y: 0.7 } };
-    if (size === 'small') {
-      confetti({ ...base, particleCount: 30, spread: 50 });
-    } else if (size === 'medium') {
-      confetti({ ...base, particleCount: 70, spread: 80 });
-    } else {
-      confetti({ ...base, particleCount: 100, spread: 100 });
-      setTimeout(() => {
-        confetti({ ...base, particleCount: 50, spread: 120, origin: { x: 0.25, y: 0.7 } });
-        confetti({ ...base, particleCount: 50, spread: 120, origin: { x: 0.75, y: 0.7 } });
-      }, 200);
-    }
-  };
 
   // Handle docking at a planet
   const handleDock = useCallback((planet: Planet) => {
@@ -2260,7 +2245,7 @@ function App() {
         window.open(planet.notionUrl, '_blank');
       }
 
-      fireConfetti(planet.size);
+
       soundManager.playDockingSound();
       soundManager.playTaskVoiceLine();
 
@@ -2277,8 +2262,6 @@ function App() {
     }
 
     if (state.completedPlanets.includes(planet.id)) return;
-
-    fireConfetti(planet.size);
 
     // Sound: docking celebration
     soundManager.playDockingSound();
@@ -2419,7 +2402,7 @@ function App() {
       }
 
       // Already assigned - complete it
-      fireConfetti(planet.size);
+
       soundManager.playDockingSound();
       soundManager.playTaskVoiceLine();
 
@@ -2436,7 +2419,7 @@ function App() {
       // Regular planets
       if (state.completedPlanets.includes(planet.id)) return;
 
-      fireConfetti(planet.size);
+
       soundManager.playDockingSound();
       soundManager.playTaskVoiceLine();
 
