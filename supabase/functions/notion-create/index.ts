@@ -165,13 +165,9 @@ function findNonOverlappingPosition(
     const radius = baseRadius + ring * ringSpacing;
     const angle = slotInRing * angleStep + (ring * 0.35); // Offset each ring
 
-    // Add random jitter to prevent race condition overlaps
-    const radiusJitter = (Math.random() - 0.5) * 40; // ±20 units
-    const angleJitter = (Math.random() - 0.5) * 0.1;
-
     const candidate = {
-      x: baseZone.x + Math.cos(angle + angleJitter) * (radius + radiusJitter),
-      y: baseZone.y + Math.sin(angle + angleJitter) * (radius + radiusJitter),
+      x: baseZone.x + Math.cos(angle) * radius,
+      y: baseZone.y + Math.sin(angle) * radius,
     };
 
     let isValid = true;

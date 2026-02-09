@@ -14,6 +14,7 @@ import { QuickTaskModal } from './components/QuickTaskModal';
 import { ReassignTaskModal } from './components/ReassignTaskModal';
 import { EditTaskModal } from './components/EditTaskModal';
 import type { EditTaskUpdates } from './components/EditTaskModal';
+import { TaskSearchModal } from './components/TaskSearchModal';
 import { LandedPlanetModal } from './components/LandedPlanetModal';
 import type { PlayerInfo } from './components/LandedPlanetModal';
 import { ControlHubDashboard } from './components/ControlHubDashboard';
@@ -499,6 +500,7 @@ function App() {
   const gameRef = useRef<SpaceGame | null>(null);
   const onDockRef = useRef<(planet: Planet) => void>(() => {});
   const achievementHandlerRef = useRef<(id: string) => void>(() => {});
+  const markSeenRef = useRef<(planetId: string, username: string) => void>(() => {});
   const landingCallbacksRef = useRef<{
     onLand: (planet: Planet) => void;
     onTakeoff: () => void;
@@ -569,6 +571,7 @@ function App() {
     } catch { return new Set(); }
   });
   const [featuredViewPlanet, setFeaturedViewPlanet] = useState<Planet | null>(null);
+  const [showTaskSearch, setShowTaskSearch] = useState(false);
 
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState('');
@@ -801,8 +804,10 @@ function App() {
     claimPlanet: claimNotionPlanet,
     reassignPlanet: reassignNotionPlanet,
     updatePlanet: updateNotionPlanet,
+    markPlanetSeen: markNotionPlanetSeen,
   } = useNotionPlanets({
     teamId: team?.id || null,
+    currentUser: state.currentUser?.toLowerCase(),
     onPlanetCreated: (planet) => {
       setEventNotification({ message: `New mission: ${planet.name}`, type: 'mission', url: planet.notion_url || undefined });
       setTimeout(() => setEventNotification(null), 5000);
@@ -2397,6 +2402,11 @@ function App() {
     achievementHandlerRef.current = handleAchievementUnlock;
   }, [handleAchievementUnlock]);
 
+  // Keep mark-seen ref updated
+  useEffect(() => {
+    markSeenRef.current = markNotionPlanetSeen;
+  }, [markNotionPlanetSeen]);
+
   // Stable callback that uses the ref
   const stableOnDock = useCallback((planet: Planet) => {
     onDockRef.current(planet);
@@ -2986,7 +2996,7 @@ function App() {
       if (e.key === 'Escape' && !isUpgrading) {
         const isGameLanded = gameRef.current?.isPlayerLanded();
         const hasOpenModal = editingGoal || showSettings || showGameSettings || showTerraform ||
-          viewingPlanetOwner || showShop || showNomadShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal || showReassignModal || showEditModal || featuredViewPlanet || showAchievements;
+          viewingPlanetOwner || showShop || showNomadShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal || showReassignModal || showEditModal || featuredViewPlanet || showAchievements || showTaskSearch;
 
         if (hasOpenModal) {
           e.preventDefault();
@@ -3008,6 +3018,7 @@ function App() {
           setEditPlanet(null);
           setFeaturedViewPlanet(null);
           setShowAchievements(false);
+          setShowTaskSearch(false);
           // Also clear SpaceGame's internal landed state
           gameRef.current?.setSuppressLandedPanel(false);
           gameRef.current?.clearLandedState();
@@ -3021,18 +3032,33 @@ function App() {
         const isGameLanded = gameRef.current?.isPlayerLanded();
         const hasOpenModal = editingGoal || showSettings || showGameSettings || showTerraform ||
           viewingPlanetOwner || showShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal ||
-          showWelcome || showUserSelect || showLeaderboard || showPointsHistory || showReassignModal || showEditModal || featuredViewPlanet || showAchievements;
+          showWelcome || showUserSelect || showLeaderboard || showPointsHistory || showReassignModal || showEditModal || featuredViewPlanet || showAchievements || showTaskSearch;
 
         if (!isTyping && !hasOpenModal && !isUpgrading) {
           e.preventDefault();
           setShowQuickTaskModal(true);
         }
       }
+
+      // / key to open task search (only when no modal is open and not typing)
+      if (e.key === '/') {
+        const target = e.target as HTMLElement;
+        const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+        const isGameLanded = gameRef.current?.isPlayerLanded();
+        const hasOpenModal = editingGoal || showSettings || showGameSettings || showTerraform ||
+          viewingPlanetOwner || showShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal ||
+          showWelcome || showUserSelect || showLeaderboard || showPointsHistory || showReassignModal || showEditModal || featuredViewPlanet || showAchievements || showTaskSearch;
+
+        if (!isTyping && !hasOpenModal && !isUpgrading) {
+          e.preventDefault();
+          setShowTaskSearch(true);
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showTerraform, viewingPlanetOwner, showShop, showControlHub, showPlanetCreator, showSettings, showGameSettings, editingGoal, landedPlanet, isUpgrading, showQuickTaskModal, showWelcome, showUserSelect, showLeaderboard, showPointsHistory, showReassignModal, showEditModal, featuredViewPlanet, showAchievements]);
+  }, [showTerraform, viewingPlanetOwner, showShop, showControlHub, showPlanetCreator, showSettings, showGameSettings, editingGoal, landedPlanet, isUpgrading, showQuickTaskModal, showWelcome, showUserSelect, showLeaderboard, showPointsHistory, showReassignModal, showEditModal, featuredViewPlanet, showAchievements, showTaskSearch]);
 
   // Buy visual upgrade from shop (AI-generated changes to ship appearance)
   const buyVisualUpgrade = async () => {
@@ -3846,6 +3872,11 @@ function App() {
       achievementHandlerRef.current(achievementId);
     });
 
+    // Set up mark-seen callback (game → Supabase, removes NEW badge)
+    game.setMarkSeenCallback((planetId, username) => {
+      markSeenRef.current(planetId, username);
+    });
+
     // Sync notion planets immediately if already loaded
     if (notionPlanetsRef.current.length > 0) {
       game.syncNotionPlanets(notionPlanetsRef.current);
@@ -4327,41 +4358,75 @@ function App() {
         ⚙️
       </button>
 
-      {/* Quick Task FAB - hidden when modals are open */}
-      {!editingGoal && !showSettings && !showGameSettings && !showTerraform && !viewingPlanetOwner && !showShop && !showControlHub && !showPlanetCreator && !landedPlanet && !showQuickTaskModal && !showLeaderboard && !showPointsHistory && !showAchievements && !showShipHistory && !gameRef.current?.isPlayerLanded() && (
-        <button
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            left: 24,
-            padding: '12px 20px',
-            borderRadius: '28px',
-            background: 'linear-gradient(135deg, #00c8ff 0%, #0088cc 100%)',
-            border: 'none',
-            boxShadow: '0 4px 20px rgba(0, 200, 255, 0.4)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '1rem',
-            fontWeight: 600,
-            color: '#fff',
-            transition: 'transform 0.2s, box-shadow 0.2s',
-            zIndex: 900,
-          }}
-          onClick={() => setShowQuickTaskModal(true)}
-          title="Quick Add Task (T)"
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'scale(1.05)';
-            e.currentTarget.style.boxShadow = '0 6px 25px rgba(0, 200, 255, 0.6)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 200, 255, 0.4)';
-          }}
-        >
-          <span style={{ fontSize: '1.25rem' }}>+</span> Add Task (T)
-        </button>
+      {/* Quick Task FAB + Search button - hidden when modals are open */}
+      {!editingGoal && !showSettings && !showGameSettings && !showTerraform && !viewingPlanetOwner && !showShop && !showControlHub && !showPlanetCreator && !landedPlanet && !showQuickTaskModal && !showLeaderboard && !showPointsHistory && !showAchievements && !showShipHistory && !showTaskSearch && !gameRef.current?.isPlayerLanded() && (
+        <div style={{ position: 'fixed', bottom: 24, left: 24, display: 'flex', gap: 10, zIndex: 900 }}>
+          <button
+            style={{
+              padding: '12px 20px',
+              borderRadius: '28px',
+              background: 'linear-gradient(135deg, #00c8ff 0%, #0088cc 100%)',
+              border: 'none',
+              boxShadow: '0 4px 20px rgba(0, 200, 255, 0.4)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '1rem',
+              fontWeight: 600,
+              color: '#fff',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+            }}
+            onClick={() => setShowQuickTaskModal(true)}
+            title="Quick Add Task (T)"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = '0 6px 25px rgba(0, 200, 255, 0.6)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 200, 255, 0.4)';
+            }}
+          >
+            <span style={{ fontSize: '1.25rem' }}>+</span> Add Task (T)
+          </button>
+          <button
+            style={{
+              padding: '12px 16px',
+              borderRadius: '28px',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              color: 'rgba(255,255,255,0.6)',
+              transition: 'transform 0.2s, background 0.2s, color 0.2s',
+            }}
+            onClick={() => setShowTaskSearch(true)}
+            title="Search Tasks (/)"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.background = 'rgba(0,200,255,0.1)';
+              e.currentTarget.style.color = '#00c8ff';
+              e.currentTarget.style.borderColor = 'rgba(0,200,255,0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+              e.currentTarget.style.color = 'rgba(255,255,255,0.6)';
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            Search (/)
+          </button>
+        </div>
       )}
 
       {/* Quick Task Modal */}
@@ -4472,6 +4537,16 @@ function App() {
           }}
           onFeatureToggle={handleFeatureToggle}
           featuredPlanetIds={featuredPlanetIds}
+        />
+      )}
+
+      {/* Task Search Modal */}
+      {showTaskSearch && (
+        <TaskSearchModal
+          planets={notionGamePlanets}
+          playerInfo={playerInfoForModal}
+          onSelect={(planet) => { setShowTaskSearch(false); setFeaturedViewPlanet(planet); }}
+          onClose={() => setShowTaskSearch(false)}
         />
       )}
 

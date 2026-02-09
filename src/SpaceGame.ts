@@ -316,6 +316,10 @@ export class SpaceGame {
   // Current player (for zone-based interactions)
   private currentUser: string = 'quentin';
 
+  // "NEW" planet tracking
+  private seenPlanetIds: Set<string> = new Set(); // session cache — no repeat DB calls
+  private onMarkSeen: ((planetId: string, username: string) => void) | null = null;
+
   // For seamless world wrapping
   private prevShipX: number = 0;
   private prevShipY: number = 0;
@@ -1214,6 +1218,10 @@ export class SpaceGame {
     this.onAchievement = callback;
   }
 
+  public setMarkSeenCallback(callback: ((planetId: string, username: string) => void) | null) {
+    this.onMarkSeen = callback;
+  }
+
   public setAchievements(achievements: Record<string, string>) {
     this.unlockedAchievements = new Set(Object.keys(achievements));
   }
@@ -1944,6 +1952,19 @@ export class SpaceGame {
       }
     } else {
       soundManager.updateShopProximity(0);
+    }
+
+    // "NEW" planet proximity marking — instantly mark as seen within 100px
+    for (const planet of planets) {
+      if (!planet.isNew || planet.completed || this.seenPlanetIds.has(planet.id)) continue;
+      const dx = ship.x - planet.x;
+      const dy = ship.y - planet.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < planet.radius + 100) {
+        this.seenPlanetIds.add(planet.id);
+        planet.isNew = false;
+        this.onMarkSeen?.(planet.id, this.currentUser);
+      }
     }
 
     // Upgrade proximity sound - fade based on distance to upgrade target
@@ -6981,6 +7002,60 @@ export class SpaceGame {
       ctx.shadowBlur = 8;
       ctx.fillText('★', starX, starY);
       ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // "NEW" badge for unseen notion planets
+    if (planet.isNew && !planet.completed) {
+      const time = Date.now() * 0.001;
+      ctx.save();
+
+      // Pulsing cyan ring (rotating dashed)
+      ctx.translate(x, y);
+      ctx.rotate(time * 0.6);
+      const ringRadius = planet.radius * 1.6;
+      const dashCount = 12;
+      const dashArc = (Math.PI * 2) / dashCount;
+      const gapRatio = 0.35;
+      const ringAlpha = 0.5 + Math.sin(time * 3) * 0.2;
+      ctx.globalAlpha = ringAlpha;
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < dashCount; i++) {
+        const startAngle = i * dashArc;
+        const endAngle = startAngle + dashArc * (1 - gapRatio);
+        ctx.beginPath();
+        ctx.arc(0, 0, ringRadius, startAngle, endAngle);
+        ctx.stroke();
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+      ctx.restore();
+
+      // "NEW" badge above planet
+      ctx.save();
+      const badgeX = x;
+      const badgeY = y - planet.radius - 18;
+      const badgeAlpha = 0.7 + Math.sin(time * 4) * 0.3;
+      ctx.globalAlpha = badgeAlpha;
+
+      // Badge background
+      const badgeW = 32;
+      const badgeH = 14;
+      ctx.fillStyle = '#00cccc';
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.roundRect(badgeX - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, 4);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Badge text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px Orbitron';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('NEW', badgeX, badgeY);
+
       ctx.restore();
     }
 

@@ -32,12 +32,13 @@ const rowToNotionPlanet = (row: any): NotionPlanet => ({
   completed: row.completed,
   created_at: row.created_at,
   due_date: row.due_date || null,
+  seen_by: row.seen_by || {},
 });
 
 // Convert NotionPlanet to game Planet
 // Note: Position is determined by the backend (notion-sync, notion-webhook, notion-claim)
 // Frontend just uses the DB position directly - no client-side repositioning
-export const notionPlanetToGamePlanet = (np: NotionPlanet): Planet => {
+export const notionPlanetToGamePlanet = (np: NotionPlanet, currentUser?: string): Planet => {
   const taskType = np.task_type?.toLowerCase() || 'default';
   const colors = TASK_TYPE_COLORS[taskType] || TASK_TYPE_COLORS.default;
 
@@ -78,11 +79,14 @@ export const notionPlanetToGamePlanet = (np: NotionPlanet): Planet => {
     notionUrl: np.notion_url || undefined,
     taskType: np.task_type,
     targetDate: np.due_date ? np.due_date.slice(0, 10) : undefined,
+    isNew: !np.completed && !!currentUser && !np.seen_by?.[currentUser]
+      && (!np.assigned_to || np.assigned_to === currentUser),
   };
 };
 
 interface UseNotionPlanetsOptions {
   teamId: string | null;
+  currentUser?: string;
   onPlanetCreated?: (planet: NotionPlanet) => void;
   onPlanetCompleted?: (planet: NotionPlanet) => void;
 }
@@ -109,10 +113,11 @@ interface UseNotionPlanetsReturn {
   claimPlanet: (notionPlanetId: string, playerUsername: string) => Promise<{ x: number; y: number } | null>;
   reassignPlanet: (notionPlanetId: string, newOwnerUsername: string) => Promise<{ x: number; y: number } | null>;
   updatePlanet: (notionPlanetId: string, updates: UpdatePlanetFields) => Promise<UpdatePlanetResult | null>;
+  markPlanetSeen: (notionPlanetId: string, username: string) => Promise<void>;
 }
 
 export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPlanetsReturn {
-  const { teamId } = options;
+  const { teamId, currentUser } = options;
 
   const [notionPlanets, setNotionPlanets] = useState<NotionPlanet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -245,6 +250,40 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
     }
   }, [teamId]);
 
+  // Mark a planet as seen by a user (removes "NEW" badge)
+  const markPlanetSeen = useCallback(async (notionPlanetId: string, username: string) => {
+    // Extract the actual ID (remove 'notion-' prefix if present)
+    const actualId = notionPlanetId.startsWith('notion-')
+      ? notionPlanetId.slice(7)
+      : notionPlanetId;
+
+    // Optimistic local update — set seen_by immediately so badge vanishes
+    setNotionPlanets((prev) =>
+      prev.map((p) =>
+        p.id === actualId
+          ? { ...p, seen_by: { ...p.seen_by, [username]: true } }
+          : p
+      )
+    );
+
+    // Persist to Supabase: fetch current seen_by, merge, and update
+    try {
+      const { data } = await supabase
+        .from('notion_planets')
+        .select('seen_by')
+        .eq('id', actualId)
+        .single();
+
+      const currentSeenBy = (data?.seen_by as Record<string, boolean>) || {};
+      await supabase
+        .from('notion_planets')
+        .update({ seen_by: { ...currentSeenBy, [username]: true } })
+        .eq('id', actualId);
+    } catch {
+      // Optimistic update already applied, non-critical
+    }
+  }, []);
+
   // Set up realtime subscriptions
   useEffect(() => {
     if (!teamId) {
@@ -327,8 +366,8 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
   // Memoize game planets to prevent unnecessary re-renders
   // Pass index for positioning planets that need repositioning from old center
   const gamePlanets = useMemo(
-    () => notionPlanets.map((np) => notionPlanetToGamePlanet(np)),
-    [notionPlanets]
+    () => notionPlanets.map((np) => notionPlanetToGamePlanet(np, currentUser)),
+    [notionPlanets, currentUser]
   );
 
   return {
@@ -339,5 +378,6 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
     claimPlanet,
     reassignPlanet,
     updatePlanet,
+    markPlanetSeen,
   };
 }

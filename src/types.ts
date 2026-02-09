@@ -45,6 +45,7 @@ export interface Planet {
   notionTaskId?: string;
   notionUrl?: string;
   taskType?: string | null; // bug, feature, task, etc.
+  isNew?: boolean; // true if this planet hasn't been seen by the current user yet
 }
 
 export interface NotionPlanet {
@@ -64,6 +65,7 @@ export interface NotionPlanet {
   completed: boolean;
   created_at: string;
   due_date: string | null;
+  seen_by: Record<string, boolean>;
 }
 
 export interface Star {
