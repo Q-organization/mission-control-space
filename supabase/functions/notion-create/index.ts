@@ -12,12 +12,13 @@ const corsHeaders = {
 const NOTION_DATABASE_ID = '2467d5a8-0344-8198-a604-c6bd91473887';
 
 interface CreateRequest {
-  name: string;
-  description?: string;
+  content: string;       // Single input — AI generates a title from this
+  name?: string;         // Legacy: direct title (skips AI)
+  description?: string;  // Legacy: direct description
   type: 'task' | 'bug' | 'feature' | 'achievement' | 'business' | 'roadmap';
   priority?: 'low' | 'medium' | 'high' | 'critical';
-  assigned_to?: string; // Username or null for unassigned
-  created_by: string;   // Username of creator
+  assigned_to?: string;  // Username or null for unassigned
+  created_by: string;    // Username of creator
 }
 
 interface ExistingPlanet {
@@ -204,11 +205,55 @@ Deno.serve(async (req) => {
   try {
     const body: CreateRequest = await req.json();
 
-    if (!body.name || !body.created_by) {
+    if ((!body.content && !body.name) || !body.created_by) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: name, created_by' }),
+        JSON.stringify({ error: 'Missing required fields: content (or name), created_by' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Generate title from content using OpenAI, or use legacy name field
+    let taskName: string;
+    let taskDescription: string | null;
+
+    if (body.content) {
+      const openaiKey = Deno.env.get('OPENAI_API_KEY');
+      if (openaiKey) {
+        try {
+          const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openaiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              messages: [
+                {
+                  role: 'system',
+                  content: 'You generate concise task titles from user input. Return ONLY the title, nothing else. The title should be a short, clear summary of the task (max 10 words). Do not add quotes or formatting. If the input is already short and clear enough to be a title, return it as-is.',
+                },
+                { role: 'user', content: body.content },
+              ],
+              max_tokens: 50,
+              temperature: 0.3,
+            }),
+          });
+          const aiData = await aiRes.json();
+          taskName = aiData.choices?.[0]?.message?.content?.trim() || body.content;
+        } catch (e) {
+          console.error('OpenAI title generation failed, using raw content:', e);
+          taskName = body.content;
+        }
+      } else {
+        taskName = body.content;
+      }
+      // Keep original content as description if different from the generated title
+      taskDescription = taskName.toLowerCase() === body.content.toLowerCase() ? null : body.content;
+    } else {
+      // Legacy path: name/description provided directly
+      taskName = body.name!;
+      taskDescription = body.description || null;
     }
 
     const notionToken = Deno.env.get('NOTION_API_TOKEN');
@@ -242,7 +287,7 @@ Deno.serve(async (req) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const notionProperties: Record<string, any> = {
       'Ticket': {
-        title: [{ text: { content: body.name } }],
+        title: [{ text: { content: taskName } }],
       },
       'Status': {
         select: { name: 'Ticket Open' },
@@ -250,9 +295,9 @@ Deno.serve(async (req) => {
     };
 
     // Add description if provided
-    if (body.description) {
+    if (taskDescription) {
       notionProperties['Description'] = {
-        rich_text: [{ text: { content: body.description } }],
+        rich_text: [{ text: { content: taskDescription } }],
       };
     }
 
@@ -344,8 +389,8 @@ Deno.serve(async (req) => {
       .insert({
         team_id: team.id,
         notion_task_id: notionTaskId,
-        name: body.name,
-        description: body.description || null,
+        name: taskName,
+        description: taskDescription,
         notion_url: notionUrl,
         assigned_to: body.assigned_to?.toLowerCase() || null,
         created_by: body.created_by.toLowerCase(),
@@ -381,7 +426,7 @@ Deno.serve(async (req) => {
         player_id: creator.id,
         source: 'notion',
         notion_task_id: notionTaskId,
-        task_name: `Created: ${body.name}`,
+        task_name: `Created: ${taskName}`,
         points: 10,
         point_type: 'personal',
       });
@@ -393,7 +438,7 @@ Deno.serve(async (req) => {
         .eq('id', creator.id);
     }
 
-    console.log(`Created Notion task "${body.name}" and planet at (${position.x}, ${position.y})`);
+    console.log(`Created Notion task "${taskName}" and planet at (${position.x}, ${position.y})`);
 
     return new Response(
       JSON.stringify({
@@ -401,7 +446,7 @@ Deno.serve(async (req) => {
         notion_task_id: notionTaskId,
         notion_url: notionUrl,
         planet_id: planet.id,
-        planet_name: body.name,
+        planet_name: taskName,
         assigned_to: body.assigned_to?.toLowerCase() || null,
         position: position,
         points: points,

@@ -4384,6 +4384,9 @@ function App() {
             soundManager.playSendVoiceLine();
             gameRef.current?.startNewTaskSendAnimation(taskName, taskType, priority, assignedTo);
           }}
+          onPositionReady={(position) => {
+            gameRef.current?.setSendTarget(position.x, position.y);
+          }}
         />
       )}
 

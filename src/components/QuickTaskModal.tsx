@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
 interface TeamMember {
@@ -15,6 +15,7 @@ interface QuickTaskModalProps {
   teamMembers: TeamMember[];
   onCreatedForSelf?: (taskName: string, taskType: string, priority: string) => void;
   onCreatedForOther?: (taskName: string, taskType: string, priority: string, assignedTo: string) => void;
+  onPositionReady?: (position: { x: number; y: number }, planetId: string) => void;
 }
 
 const TASK_TYPES = [
@@ -30,42 +31,119 @@ const PRIORITY_OPTIONS = [
   { value: 'critical', label: 'Critical', icon: '🧨', color: '#ef4444' },
 ] as const;
 
-export function QuickTaskModal({ isOpen, onClose, currentUser, teamMembers, onCreatedForSelf, onCreatedForOther }: QuickTaskModalProps) {
-  const [taskName, setTaskName] = useState('');
-  const [description, setDescription] = useState('');
+export function QuickTaskModal({ isOpen, onClose, currentUser, teamMembers, onCreatedForSelf, onCreatedForOther, onPositionReady }: QuickTaskModalProps) {
+  const [taskContent, setTaskContent] = useState('');
   const [taskType, setTaskType] = useState<'task' | 'bug' | 'feature'>('task');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [assignedTo, setAssignedTo] = useState(currentUser);
   const [autoOpenNotion, setAutoOpenNotion] = useState(
     () => localStorage.getItem('mission-control-auto-open-notion') === 'true'
   );
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
+
+  const toggleRecording = useCallback(async () => {
+    if (isRecording) {
+      stopRecording();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Stop all mic tracks
+        stream.getTracks().forEach(t => t.stop());
+        setIsRecording(false);
+
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        if (blob.size === 0) return;
+
+        // Convert to base64
+        setIsTranscribing(true);
+        try {
+          const buffer = await blob.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          const base64 = btoa(binary);
+
+          const { data, error } = await supabase.functions.invoke('whisper-transcribe', {
+            body: { audio: base64 },
+          });
+
+          if (error) {
+            console.error('Whisper transcription error:', error);
+          } else if (data?.text) {
+            setTaskContent(prev => {
+              const separator = prev.trim() ? ' ' : '';
+              return prev.trim() + separator + data.text.trim();
+            });
+          }
+        } catch (err) {
+          console.error('Transcription failed:', err);
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Mic access denied:', err);
+    }
+  }, [isRecording, stopRecording]);
+
+  // Stop recording when modal closes
+  useEffect(() => {
+    if (!isOpen && isRecording) {
+      stopRecording();
+    }
+  }, [isOpen, isRecording, stopRecording]);
 
   if (!isOpen) return null;
 
   const handleSubmit = () => {
-    if (!taskName.trim()) return;
+    if (!taskContent.trim()) return;
+    if (isRecording) stopRecording();
+
+    const content = taskContent.trim();
 
     // Capture values before resetting
     const payload = {
-      name: taskName.trim(),
-      description: description.trim() || null,
+      content,
       type: taskType,
       priority: priority,
       assigned_to: assignedTo || null,
       created_by: currentUser,
     };
 
-    // Play voice line + send animation
+    // Play voice line + send animation (use content as temp name)
     if (assignedTo === currentUser && onCreatedForSelf) {
-      onCreatedForSelf(payload.name, taskType, priority);
+      onCreatedForSelf(content, taskType, priority);
     } else if (onCreatedForOther) {
-      // Assigned to someone else or unassigned — send animation + delivery sounds
-      onCreatedForOther(payload.name, taskType, priority, assignedTo);
+      onCreatedForOther(content, taskType, priority, assignedTo);
     }
 
     // Reset form and close immediately
-    setTaskName('');
-    setDescription('');
+    setTaskContent('');
     setTaskType('task');
     setPriority('medium');
     setAssignedTo(currentUser);
@@ -78,6 +156,9 @@ export function QuickTaskModal({ isOpen, onClose, currentUser, teamMembers, onCr
           console.error('Failed to create Notion task:', error);
           return;
         }
+        if (data?.position && onPositionReady) {
+          onPositionReady(data.position, data.planet_id);
+        }
         if (autoOpenNotion && data?.notion_url) {
           window.open(data.notion_url, '_blank');
         }
@@ -87,10 +168,10 @@ export function QuickTaskModal({ isOpen, onClose, currentUser, teamMembers, onCr
       });
   };
 
-  const isValid = taskName.trim();
+  const isValid = taskContent.trim();
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !(e.target as HTMLElement).tagName.match(/TEXTAREA/i) && isValid) {
+    if (e.key === 'Enter' && !e.shiftKey && isValid) {
       e.preventDefault();
       handleSubmit();
     }
@@ -102,25 +183,60 @@ export function QuickTaskModal({ isOpen, onClose, currentUser, teamMembers, onCr
         <h2 style={styles.modalTitle}>Quick Add Task</h2>
 
         <div style={styles.formGroup}>
-          <label style={styles.label}>Task Name</label>
-          <input
-            type="text"
-            style={styles.input}
-            value={taskName}
-            onChange={(e) => setTaskName(e.target.value)}
-            placeholder="What needs to be done?"
-            autoFocus
-          />
-        </div>
-
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Description</label>
-          <textarea
-            style={{ ...styles.input, minHeight: 80, resize: 'vertical' }}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Add details..."
-          />
+          <div style={{ position: 'relative' }}>
+            <textarea
+              style={{ ...styles.input, minHeight: 100, resize: 'none', paddingRight: 48 }}
+              value={taskContent}
+              onChange={(e) => setTaskContent(e.target.value)}
+              placeholder={isRecording ? 'Recording...' : isTranscribing ? 'Transcribing...' : 'What needs to be done?'}
+              autoFocus
+              disabled={isTranscribing}
+            />
+            <button
+              type="button"
+              onClick={toggleRecording}
+              disabled={isTranscribing}
+              style={{
+                position: 'absolute',
+                right: 8,
+                top: 8,
+                width: 34,
+                height: 34,
+                borderRadius: '50%',
+                border: 'none',
+                background: isRecording ? 'rgba(239, 68, 68, 0.25)' : isTranscribing ? 'rgba(0,200,255,0.15)' : 'rgba(255,255,255,0.08)',
+                cursor: isTranscribing ? 'wait' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s ease',
+                animation: isRecording ? 'mic-pulse 1.5s ease-in-out infinite' : isTranscribing ? 'mic-spin 1s linear infinite' : 'none',
+              }}
+            >
+              {isTranscribing ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00c8ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={isRecording ? '#ef4444' : '#888'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <style>{`
+            @keyframes mic-pulse {
+              0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+              50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            }
+            @keyframes mic-spin {
+              from { transform: rotate(0deg); }
+              to { transform: rotate(360deg); }
+            }
+          `}</style>
         </div>
 
         <div style={styles.formGroup}>
