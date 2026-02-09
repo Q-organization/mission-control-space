@@ -304,6 +304,7 @@ export class SpaceGame {
   private sendVelocityY: number = 0;
   private sendRocketFlame: number = 0;
   private sendPendingPlanet: Planet | null = null; // Updated planet data to add after animation
+  private sendRealPlanetId: string | null = null; // Real planet ID from API (to suppress in sync)
   private sendTrailPoints: { x: number; y: number; size: number; alpha: number }[] = [];
 
   // Upgrading animation state (orbiting satellites/robots)
@@ -1120,7 +1121,6 @@ export class SpaceGame {
 
     // Check if we're sending a temp new-task planet (needs to find matching real planet)
     const isSendingTempTask = sendingPlanetId?.startsWith('temp-new-task-');
-    const tempPlanet = isSendingTempTask ? this.state.planets.find(p => p.id === sendingPlanetId) : null;
 
     // Add new notion planets EXCEPT ones being claimed/sent/remote-animated (keep animation's reference)
     for (const planet of notionPlanets) {
@@ -1132,13 +1132,8 @@ export class SpaceGame {
         this.sendPendingPlanet = planet;
       } else if (remoteSendingPlanetIds.has(planet.id)) {
         // Remote send animation controls this planet — skip replacement
-      } else if (isSendingTempTask && tempPlanet && !this.sendTargetReady &&
-                 planet.name === tempPlanet.name && planet.ownerId === tempPlanet.ownerId) {
-        // Real planet arrived for our temp new-task animation — redirect to its position
-        this.setSendTarget(planet.x, planet.y);
-        this.sendPendingPlanet = planet;
-      } else if (isSendingTempTask && this.sendPendingPlanet && planet.id === this.sendPendingPlanet.id) {
-        // Subsequent sync for the same real planet — keep suppressed until animation finishes
+      } else if (isSendingTempTask && this.sendRealPlanetId && planet.id === this.sendRealPlanetId) {
+        // Real planet matched by ID from API — suppress until animation finishes
         this.sendPendingPlanet = planet;
       } else {
         this.state.planets.push(planet);
@@ -2468,10 +2463,11 @@ export class SpaceGame {
     this.sendTrailPoints = [];
     this.sendRocketFlame = 0;
     this.sendPendingPlanet = null;
+    this.sendRealPlanetId = null;
 
     // Start flying immediately in a random direction
     const randomAngle = Math.random() * Math.PI * 2;
-    const speed = 8; // Similar to ship speed
+    const speed = 18; // Fast delivery ships
     this.sendVelocityX = Math.cos(randomAngle) * speed;
     this.sendVelocityY = Math.sin(randomAngle) * speed;
 
@@ -2530,11 +2526,14 @@ export class SpaceGame {
   }
 
   // Public method to set target position when API returns
-  public setSendTarget(targetX: number, targetY: number) {
+  public setSendTarget(targetX: number, targetY: number, realPlanetId?: string) {
     if (!this.isSending) return;
     this.sendTargetX = targetX;
     this.sendTargetY = targetY;
     this.sendTargetReady = true;
+    if (realPlanetId) {
+      this.sendRealPlanetId = realPlanetId;
+    }
   }
 
   // Get the current send velocity (so App.tsx can broadcast it after startSendAnimation)
@@ -2581,7 +2580,7 @@ export class SpaceGame {
     if (this.remoteSendAnimations.size === 0) return;
 
     const now = Date.now();
-    const speed = 8;
+    const speed = 18;
 
     for (const [planetId, anim] of this.remoteSendAnimations) {
       // 30-second timeout
@@ -2751,10 +2750,11 @@ export class SpaceGame {
     const planet = this.state.planets.find(p => p.id === this.sendPlanetId);
     if (!planet) {
       this.isSending = false;
+      this.sendRealPlanetId = null;
       return;
     }
 
-    const speed = 8; // Constant speed like ships
+    const speed = 18; // Fast delivery ships
 
     if (this.sendTargetReady) {
       // Steer toward target
@@ -2765,6 +2765,7 @@ export class SpaceGame {
       if (dist < 50) {
         // Arrived! Replace with updated planet at new position
         this.isSending = false;
+        this.sendRealPlanetId = null;
         this.sendTrailPoints = [];
         this.state.planets = this.state.planets.filter(p => p.id !== this.sendPlanetId);
 
