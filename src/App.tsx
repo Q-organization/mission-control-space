@@ -501,6 +501,7 @@ function App() {
   const onDockRef = useRef<(planet: Planet) => void>(() => {});
   const achievementHandlerRef = useRef<(id: string) => void>(() => {});
   const markSeenRef = useRef<(planetId: string, username: string) => void>(() => {});
+  const nomadBossVictoryRef = useRef<() => void>(() => {});
   const landingCallbacksRef = useRef<{
     onLand: (planet: Planet) => void;
     onTakeoff: () => void;
@@ -2407,6 +2408,16 @@ function App() {
     markSeenRef.current = markNotionPlanetSeen;
   }, [markNotionPlanetSeen]);
 
+  // Nomad boss victory: award +1000 personal points
+  const handleNomadBossVictory = useCallback(async () => {
+    console.log('[NomadBoss] Victory! Awarding +1000 points');
+    await updateRemotePersonalPoints(1000, 'Defeated the Neon Nomad');
+  }, [updateRemotePersonalPoints]);
+
+  useEffect(() => {
+    nomadBossVictoryRef.current = handleNomadBossVictory;
+  }, [handleNomadBossVictory]);
+
   // Stable callback that uses the ref
   const stableOnDock = useCallback((planet: Planet) => {
     onDockRef.current(planet);
@@ -3855,6 +3866,7 @@ function App() {
       onNomadApproach: () => landingCallbacksRef.current.onNomadApproach(),
       onHornActivate: () => landingCallbacksRef.current.onHornActivate(),
       onEmoteActivate: () => landingCallbacksRef.current.onEmoteActivate(),
+      onNomadBossVictory: () => nomadBossVictoryRef.current(),
     });
 
     // Set up weapon fire broadcast callback (game → WS)

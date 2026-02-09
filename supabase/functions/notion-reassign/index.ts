@@ -58,7 +58,7 @@ function findNonOverlappingPosition(
     { x: baseZone.x, y: baseZone.y },
   ];
 
-  const maxAttempts = 50;
+  const maxAttempts = 200;
 
   // Tight rings around home planet
   const baseRadius = 380;
@@ -90,13 +90,31 @@ function findNonOverlappingPosition(
     }
   }
 
-  // Fallback: outer rings
-  const fallbackRing = 2 + Math.floor(Math.random() * 3);
-  const fallbackRadius = baseRadius + fallbackRing * ringSpacing;
-  const fallbackAngle = Math.random() * Math.PI * 2;
+  // Fallback: keep trying outer rings with overlap checking
+  const startRing = Math.floor(maxAttempts / planetsPerRing) + 1;
+  for (let ring = startRing; ring < startRing + 20; ring++) {
+    const radius = baseRadius + ring * ringSpacing;
+    for (let slot = 0; slot < planetsPerRing; slot++) {
+      const angle = slot * angleStep + (ring * 0.35);
+      const candidate = {
+        x: baseZone.x + Math.cos(angle) * radius,
+        y: baseZone.y + Math.sin(angle) * radius,
+      };
+      let isValid = true;
+      for (const planet of allObstacles) {
+        if (distance(candidate, planet) < MIN_DISTANCE) {
+          isValid = false;
+          break;
+        }
+      }
+      if (isValid) return candidate;
+    }
+  }
+  // Last resort: far out ring at a fixed angle
+  const lastResortRadius = baseRadius + (startRing + 20) * ringSpacing;
   return {
-    x: baseZone.x + Math.cos(fallbackAngle) * fallbackRadius,
-    y: baseZone.y + Math.sin(fallbackAngle) * fallbackRadius,
+    x: baseZone.x + lastResortRadius,
+    y: baseZone.y,
   };
 }
 

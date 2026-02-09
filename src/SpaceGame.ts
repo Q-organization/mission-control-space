@@ -119,6 +119,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'tasks_25', name: 'Workhorse', icon: '🔥', description: 'Complete 25 tasks in a session', points: 100 },
   { id: 'konami', name: '↑↑↓↓←→←→BA', icon: '🎮', description: 'Enter the Konami code', points: 50 },
   { id: 'whale_slap', name: 'Bad Idea', icon: '🐋💥', description: 'Shoot the space whale. Find out.', points: 75 },
+  { id: 'nomad_slayer', name: 'Neon Nemesis', icon: '🏪💀', description: 'Defeat the Neon Nomad in combat', points: 200 },
 ];
 
 // Expanded world to fit all zones
@@ -485,6 +486,34 @@ export class SpaceGame {
   // No waypoints — merchant uses parametric path from Date.now() for deterministic sync
   private static readonly NOMAD_DOCKING_DISTANCE = 120;
   private static readonly NOMAD_RENDER_SIZE = 156;
+
+  // Nomad boss fight (local only)
+  private nomadFight: {
+    active: boolean;
+    nomadHP: number;
+    playerHP: number;
+    attackTimer: number;
+    patternIndex: number;
+    spiralAngle: number;
+    phaseTimer: number;
+    nomadVx: number;
+    nomadVy: number;
+    enraged: boolean;
+    introTimer: number;
+    defeatTimer: number;
+    victoryTimer: number;
+    strafeTimer: number;
+    strafeDir: number;
+    savedNomadPos: { x: number; y: number };
+    damageFlashTimer: number;
+    playerDamageFlashTimer: number;
+    contactDamageCooldown: number;
+    deathMessage: string;
+  } | null = null;
+  private nomadProjectiles: { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; damage: number; size: number; color: string }[] = [];
+  private nomadFightCooldown: number = 0;
+  private onNomadBossVictory: (() => void) | null = null;
+  private nomadVictoryText: { text: string; x: number; y: number; timer: number } | null = null;
 
   // Escort drones (permanent companions based on ship level)
   private escortDrones: EscortDrone[] = [];
@@ -1199,6 +1228,7 @@ export class SpaceGame {
     onNomadApproach?: () => void;
     onHornActivate?: () => void;
     onEmoteActivate?: () => void;
+    onNomadBossVictory?: () => void;
   }) {
     this.onLand = callbacks.onLand || null;
     this.onTakeoff = callbacks.onTakeoff || null;
@@ -1217,6 +1247,7 @@ export class SpaceGame {
     this.onNomadApproach = callbacks.onNomadApproach || null;
     this.onHornActivate = callbacks.onHornActivate || null;
     this.onEmoteActivate = callbacks.onEmoteActivate || null;
+    this.onNomadBossVictory = callbacks.onNomadBossVictory || null;
   }
 
   public setAchievementCallback(callback: ((achievementId: string) => void) | null) {
@@ -4255,6 +4286,12 @@ export class SpaceGame {
         bulletRemoved = true;
       }
 
+      // Check collision with Neon Nomad (boss fight!)
+      if (!bulletRemoved && this.checkNomadProjectileHit(p.x, p.y)) {
+        this.projectiles.splice(i, 1);
+        bulletRemoved = true;
+      }
+
       // Check collision with ALL planets
       if (!bulletRemoved) {
         for (const planet of this.state.planets) {
@@ -4669,6 +4706,13 @@ export class SpaceGame {
         removed = true;
       }
 
+      // Check collision with Neon Nomad (boss fight!)
+      if (!removed && this.checkNomadProjectileHit(p.x, p.y)) {
+        this.emitPlasmaExplosion(p.x, p.y);
+        this.plasmaProjectiles.splice(i, 1);
+        removed = true;
+      }
+
       // Check collision with planets
       if (!removed) for (const planet of this.state.planets) {
         const dx = p.x - planet.x;
@@ -4887,6 +4931,13 @@ export class SpaceGame {
 
       // Check collision with space whale (tail slap!)
       if (this.checkWhaleProjectileHit(r.x, r.y)) {
+        this.emitRocketExplosion(r.x, r.y);
+        this.rockets.splice(i, 1);
+        removed = true;
+      }
+
+      // Check collision with Neon Nomad (boss fight!)
+      if (!removed && this.checkNomadProjectileHit(r.x, r.y)) {
         this.emitRocketExplosion(r.x, r.y);
         this.rockets.splice(i, 1);
         removed = true;
@@ -6444,14 +6495,19 @@ export class SpaceGame {
     this.renderRockets();
     this.renderRemoteRockets();
 
+    // Draw nomad boss fight projectiles
+    this.renderNomadProjectiles();
+
     // Draw other players' ships (behind local ship)
     this.renderOtherPlayers();
 
     // Draw emote effects on ships (local + remote)
     this.renderEmoteEffects();
 
-    // Draw local ship
-    this.drawShip();
+    // Draw local ship (hide during nomad death animation)
+    if (!(this.nomadFight?.defeatTimer && this.nomadFight.defeatTimer > 0)) {
+      this.drawShip();
+    }
 
     // Draw escort drones (following pets)
     this.renderEscortDrones();
@@ -6493,6 +6549,9 @@ export class SpaceGame {
 
     // Draw minimap
     this.drawMinimap();
+
+    // Draw nomad boss fight HUD (HP bars, victory text)
+    this.renderNomadFightHUD();
 
     // Draw zone title when entering a new zone
     if (this.zoneTitleOpacity > 0) {
@@ -9451,6 +9510,825 @@ export class SpaceGame {
     }
   }
 
+  // ─── NOMAD BOSS FIGHT ────────────────────────────────────────
+
+  private checkNomadProjectileHit(px: number, py: number): boolean {
+    if (this.nomadFightCooldown > 0) return false;
+    const dx = px - this.neonNomad.x;
+    const dy = py - this.neonNomad.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const hitRadius = SpaceGame.NOMAD_RENDER_SIZE / 2;
+
+    if (dist < hitRadius) {
+      if (this.nomadFight?.active) {
+        // Deal damage to nomad during fight
+        const damage = 15;
+        this.nomadFight.nomadHP -= damage;
+        this.nomadFight.damageFlashTimer = 8;
+        this.screenShake = { intensity: 4, timer: 6 };
+        soundManager.playNomadBossHit();
+
+        // Hit particles
+        const colors = ['#ff00ff', '#00ffff', '#ffa500', '#ffffff'];
+        for (let i = 0; i < 6; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 4 + 2;
+          this.state.particles.push({
+            x: px, y: py,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 15 + Math.random() * 10,
+            maxLife: 25,
+            size: Math.random() * 3 + 1,
+            color: colors[Math.floor(Math.random() * colors.length)],
+          });
+        }
+
+        if (this.nomadFight.nomadHP <= 0) {
+          this.triggerNomadVictory();
+        }
+      } else {
+        // Start fight
+        this.startNomadFight();
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private startNomadFight() {
+    this.nomadFight = {
+      active: true,
+      nomadHP: 2000,
+      playerHP: 100,
+      attackTimer: 90, // brief grace period
+      patternIndex: -1,
+      spiralAngle: 0,
+      phaseTimer: 0,
+      nomadVx: 0,
+      nomadVy: 0,
+      enraged: false,
+      introTimer: 120, // 2 sec cinematic pause
+      defeatTimer: 0,
+      victoryTimer: 0,
+      strafeTimer: 0,
+      strafeDir: 1,
+      savedNomadPos: { x: this.neonNomad.x, y: this.neonNomad.y },
+      damageFlashTimer: 0,
+      playerDamageFlashTimer: 0,
+      contactDamageCooldown: 0,
+      deathMessage: '',
+    };
+    this.nomadProjectiles = [];
+    // Override nomad music to full volume
+    soundManager.updateNomadProximity(1, false);
+  }
+
+  private updateNomadFight() {
+    const fight = this.nomadFight!;
+    const { ship } = this.state;
+    const nomad = this.neonNomad;
+
+    // Decrement timers
+    if (fight.damageFlashTimer > 0) fight.damageFlashTimer -= this.dt;
+    if (fight.playerDamageFlashTimer > 0) fight.playerDamageFlashTimer -= this.dt;
+
+    // Cooldown tick
+    if (this.nomadFightCooldown > 0) this.nomadFightCooldown -= this.dt;
+
+    // Intro timer (nomad pauses before attacking)
+    if (fight.introTimer > 0) {
+      fight.introTimer -= this.dt;
+      return;
+    }
+
+    // Defeat timer — camera locks on death position during animation
+    if (fight.defeatTimer > 0) {
+      fight.defeatTimer -= this.dt;
+      // Lock camera on explosion site
+      const deathPos = fight.savedNomadPos;
+      this.state.camera.x = deathPos.x - this.canvas.width / 2;
+      this.state.camera.y = deathPos.y - this.canvas.height / 2;
+      if (fight.defeatTimer <= 0) {
+        this.endNomadFight(false);
+      }
+      return;
+    }
+    if (fight.victoryTimer > 0) {
+      fight.victoryTimer -= this.dt;
+      // Victory particles during celebration
+      if (Math.random() < 0.3) {
+        const colors = ['#ff00ff', '#00ffff', '#ffa500', '#ffff00', '#4ade80', '#ff6b9d'];
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 3 + 1;
+        this.state.particles.push({
+          x: nomad.x + (Math.random() - 0.5) * 100,
+          y: nomad.y + (Math.random() - 0.5) * 100,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 25 + Math.random() * 20,
+          maxLife: 45,
+          size: Math.random() * 4 + 2,
+          color: colors[Math.floor(Math.random() * colors.length)],
+        });
+      }
+      if (fight.victoryTimer <= 0) {
+        this.endNomadFight(true);
+      }
+      return;
+    }
+
+    // Check enrage (30% of 2000 = 600)
+    fight.enraged = fight.nomadHP <= 600;
+
+    // ── Movement: chase player (shortest path across world wrap) ──
+    let dx = ship.x - nomad.x;
+    let dy = ship.y - nomad.y;
+    // Wrap to shortest path
+    if (dx > 5000) dx -= 10000;
+    if (dx < -5000) dx += 10000;
+    if (dy > 5000) dy -= 10000;
+    if (dy < -5000) dy += 10000;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const targetAngle = Math.atan2(dy, dx);
+
+    // Smooth rotation toward player
+    let angleDiff = targetAngle - nomad.rotation;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    nomad.rotation += angleDiff * 0.04 * this.dt;
+
+    const chaseSpeed = fight.enraged ? 13 : 10.5;
+
+    // Strafe logic: perpendicular dash every 180 frames
+    fight.strafeTimer -= this.dt;
+    if (fight.strafeTimer <= 0) {
+      fight.strafeTimer = 150 + Math.random() * 60;
+      fight.strafeDir = Math.random() < 0.5 ? 1 : -1;
+    }
+    const strafing = fight.strafeTimer > 120; // strafe for first 30 frames of cycle
+    const perpX = -dy / dist;
+    const perpY = dx / dist;
+
+    if (strafing) {
+      fight.nomadVx = (dx / dist) * chaseSpeed * 0.5 + perpX * fight.strafeDir * chaseSpeed * 0.8;
+      fight.nomadVy = (dy / dist) * chaseSpeed * 0.5 + perpY * fight.strafeDir * chaseSpeed * 0.8;
+    } else {
+      fight.nomadVx = (dx / dist) * chaseSpeed;
+      fight.nomadVy = (dy / dist) * chaseSpeed;
+    }
+
+    nomad.x += fight.nomadVx * this.dt;
+    nomad.y += fight.nomadVy * this.dt;
+
+    // Wrap around world boundaries (toroidal) — nomad can chase across edges
+    nomad.x = ((nomad.x % 10000) + 10000) % 10000;
+    nomad.y = ((nomad.y % 10000) + 10000) % 10000;
+
+    // ── Body collision: nomad ramming into player deals damage ──
+    if (fight.contactDamageCooldown > 0) fight.contactDamageCooldown -= this.dt;
+    const contactRadius = SpaceGame.NOMAD_RENDER_SIZE / 2 + 15;
+    if (dist < contactRadius && fight.contactDamageCooldown <= 0) {
+      fight.playerHP -= 12;
+      fight.contactDamageCooldown = 30; // ~0.5s cooldown
+      fight.playerDamageFlashTimer = 6;
+      this.screenShake = { intensity: 10, timer: 10 };
+      soundManager.playCollision();
+
+      // Knockback player away from nomad
+      const knockStr = 12;
+      ship.vx = (dx / dist) * knockStr;
+      ship.vy = (dy / dist) * knockStr;
+
+      // Contact sparks
+      const midX = (ship.x + nomad.x) / 2;
+      const midY = (ship.y + nomad.y) / 2;
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 4 + 2;
+        this.state.particles.push({
+          x: midX, y: midY,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 12 + Math.random() * 8,
+          maxLife: 20,
+          size: Math.random() * 3 + 1,
+          color: Math.random() < 0.5 ? '#ff00ff' : '#ff4444',
+        });
+      }
+
+      if (fight.playerHP <= 0) {
+        this.triggerNomadDefeat();
+        return;
+      }
+    }
+
+    // ── Attack patterns ──
+    fight.attackTimer -= this.dt;
+    if (fight.attackTimer <= 0) {
+      // Pick random pattern (avoid repeating) — 6 patterns now (0-5)
+      let newPattern = Math.floor(Math.random() * 6);
+      if (newPattern === fight.patternIndex) newPattern = (newPattern + 1) % 6;
+      fight.patternIndex = newPattern;
+      fight.phaseTimer = 0;
+      fight.spiralAngle = 0;
+
+      const baseCooldown = fight.enraged ? 70 : 110;
+      fight.attackTimer = baseCooldown + Math.random() * 30;
+    }
+
+    fight.phaseTimer += this.dt;
+    const angleToPlayer = Math.atan2(dy, dx); // uses wrapped dx/dy
+    const bulletSpeedMult = fight.enraged ? 1.3 : 1;
+
+    // Spawn offset: bullets come from the front of the nomad
+    const spawnDist = SpaceGame.NOMAD_RENDER_SIZE / 2;
+    const spawnX = nomad.x + Math.cos(nomad.rotation) * spawnDist;
+    const spawnY = nomad.y + Math.sin(nomad.rotation) * spawnDist;
+
+    switch (fight.patternIndex) {
+      case 0: // Burst fire: 5 aimed shots, 8-frame interval
+        if (fight.phaseTimer % 8 < this.dt && fight.phaseTimer < 40) {
+          const speed = 8 * bulletSpeedMult;
+          const spread = (Math.random() - 0.5) * 0.15;
+          this.nomadProjectiles.push({
+            x: spawnX, y: spawnY,
+            vx: Math.cos(angleToPlayer + spread) * speed,
+            vy: Math.sin(angleToPlayer + spread) * speed,
+            life: 120, maxLife: 120, damage: 8, size: 4,
+            color: '#ff00ff',
+          });
+        }
+        break;
+      case 1: // Spiral: continuous rotating fire for 60 frames
+        if (fight.phaseTimer < 60 && fight.phaseTimer % 3 < this.dt) {
+          fight.spiralAngle += 0.35;
+          const speed = 6 * bulletSpeedMult;
+          this.nomadProjectiles.push({
+            x: spawnX, y: spawnY,
+            vx: Math.cos(fight.spiralAngle) * speed,
+            vy: Math.sin(fight.spiralAngle) * speed,
+            life: 100, maxLife: 100, damage: 5, size: 3,
+            color: '#00ffff',
+          });
+        }
+        break;
+      case 2: // Radial burst: 16 bullets in all directions
+        if (fight.phaseTimer < 2) {
+          for (let i = 0; i < 16; i++) {
+            const a = (i / 16) * Math.PI * 2;
+            const speed = 7 * bulletSpeedMult;
+            this.nomadProjectiles.push({
+              x: nomad.x, y: nomad.y,
+              vx: Math.cos(a) * speed,
+              vy: Math.sin(a) * speed,
+              life: 100, maxLife: 100, damage: 6, size: 4,
+              color: '#ffa500',
+            });
+          }
+        }
+        break;
+      case 3: // Spread fan: 7 bullets in 90° arc toward player
+        if (fight.phaseTimer < 2) {
+          for (let i = 0; i < 7; i++) {
+            const fanAngle = angleToPlayer - Math.PI / 4 + (i / 6) * (Math.PI / 2);
+            const speed = 9 * bulletSpeedMult;
+            this.nomadProjectiles.push({
+              x: spawnX, y: spawnY,
+              vx: Math.cos(fanAngle) * speed,
+              vy: Math.sin(fanAngle) * speed,
+              life: 90, maxLife: 90, damage: 7, size: 4,
+              color: '#ff6b9d',
+            });
+          }
+        }
+        break;
+      case 4: // Random spray: 20 bullets in random directions over 40 frames
+        if (fight.phaseTimer < 40 && fight.phaseTimer % 2 < this.dt) {
+          const a = Math.random() * Math.PI * 2;
+          const speed = (5 + Math.random() * 5) * bulletSpeedMult;
+          this.nomadProjectiles.push({
+            x: spawnX, y: spawnY,
+            vx: Math.cos(a) * speed,
+            vy: Math.sin(a) * speed,
+            life: 100, maxLife: 100,
+            damage: 4 + Math.floor(Math.random() * 5),
+            size: 3 + Math.random() * 2,
+            color: Math.random() < 0.5 ? '#ff00ff' : '#00ffff',
+          });
+        }
+        break;
+      case 5: // Rockets: 3 homing rockets, 20-frame interval
+        if (fight.phaseTimer % 20 < this.dt && fight.phaseTimer < 60) {
+          const speed = 5 * bulletSpeedMult;
+          this.nomadProjectiles.push({
+            x: spawnX, y: spawnY,
+            vx: Math.cos(angleToPlayer) * speed,
+            vy: Math.sin(angleToPlayer) * speed,
+            life: 180, maxLife: 180, damage: 15, size: 6,
+            color: '#ff6600',
+          });
+        }
+        break;
+    }
+
+    // Enraged: fire extra overlapping pattern
+    if (fight.enraged && fight.phaseTimer % 12 < this.dt) {
+      const a = angleToPlayer + (Math.random() - 0.5) * 0.5;
+      const speed = 7 * bulletSpeedMult;
+      this.nomadProjectiles.push({
+        x: spawnX, y: spawnY,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        life: 90, maxLife: 90, damage: 6, size: 3,
+        color: '#ff3333',
+      });
+    }
+
+    // Keep nomad music loud during fight
+    soundManager.updateNomadProximity(1, false);
+  }
+
+  private updateNomadProjectiles() {
+    const { ship } = this.state;
+    for (let i = this.nomadProjectiles.length - 1; i >= 0; i--) {
+      const p = this.nomadProjectiles[i];
+
+      // Rockets (large orange) home toward player
+      if (p.size >= 6 && p.color === '#ff6600') {
+        const rdx = ship.x - p.x;
+        const rdy = ship.y - p.y;
+        const targetAngle = Math.atan2(rdy, rdx);
+        const currentAngle = Math.atan2(p.vy, p.vx);
+        let aDiff = targetAngle - currentAngle;
+        while (aDiff > Math.PI) aDiff -= Math.PI * 2;
+        while (aDiff < -Math.PI) aDiff += Math.PI * 2;
+        const turnSpeed = 0.04 * this.dt;
+        const newAngle = currentAngle + Math.sign(aDiff) * Math.min(Math.abs(aDiff), turnSpeed);
+        const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        p.vx = Math.cos(newAngle) * spd;
+        p.vy = Math.sin(newAngle) * spd;
+
+        // Rocket trail particles
+        if (Math.random() < 0.4) {
+          this.state.particles.push({
+            x: p.x - p.vx * 0.5, y: p.y - p.vy * 0.5,
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: (Math.random() - 0.5) * 1.5,
+            life: 10 + Math.random() * 8,
+            maxLife: 18,
+            size: Math.random() * 2 + 1.5,
+            color: Math.random() < 0.5 ? '#ff6600' : '#ffaa00',
+          });
+        }
+      }
+
+      p.x += p.vx * this.dt;
+      p.y += p.vy * this.dt;
+      p.life -= this.dt;
+
+      if (p.life <= 0) {
+        this.nomadProjectiles.splice(i, 1);
+        continue;
+      }
+
+      // Check collision with player ship
+      if (this.nomadFight?.active && this.nomadFight.defeatTimer <= 0) {
+        const dx = p.x - ship.x;
+        const dy = p.y - ship.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 20) {
+          this.nomadFight.playerHP -= p.damage;
+          this.nomadFight.playerDamageFlashTimer = 6;
+          this.screenShake = { intensity: 6, timer: 8 };
+          soundManager.playCollision();
+
+          // Hit particles
+          for (let j = 0; j < 4; j++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 3 + 1;
+            this.state.particles.push({
+              x: p.x, y: p.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              life: 10 + Math.random() * 8,
+              maxLife: 18,
+              size: Math.random() * 2 + 1,
+              color: '#ff4444',
+            });
+          }
+
+          this.nomadProjectiles.splice(i, 1);
+
+          if (this.nomadFight.playerHP <= 0) {
+            this.triggerNomadDefeat();
+          }
+          continue;
+        }
+      }
+    }
+  }
+
+  private static readonly NOMAD_DEATH_MESSAGES = [
+    'ADIOS, GRINGO',
+    'NO REFUNDS, ESE',
+    'YOU MESS WITH THE NOMAD, YOU GET THE HORNS',
+    'SHOULDA BOUGHT SOMETHING, PENDEJO',
+    'THAT WAS FREE OF CHARGE, AMIGO',
+    'COME BACK WHEN YOU GOT SKILLS, MIJO',
+    'THE NOMAD ALWAYS COLLECTS',
+    'YOU CRASHED HARDER THAN YOUR CREDIT SCORE',
+    'PIMP MY WRECK',
+    'ANOTHER SATISFIED CUSTOMER... NOT',
+    'WASTED, GRINGO STYLE',
+    'AY DIOS MIO, THAT WAS EASY',
+    'REST IN PIECES, CHEAPSKATE',
+    'NO HAGGLING IN SPACE, AMIGO',
+    'VAYA CON DIOS',
+    'WELCOME TO THE JUNKYARD, HERMANO',
+    'THIS ONE\'S ON THE HOUSE',
+    'DON\'T SHOOT THE MERCHANT, LOCO',
+  ];
+
+  private triggerNomadDefeat() {
+    if (!this.nomadFight) return;
+    const { ship } = this.state;
+
+    // Pick random death message
+    const msgs = SpaceGame.NOMAD_DEATH_MESSAGES;
+    this.nomadFight.deathMessage = msgs[Math.floor(Math.random() * msgs.length)];
+
+    // 360 frames = 6 seconds (explosion → fade → death message → respawn)
+    this.nomadFight.defeatTimer = 360;
+
+    // Save death position for camera lock
+    this.nomadFight.savedNomadPos = { x: ship.x, y: ship.y };
+
+    // Massive ship explosion — 3 waves of particles
+    const colors1 = ['#ff4444', '#ff8800', '#ffcc00', '#ffffff'];
+    for (let i = 0; i < 40; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 8 + 2;
+      this.state.particles.push({
+        x: ship.x + (Math.random() - 0.5) * 20,
+        y: ship.y + (Math.random() - 0.5) * 20,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 40 + Math.random() * 30,
+        maxLife: 70,
+        size: Math.random() * 6 + 2,
+        color: colors1[Math.floor(Math.random() * colors1.length)],
+      });
+    }
+    // Secondary debris ring
+    const colors2 = ['#ff2200', '#ff6600', '#882200', '#ffaa00'];
+    for (let i = 0; i < 20; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 4 + 1;
+      this.state.particles.push({
+        x: ship.x + (Math.random() - 0.5) * 30,
+        y: ship.y + (Math.random() - 0.5) * 30,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 50 + Math.random() * 40,
+        maxLife: 90,
+        size: Math.random() * 4 + 3,
+        color: colors2[Math.floor(Math.random() * colors2.length)],
+      });
+    }
+
+    // Hide ship immediately (move far offscreen)
+    ship.x = -9999;
+    ship.y = -9999;
+    ship.vx = 0;
+    ship.vy = 0;
+
+    // Big screen shake
+    this.screenShake = { intensity: 30, timer: 40 };
+  }
+
+  private triggerNomadVictory() {
+    if (!this.nomadFight) return;
+    const nomad = this.neonNomad;
+
+    this.nomadFight.victoryTimer = 240; // 4 sec celebration
+    this.nomadFight.nomadHP = 0;
+
+    // Massive neon explosion
+    const colors = ['#ff00ff', '#00ffff', '#ffa500', '#ffff00', '#4ade80', '#ff6b9d', '#8b5cf6'];
+    for (let i = 0; i < 60; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 8 + 3;
+      this.state.particles.push({
+        x: nomad.x + (Math.random() - 0.5) * 40,
+        y: nomad.y + (Math.random() - 0.5) * 40,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 35 + Math.random() * 30,
+        maxLife: 65,
+        size: Math.random() * 6 + 2,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+
+    // Floating "+1000 PTS" text
+    this.nomadVictoryText = {
+      text: '+1000 PTS',
+      x: nomad.x,
+      y: nomad.y,
+      timer: 180,
+    };
+
+    // Screen shake
+    this.screenShake = { intensity: 20, timer: 25 };
+
+    // Fire callback for points
+    this.onNomadBossVictory?.();
+
+    // Achievement
+    this.tryUnlockAchievement('nomad_slayer');
+  }
+
+  private endNomadFight(victory: boolean) {
+    const nomad = this.neonNomad;
+
+    if (!victory && this.nomadFight) {
+      // Player died or fled — respawn ship at player's zone center
+      const { ship } = this.state;
+      // Default to center if no zone found
+      ship.x = 5000;
+      ship.y = 5000;
+      ship.vx = 0;
+      ship.vy = 0;
+
+      // Try to find player's zone
+      const zones = [
+        { name: 'quentin', x: 8000, y: 5000 },
+        { name: 'alex', x: 7100, y: 2900 },
+        { name: 'armel', x: 5000, y: 2000 },
+        { name: 'milya', x: 2900, y: 2900 },
+        { name: 'hugues', x: 2000, y: 5000 },
+      ];
+      const zone = zones.find(z => z.name === this.currentUser?.toLowerCase());
+      if (zone) {
+        ship.x = zone.x;
+        ship.y = zone.y;
+      }
+    }
+
+    this.nomadFightCooldown = victory ? 300 : 600;
+    this.nomadFight = null;
+    this.nomadProjectiles = [];
+  }
+
+  private renderNomadProjectiles() {
+    const { ctx } = this;
+    const camera = this.state.camera;
+
+    for (const p of this.nomadProjectiles) {
+      const x = p.x - camera.x;
+      const y = p.y - camera.y;
+      const alpha = Math.min(1, p.life / p.maxLife + 0.3);
+
+      // Glow
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = p.color;
+
+      ctx.beginPath();
+      ctx.arc(x, y, p.size, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha;
+      ctx.fill();
+
+      // Trail
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - p.vx * 1.5, y - p.vy * 1.5);
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = p.size * 0.5;
+      ctx.globalAlpha = alpha * 0.4;
+      ctx.stroke();
+
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  private renderNomadFightHUD() {
+    if (!this.nomadFight) return;
+    const ctx = this.ctx;
+    const fight = this.nomadFight;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+
+    ctx.save();
+
+    // ═══ RETRO FIGHTING GAME HUD — just below top stats bar ═══
+    const barW = Math.min(280, (w - 100) / 2); // responsive
+    const barH = 18;
+    const hudY = 120;
+    const centerGap = 50;
+
+    // ── Dark backing panel ──
+    const panelW = barW * 2 + centerGap + 40;
+    const panelX = (w - panelW) / 2;
+    const panelY = hudY - 30;
+    const panelH = 70;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    // Retro pixel border (double line)
+    ctx.strokeStyle = '#ffa500';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = '#ff6600';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(panelX + 3, panelY + 3, panelW - 6, panelH - 6);
+
+    // ── "FIGHT!" / "ROUND 1" header ──
+    ctx.font = 'bold 10px Orbitron';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffa500';
+    ctx.fillText(fight.enraged ? '!! ENRAGED !!' : 'FIGHT!', w / 2, panelY + 12);
+
+    // ── Nomad HP bar (LEFT side, fills left→right) ──
+    const nomadBarX = (w - centerGap) / 2 - barW;
+    const hpRatio = Math.max(0, fight.nomadHP / 2000);
+
+    // Name label
+    ctx.font = 'bold 11px Orbitron';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = fight.damageFlashTimer > 0 ? '#ff4444' : '#ff00ff';
+    ctx.fillText('NOMAD', nomadBarX, hudY - 4);
+
+    // Bar background + pixelated border
+    ctx.fillStyle = '#1a0a2a';
+    ctx.fillRect(nomadBarX, hudY, barW, barH);
+    ctx.strokeStyle = '#8b5cf6';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(nomadBarX, hudY, barW, barH);
+
+    // HP fill (purple-to-cyan gradient)
+    if (hpRatio > 0) {
+      const grd = ctx.createLinearGradient(nomadBarX, hudY, nomadBarX + barW * hpRatio, hudY);
+      grd.addColorStop(0, '#8b5cf6');
+      grd.addColorStop(0.5, '#a855f7');
+      grd.addColorStop(1, '#00ffff');
+      ctx.fillStyle = fight.damageFlashTimer > 0 ? '#ff4444' : grd;
+      ctx.fillRect(nomadBarX + 2, hudY + 2, (barW - 4) * hpRatio, barH - 4);
+      // Retro shine line on top of bar
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.fillRect(nomadBarX + 2, hudY + 2, (barW - 4) * hpRatio, 3);
+    }
+
+    // Enrage pulsing border
+    if (fight.enraged) {
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.01);
+      ctx.strokeStyle = `rgba(255, 51, 51, ${pulse})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(nomadBarX - 1, hudY - 1, barW + 2, barH + 2);
+    }
+
+    // ── Player HP bar (RIGHT side, fills right→left) ──
+    const pBarX = (w + centerGap) / 2;
+    const pHpRatio = Math.max(0, fight.playerHP / 100);
+
+    // Name label
+    ctx.font = 'bold 11px Orbitron';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = fight.playerDamageFlashTimer > 0 ? '#ff4444' : '#4ade80';
+    ctx.fillText('YOU', pBarX + barW, hudY - 4);
+
+    // Bar background + pixelated border
+    ctx.fillStyle = '#0a1a0a';
+    ctx.fillRect(pBarX, hudY, barW, barH);
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(pBarX, hudY, barW, barH);
+
+    // HP fill (green → yellow → red), fills from right to left
+    if (pHpRatio > 0) {
+      let hpColor: string;
+      let hpColorBright: string;
+      if (pHpRatio > 0.6) { hpColor = '#22c55e'; hpColorBright = '#4ade80'; }
+      else if (pHpRatio > 0.3) { hpColor = '#eab308'; hpColorBright = '#facc15'; }
+      else { hpColor = '#dc2626'; hpColorBright = '#ef4444'; }
+      const fillW = (barW - 4) * pHpRatio;
+      const fillX = pBarX + 2 + (barW - 4) - fillW;
+      ctx.fillStyle = fight.playerDamageFlashTimer > 0 ? '#ff0000' : hpColor;
+      ctx.fillRect(fillX, hudY + 2, fillW, barH - 4);
+      // Retro shine
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.fillRect(fillX, hudY + 2, fillW, 3);
+    }
+
+    // ── VS medallion in center ──
+    ctx.beginPath();
+    ctx.arc(w / 2, hudY + barH / 2, 16, 0, Math.PI * 2);
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fill();
+    ctx.strokeStyle = '#ffa500';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.font = 'bold 12px Orbitron';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffa500';
+    ctx.fillText('VS', w / 2, hudY + barH / 2 + 4);
+
+    // ── Death screen overlay ──
+    if (fight.defeatTimer > 0) {
+      const total = 360;
+      const elapsed = total - fight.defeatTimer;
+      // Phase 1 (0-90): explosion plays, slight red vignette
+      // Phase 2 (90-180): fade to black
+      // Phase 3 (180-300): "YOU DIED" text appears
+      // Phase 4 (300-360): fade out everything
+
+      if (elapsed > 60) {
+        // Red vignette → black fade
+        const fadeProgress = Math.min(1, (elapsed - 60) / 120);
+        ctx.fillStyle = `rgba(0, 0, 0, ${fadeProgress * 0.95})`;
+        ctx.fillRect(0, 0, w, h);
+
+        // Red tint on top
+        const redAlpha = Math.max(0, 0.15 - fadeProgress * 0.1);
+        ctx.fillStyle = `rgba(180, 0, 0, ${redAlpha})`;
+        ctx.fillRect(0, 0, w, h);
+      }
+
+      if (elapsed > 150 && elapsed < 340) {
+        // Death message — blood red dripping letters
+        const deathMsg = fight.deathMessage || 'YOU DIED';
+        const textProgress = Math.min(1, (elapsed - 150) / 40);
+        const textFade = elapsed > 300 ? Math.max(0, 1 - (elapsed - 300) / 40) : 1;
+        const alpha = textProgress * textFade;
+
+        ctx.globalAlpha = alpha;
+
+        // Drip offset — letters slide down slightly over time
+        const drip = Math.min(8, (elapsed - 150) * 0.04);
+
+        // Auto-size font based on message length
+        const fontSize = deathMsg.length > 14 ? 42 : deathMsg.length > 10 ? 52 : 64;
+
+        // Dark red shadow (blood drip effect)
+        ctx.font = `bold ${fontSize}px Orbitron`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#440000';
+        ctx.fillText(deathMsg, w / 2 + 3, h / 2 + drip + 3);
+
+        // Blood red main text
+        ctx.fillStyle = '#cc0000';
+        ctx.shadowColor = '#ff0000';
+        ctx.shadowBlur = 30;
+        ctx.fillText(deathMsg, w / 2, h / 2 + drip);
+        ctx.shadowBlur = 0;
+
+        // Dripping effect — small red rectangles below some letters
+        if (elapsed > 180) {
+          const dripLen = Math.min(40, (elapsed - 180) * 0.5);
+          ctx.fillStyle = '#990000';
+          // 5 drip points at fixed positions
+          const drips = [-120, -40, 20, 80, 140];
+          for (let i = 0; i < drips.length; i++) {
+            const dripX = w / 2 + drips[i];
+            const dripW = 3 + (i % 2);
+            ctx.fillRect(dripX, h / 2 + drip + 10, dripW, dripLen * (0.6 + (i % 3) * 0.2));
+          }
+        }
+
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // ── Victory floating text ──
+    if (this.nomadVictoryText && this.nomadVictoryText.timer > 0) {
+      this.nomadVictoryText.timer -= this.dt;
+      const vt = this.nomadVictoryText;
+      const progress = 1 - vt.timer / 180;
+      const fadeIn = Math.min(1, progress * 4);
+      const fadeOut = Math.max(0, 1 - (progress - 0.6) * 2.5);
+      const sx = vt.x - this.state.camera.x;
+      const sy = vt.y - this.state.camera.y - progress * 80;
+
+      ctx.globalAlpha = fadeIn * fadeOut;
+      ctx.font = 'bold 28px Orbitron';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = '#ffd700';
+      ctx.fillText(vt.text, sx, sy);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+
+      if (vt.timer <= 0) this.nomadVictoryText = null;
+    }
+
+    ctx.restore();
+  }
+
+  // ─── END NOMAD BOSS FIGHT ────────────────────────────────────
+
   private renderSpaceWhale() {
     if (this.spaceWhale.alpha < 0.01 || !this.spaceWhaleImage) return;
 
@@ -9553,6 +10431,48 @@ export class SpaceGame {
 
   private updateNeonNomad() {
     const nomad = this.neonNomad;
+
+    // Boss fight cooldown tick (always)
+    if (this.nomadFightCooldown > 0) this.nomadFightCooldown -= this.dt;
+
+    // Boss fight active — override normal nomad behavior
+    if (this.nomadFight?.active) {
+      this.updateNomadFight();
+      this.updateNomadProjectiles();
+
+      // Still update sparkles during fight
+      if (Math.random() < 0.4) {
+        const colors = ['#ff00ff', '#00ffff', '#ffa500', '#ffff00', '#4ade80'];
+        this.nomadSparkles.push({
+          x: nomad.x + (Math.random() - 0.5) * 50,
+          y: nomad.y + (Math.random() - 0.5) * 50,
+          life: 40 + Math.random() * 30,
+          maxLife: 40 + Math.random() * 30,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          size: 1.5 + Math.random() * 2.5,
+        });
+      }
+      for (let i = this.nomadSparkles.length - 1; i >= 0; i--) {
+        this.nomadSparkles[i].life -= this.dt;
+        if (this.nomadSparkles[i].life <= 0) {
+          this.nomadSparkles.splice(i, 1);
+        }
+      }
+
+      // Update emotes even during fight
+      if (this.activeEmote) {
+        this.activeEmote.timer -= this.dt;
+        if (this.activeEmote.timer <= 0) this.activeEmote = null;
+      }
+      for (const [playerId, emote] of this.remoteEmotes) {
+        emote.timer -= this.dt;
+        if (emote.timer <= 0) this.remoteEmotes.delete(playerId);
+      }
+      return;
+    }
+
+    // Nomad invisible during victory cooldown (just defeated)
+    // Skip rendering handled in renderNeonNomad via alpha check
 
     // Deterministic parametric position from Date.now()
     // Overlapping sine waves create seemingly random movement, synced across all clients
@@ -9663,8 +10583,8 @@ export class SpaceGame {
       this.nomadApproachFired = false;
     }
 
-    // SPACE key to land on merchant — use the real planet landing animation
-    if (this.nearNeonNomad && this.keys.has(' ') && !this.isLanding && !this.isLanded) {
+    // SPACE key to land on merchant — use the real planet landing animation (blocked during/after fight)
+    if (this.nearNeonNomad && this.keys.has(' ') && !this.isLanding && !this.isLanded && !this.nomadFight && this.nomadFightCooldown <= 0) {
       this.keys.delete(' ');
       // Create a fake Planet object so startLandingAnimation works
       const halfSize = SpaceGame.NOMAD_RENDER_SIZE / 2;
@@ -9700,10 +10620,22 @@ export class SpaceGame {
     const sx = nomad.x - camera.x;
     const sy = nomad.y - camera.y;
 
+    // Hide nomad during victory cooldown (just defeated, respawning)
+    if (!this.nomadFight && this.nomadFightCooldown > 0 && this.nomadFightCooldown > 60) return;
+    // Fade in during last 60 frames of cooldown
+    const cooldownAlpha = (!this.nomadFight && this.nomadFightCooldown > 0)
+      ? 1 - this.nomadFightCooldown / 60 : 1;
+
     // Off-screen check
     if (sx < -200 || sx > this.canvas.width + 200 || sy < -200 || sy > this.canvas.height + 200) return;
 
     ctx.save();
+
+    // Apply fade-in alpha when respawning after fight
+    if (cooldownAlpha < 1) ctx.globalAlpha = cooldownAlpha;
+
+    // Damage flash during boss fight
+    const fightFlash = this.nomadFight?.damageFlashTimer && this.nomadFight.damageFlashTimer > 0;
 
     // Pulsing underglow
     const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.003);
@@ -9726,9 +10658,9 @@ export class SpaceGame {
       ctx.beginPath();
       ctx.arc(spx, spy, sparkle.size * alpha, 0, Math.PI * 2);
       ctx.fillStyle = sparkle.color;
-      ctx.globalAlpha = alpha * 0.7;
+      ctx.globalAlpha = alpha * 0.7 * cooldownAlpha;
       ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = cooldownAlpha;
     }
 
     // Draw nomad van image or fallback
@@ -9736,12 +10668,13 @@ export class SpaceGame {
     const now = Date.now();
     const beatBPM = 40; // slow lowrider bounce
     const beatPhase = (now / 1000) * (beatBPM / 60) * Math.PI * 2;
-    const bounce = Math.abs(Math.sin(beatPhase)) * 4; // sharp upward bounce, 4px amplitude
-    const tilt = Math.sin(beatPhase * 0.5) * 0.04; // subtle side-to-side lean
-    const scaleBreath = 1 + Math.abs(Math.sin(beatPhase)) * 0.03; // tiny scale pulse on beat
+    const bounce = this.nomadFight?.active ? 0 : Math.abs(Math.sin(beatPhase)) * 4; // no bounce during fight
+    const tilt = this.nomadFight?.active ? 0 : Math.sin(beatPhase * 0.5) * 0.04;
+    const scaleBreath = this.nomadFight?.active ? 1 : 1 + Math.abs(Math.sin(beatPhase)) * 0.03;
 
     ctx.translate(sx, sy - bounce);
     ctx.rotate(nomad.rotation + Math.PI / 2 + tilt);
+    if (fightFlash) ctx.globalAlpha = 0.5 * cooldownAlpha; // flash white on damage
     if (this.neonNomadImage) {
       const size = SpaceGame.NOMAD_RENDER_SIZE * scaleBreath;
       ctx.drawImage(this.neonNomadImage, -size / 2, -size / 2, size, size);
@@ -9761,8 +10694,8 @@ export class SpaceGame {
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // Dock prompt when in range (no name label)
-    if (this.nearNeonNomad && !this.landedOnNomad && !this.isLanding) {
+    // Dock prompt when in range (no name label) — hide during boss fight
+    if (this.nearNeonNomad && !this.landedOnNomad && !this.isLanding && !this.nomadFight) {
       ctx.font = 'bold 12px Space Grotesk';
       ctx.textAlign = 'center';
       ctx.shadowColor = '#00ffff';

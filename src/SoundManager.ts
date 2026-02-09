@@ -158,6 +158,11 @@ const SOUND_CONFIGS: Record<string, SoundConfig> = {
     volume: 0,
     loop: true,
   },
+  nomadBossHit: {
+    src: [`${SOUNDS_PATH}collision.ogg`],
+    volume: 0.4,
+    rate: 1.5, // Sharper hit sound
+  },
 
   // Horns
   horn_air: {
@@ -569,6 +574,11 @@ export class SoundManager {
     this.play('whaleSlap');
     // Also play the whale call (angry whale)
     setTimeout(() => this.play('spaceWhale'), 200);
+  }
+
+  public playNomadBossHit() {
+    if (!this.initialized || !this.prefs.sfxEnabled) return;
+    this.play('nomadBossHit');
   }
 
   // Impact sounds

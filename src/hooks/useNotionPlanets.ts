@@ -81,6 +81,7 @@ export const notionPlanetToGamePlanet = (np: NotionPlanet, currentUser?: string)
     targetDate: np.due_date ? np.due_date.slice(0, 10) : undefined,
     isNew: !np.completed && !!currentUser && !np.seen_by?.[currentUser]
       && (!np.assigned_to || np.assigned_to === currentUser),
+    createdAt: np.created_at,
   };
 };
 

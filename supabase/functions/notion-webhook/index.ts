@@ -100,7 +100,7 @@ function findNonOverlappingPosition(
     );
   }
 
-  const maxAttempts = 50;
+  const maxAttempts = 200;
 
   // For unassigned tasks: staggered honeycomb arcs ABOVE Mission Control
   // For assigned tasks: scatter around player zone
@@ -108,14 +108,14 @@ function findNonOverlappingPosition(
     const baseDistance = 350; // Clear of stations
     const arcSpacing = 110;
     const planetsPerArc = 5;
+    const arcSpread = Math.PI * 0.35;
+    const baseAngle = -Math.PI / 2;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const arcIndex = Math.floor(attempt / planetsPerArc);
       const posInArc = attempt % planetsPerArc;
       const arcRadius = baseDistance + arcIndex * arcSpacing;
 
-      const arcSpread = Math.PI * 0.35;
-      const baseAngle = -Math.PI / 2;
       // Stagger: odd arcs offset by half a position
       const staggerOffset = (arcIndex % 2 === 1) ? 0.5 : 0;
       const t = planetsPerArc > 1 ? (posInArc + staggerOffset) / planetsPerArc : 0.5;
@@ -146,6 +146,38 @@ function findNonOverlappingPosition(
         return candidate;
       }
     }
+
+    // Fallback: keep trying outer arcs with overlap checking
+    const startArc = Math.floor(maxAttempts / planetsPerArc) + 1;
+    for (let arcIdx = startArc; arcIdx < startArc + 20; arcIdx++) {
+      const arcRad = baseDistance + arcIdx * arcSpacing;
+      const stagger = (arcIdx % 2 === 1) ? 0.5 : 0;
+      for (let pos = 0; pos < planetsPerArc; pos++) {
+        const t2 = planetsPerArc > 1 ? (pos + stagger) / planetsPerArc : 0.5;
+        const a2 = baseAngle + (t2 - 0.5) * arcSpread * 2;
+        const seed2 = ((startArc * planetsPerArc + pos) * 137.5) % 1;
+        const rv = (seed2 - 0.5) * 25;
+        const av = ((((startArc * planetsPerArc + pos) * 97.3) % 1) - 0.5) * 0.06;
+        const candidate = {
+          x: baseZone.x + Math.cos(a2 + av) * (arcRad + rv),
+          y: baseZone.y + Math.sin(a2 + av) * (arcRad + rv),
+        };
+        let isValid = true;
+        for (const planet of allObstacles) {
+          if (distance(candidate, planet) < MIN_DISTANCE) {
+            isValid = false;
+            break;
+          }
+        }
+        if (isValid) return candidate;
+      }
+    }
+    // Last resort
+    const lastResortArcRadius = baseDistance + (startArc + 20) * arcSpacing;
+    return {
+      x: baseZone.x,
+      y: baseZone.y - lastResortArcRadius,
+    };
   } else {
     // Assigned tasks: tight rings around player's home planet
     // Ring 1 at 380 units, Ring 2 at 480 units, etc.
@@ -178,26 +210,34 @@ function findNonOverlappingPosition(
         return candidate;
       }
     }
-  }
 
-  // Fallback - place in outer arcs above Mission Control
-  if (isUnassigned) {
-    const fallbackArc = 3 + Math.floor(Math.random() * 4); // Arcs 3-6
-    const fallbackRadius = 350 + fallbackArc * 110 + (Math.random() - 0.5) * 40;
-    const fallbackAngle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.35 * 2;
+    // Fallback: keep trying outer rings with overlap checking
+    const startRing = Math.floor(maxAttempts / planetsPerRing) + 1;
+    for (let ring = startRing; ring < startRing + 20; ring++) {
+      const radius = baseRadius + ring * ringSpacing;
+      for (let slot = 0; slot < planetsPerRing; slot++) {
+        const angle = slot * angleStep + (ring * 0.35);
+        const candidate = {
+          x: baseZone.x + Math.cos(angle) * radius,
+          y: baseZone.y + Math.sin(angle) * radius,
+        };
+        let isValid = true;
+        for (const planet of allObstacles) {
+          if (distance(candidate, planet) < MIN_DISTANCE) {
+            isValid = false;
+            break;
+          }
+        }
+        if (isValid) return candidate;
+      }
+    }
+    // Last resort: far out ring at a fixed angle
+    const lastResortRadius = baseRadius + (startRing + 20) * ringSpacing;
     return {
-      x: baseZone.x + Math.cos(fallbackAngle) * fallbackRadius,
-      y: baseZone.y + Math.sin(fallbackAngle) * fallbackRadius,
+      x: baseZone.x + lastResortRadius,
+      y: baseZone.y,
     };
   }
-  // For assigned tasks: outer rings around home planet
-  const fallbackRing = 2 + Math.floor(Math.random() * 3); // Rings 2-4
-  const fallbackRadius = 380 + fallbackRing * 100;
-  const fallbackAngle = Math.random() * Math.PI * 2;
-  return {
-    x: baseZone.x + Math.cos(fallbackAngle) * fallbackRadius,
-    y: baseZone.y + Math.sin(fallbackAngle) * fallbackRadius,
-  };
 }
 
 // Parse native Notion automation payload

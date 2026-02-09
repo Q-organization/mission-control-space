@@ -109,10 +109,12 @@ export function TaskSearchModal({ planets, playerInfo, onSelect, onClose }: Task
       results = results.filter(p => p.ownerId === filterUser);
     }
 
-    // Incomplete first, then alphabetical
+    // Incomplete first, then newest first by creation date
     results = [...results].sort((a, b) => {
       if (a.completed !== b.completed) return a.completed ? 1 : -1;
-      return a.name.localeCompare(b.name);
+      const dateA = a.createdAt || '';
+      const dateB = b.createdAt || '';
+      return dateB.localeCompare(dateA); // newest first
     });
     return results.slice(0, 30);
   }, [planets, query, filterType, filterPriority, filterUser]);

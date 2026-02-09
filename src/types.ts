@@ -46,6 +46,7 @@ export interface Planet {
   notionUrl?: string;
   taskType?: string | null; // bug, feature, task, etc.
   isNew?: boolean; // true if this planet hasn't been seen by the current user yet
+  createdAt?: string; // ISO timestamp from DB
 }
 
 export interface NotionPlanet {
