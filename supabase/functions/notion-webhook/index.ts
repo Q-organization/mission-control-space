@@ -78,32 +78,6 @@ function distance(p1: { x: number; y: number }, p2: { x: number; y: number }): n
   return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
 }
 
-// Check if a position needs repositioning (too close to home or overlapping)
-function needsRepositioning(
-  position: { x: number; y: number },
-  assignedTo: string | null | undefined,
-  otherPlanets: { x: number; y: number }[]
-): boolean {
-  const isAssigned = assignedTo && PLAYER_ZONES[assignedTo.toLowerCase()];
-
-  // Check if too close to home planet (for assigned planets)
-  if (isAssigned) {
-    const homeZone = PLAYER_ZONES[assignedTo.toLowerCase()];
-    if (distance(position, homeZone) < MIN_HOME_DISTANCE) {
-      return true;
-    }
-  }
-
-  // Check if overlapping with another planet
-  for (const other of otherPlanets) {
-    if (distance(position, other) < MIN_DISTANCE) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 function findNonOverlappingPosition(
   assignedTo: string | null | undefined,
   existingPlanets: ExistingPlanet[]
@@ -187,13 +161,9 @@ function findNonOverlappingPosition(
       const radius = baseRadius + ring * ringSpacing;
       const angle = slotInRing * angleStep + (ring * 0.35); // Offset each ring
 
-      // Add random jitter to prevent race condition overlaps when multiple webhooks fire simultaneously
-      const radiusJitter = (Math.random() - 0.5) * 40; // ±20 units
-      const angleJitter = (Math.random() - 0.5) * 0.1;  // Small angle variation
-
       const candidate = {
-        x: baseZone.x + Math.cos(angle + angleJitter) * (radius + radiusJitter),
-        y: baseZone.y + Math.sin(angle + angleJitter) * (radius + radiusJitter),
+        x: baseZone.x + Math.cos(angle) * radius,
+        y: baseZone.y + Math.sin(angle) * radius,
       };
 
       let isValid = true;
@@ -758,29 +728,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get all planets for position calculation (excluding ones we're about to delete)
-    const { data: allPlanetsData } = await supabase
-      .from('notion_planets')
-      .select('id, x, y')
-      .eq('team_id', team.id);
-    const allPlanetsForPositioning = (allPlanetsData || []).filter(
-      p => !toRemove.some(a => existingByAssignee.get(a)?.id === p.id)
-    );
-
-    // Update existing planets with latest data
+    // Update existing planets with latest data (but don't reposition —
+    // position was already set by the function that created/claimed/reassigned the planet;
+    // notion-sync handles position correction if truly needed)
     for (const assignee of toUpdate) {
       const existingPlanet = existingByAssignee.get(assignee.username || '');
       if (!existingPlanet) continue;
-
-      // Get other planets for overlap check (excluding this one)
-      const otherPlanets = allPlanetsForPositioning.filter(p => p.id !== existingPlanet.id);
-
-      // Check if position needs fixing
-      const positionNeedsFix = needsRepositioning(
-        { x: existingPlanet.x, y: existingPlanet.y },
-        assignee.username,
-        otherPlanets
-      );
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updates: any = {
@@ -795,13 +748,6 @@ Deno.serve(async (req) => {
       // Only touch due_date if it was actually in the Notion payload
       if (payload.due_date !== undefined) {
         updates.due_date = payload.due_date;
-      }
-
-      if (positionNeedsFix) {
-        const newPosition = findNonOverlappingPosition(assignee.username, otherPlanets);
-        updates.x = Math.round(newPosition.x);
-        updates.y = Math.round(newPosition.y);
-        console.log(`Repositioning planet for "${payload.name}" (${assignee.username || 'unassigned'}) - position fix needed`);
       }
 
       await supabase

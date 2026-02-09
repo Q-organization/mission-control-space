@@ -18,6 +18,8 @@ The integration provides bidirectional sync between Notion and the game:
 │    Database     │     │  notion-sync     (full sync)        │
 │                 │     │  notion-create   (new planets)      │
 └─────────────────┘     │  notion-claim    (assign player)    │
+                        │  notion-reassign (move to new owner)│
+                        │  notion-update   (edit properties)  │
                         │  notion-complete (mark done)        │
                         │  notion-delete   (remove planet)    │
                         └──────────────┬──────────────────────┘
@@ -110,8 +112,8 @@ VALUES (
 
 **Key Features**:
 - UUID normalization for cross-format comparison
-- Uses upsert with `onConflict: 'notion_task_id'` to handle duplicates
-- Non-overlapping position calculation
+- Position correction: validates existing planets are in the correct zone and not overlapping, repositions if needed
+- Only function that repositions existing planets (webhook and other functions trust the original placement)
 
 **Response**:
 ```json
@@ -143,9 +145,9 @@ VALUES (
 
 **What it does**:
 1. Parses Notion's native automation payload
-2. Creates new planet if task doesn't exist
-3. Updates existing planet if task exists
-4. Handles assignment changes (moves planet to new zone)
+2. Creates new planet if task doesn't exist (with position calculation)
+3. Updates existing planet data if task exists (name, priority, points, etc. — **never repositions**)
+4. Handles assignment changes via delete + create cycle (old assignee's planet removed, new assignee's planet created in their zone)
 5. Detects completion status and awards points
 
 **Payload Parsing**:
@@ -190,17 +192,59 @@ VALUES (
 **Request**:
 ```json
 {
-  "planet_id": "uuid-here",
-  "player_name": "quentin"
+  "notion_planet_id": "uuid-here",
+  "player_username": "quentin"
 }
 ```
 
 **What it does**:
-1. Updates `assigned_to` in notion_planets
-2. Updates `Attributed to` in Notion page
-3. Moves planet to player's zone
+1. Calculates new position in player's zone
+2. Updates `assigned_to` and position in notion_planets
+3. Updates `Attributed to` in Notion page
+4. Returns `new_position` for delivery animation
 
-### 5. notion-complete
+### 5. notion-reassign
+
+**Purpose**: Move a planet to a different player's zone.
+
+**Endpoint**: `POST /functions/v1/notion-reassign`
+
+**Request**:
+```json
+{
+  "notion_planet_id": "uuid-here",
+  "new_owner_username": "alex"
+}
+```
+
+**What it does**:
+1. Calculates new position in the target player's zone
+2. Updates `assigned_to` and position in notion_planets
+3. Updates `Attributed to` in Notion page
+4. Returns `new_position` for delivery animation
+
+### 6. notion-update
+
+**Purpose**: Edit a planet's properties from in-game (title, type, priority, assignee, due date).
+
+**Endpoint**: `POST /functions/v1/notion-update`
+
+**Request**:
+```json
+{
+  "notion_planet_id": "uuid-here",
+  "name": "Updated title",
+  "priority": "high",
+  "assigned_to": "armel"
+}
+```
+
+**What it does**:
+1. Updates properties in both Supabase and Notion
+2. If `assigned_to` changed, recalculates position in new owner's zone
+3. Returns `new_position` if the planet moved
+
+### 7. notion-complete
 
 **Purpose**: Mark a task as completed.
 
@@ -209,8 +253,7 @@ VALUES (
 **Request**:
 ```json
 {
-  "planet_id": "uuid-here",
-  "player_name": "quentin"
+  "notion_planet_id": "uuid-here"
 }
 ```
 
@@ -220,7 +263,7 @@ VALUES (
 3. Awards points based on priority
 4. Creates point_transaction record
 
-### 6. notion-delete
+### 8. notion-delete
 
 **Purpose**: Remove a planet from the game.
 
@@ -229,7 +272,7 @@ VALUES (
 **Request**:
 ```json
 {
-  "planet_id": "uuid-here"
+  "notion_planet_id": "uuid-here"
 }
 ```
 
@@ -272,19 +315,28 @@ const DEFAULT_ZONE = { x: 5000, y: MISSION_CONTROL_Y };
 
 ### Position Algorithm
 
-The `findNonOverlappingPosition` function:
-1. Starts at the player's zone center
-2. Searches outward in rings of 8 positions each
-3. Checks each candidate against existing planets
-4. Returns first position with no collisions
-5. Falls back to random position if all attempts fail
+The `findNonOverlappingPosition` function places planets deterministically around the player's zone center. The algorithm is identical across all edge functions to ensure consistency.
+
+**For assigned tasks** (tight rings around player's home planet):
+1. Tries slots in concentric rings, 9 slots per ring
+2. Each ring is offset by 0.35 radians to avoid alignment
+3. Checks each candidate against existing planets (min distance = 150px) and the zone center
+4. Returns the first non-overlapping position
+5. Falls back to outer rings (2-4) with random angle if all 50 attempts fail
 
 ```
-Ring 0: 8 positions at radius 200
-Ring 1: 8 positions at radius 350
-Ring 2: 8 positions at radius 500
-...
+Ring 0: 9 positions at radius 380 (~40° apart)
+Ring 1: 9 positions at radius 480 (offset by 0.35 rad)
+Ring 2: 9 positions at radius 580
+...up to 50 attempts
 ```
+
+**For unassigned tasks** (arcs above Mission Control):
+- Placed in staggered honeycomb arcs above Mission Control
+- Uses deterministic seed-based variation (not random) for organic spacing
+- Avoids Shop, Factory, and ship spawn point as obstacles
+
+**Position ownership**: Only the function that creates/claims/reassigns a planet sets its position. The webhook does NOT reposition existing planets — it only updates data fields (name, priority, etc.). Position correction for legacy/invalid data is handled by `notion-sync`.
 
 ## Points System
 
