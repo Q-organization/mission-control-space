@@ -1648,8 +1648,10 @@ export class SpaceGame {
     ship.x += ship.vx * this.dt;
     ship.y += ship.vy * this.dt;
 
-    // Collision with planets (bounce off)
+    // Collision with planets (bounce off) — skip Notion planets (fly through them)
     for (const planet of planets) {
+      if (planet.id.startsWith('notion-')) continue;
+
       const dx = ship.x - planet.x;
       const dy = ship.y - planet.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
