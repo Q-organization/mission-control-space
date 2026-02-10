@@ -95,6 +95,17 @@ const NOMAD_ENRAGE_LINES = [
   'No more mister nice Nomad!',
 ];
 
+const NOMAD_TAUNT_LINES = [
+  'Hahaha! Come back when you learn to fly, gringo!',
+  'That was too easy, amigo! The Nomad is undefeated!',
+  'Run back to your little planet, pendejo!',
+  'You want a rematch? Bring your wallet next time!',
+  'Ay, did that hurt? Maybe buy some upgrades, cheapskate!',
+  'The Nomad sends his regards, hermano!',
+  'Better luck next time, loco! Hahahaha!',
+  'Don\'t worry amigo, everyone loses to the Nomad!',
+];
+
 class VoiceService {
   private speaking = false;
   private enabled = true;
@@ -458,22 +469,16 @@ class VoiceService {
 
   // ── Nomad Boss Fight Voice ──
 
-  /** Say one intro line when fight starts, returns a promise that resolves when done speaking */
-  async playNomadFightIntro(): Promise<void> {
-    if (!this.enabled || this.speaking || this.nomadBattleGenerating) return;
-    this.nomadBattleGenerating = true;
+  /** Taunt the player after they die to the nomad */
+  async playNomadDefeatTaunt(): Promise<void> {
+    if (!this.enabled || this.speaking) return;
 
-    // Pick one random line from all battle lines
-    const allLines = [...NOMAD_HIT_LINES, ...NOMAD_BATTLE_LINES];
-    const line = allLines[Math.floor(Math.random() * allLines.length)];
-
-    console.log(`[Voice] Nomad fight intro: "${line}"`);
+    const line = NOMAD_TAUNT_LINES[Math.floor(Math.random() * NOMAD_TAUNT_LINES.length)];
+    console.log(`[Voice] Nomad taunt: "${line}"`);
     try {
       await this.tts(line, ELEVENLABS_NOMAD_VOICE);
     } catch (e) {
-      console.error('[Voice] Nomad fight intro failed:', e);
-    } finally {
-      this.nomadBattleGenerating = false;
+      console.error('[Voice] Nomad taunt failed:', e);
     }
   }
 

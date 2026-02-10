@@ -624,13 +624,13 @@ export class SoundManager {
     this.nomadBossThemeId = sound.play();
   }
 
-  public stopNomadBossTheme() {
+  public stopNomadBossTheme(fadeMs: number = 500) {
     this.nomadBossThemePlaying = false;
     const sound = this.sounds.get('nomadBossTheme');
     if (sound && this.nomadBossThemeId !== null) {
-      sound.fade(sound.volume(), 0, 500, this.nomadBossThemeId);
+      sound.fade(sound.volume(), 0, fadeMs, this.nomadBossThemeId);
       const id = this.nomadBossThemeId;
-      setTimeout(() => sound.stop(id), 500);
+      setTimeout(() => sound.stop(id), fadeMs);
       this.nomadBossThemeId = null;
     }
   }

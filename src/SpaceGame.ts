@@ -516,6 +516,7 @@ export class SpaceGame {
   private onNomadFightStart: (() => void) | null = null;
   private onNomadHit: (() => void) | null = null;
   private onNomadFightEnd: (() => void) | null = null;
+  private onNomadDefeatTaunt: (() => void) | null = null;
   private nomadVictoryText: { text: string; x: number; y: number; timer: number } | null = null;
 
   // Escort drones (permanent companions based on ship level)
@@ -1235,6 +1236,7 @@ export class SpaceGame {
     onNomadFightStart?: () => void;
     onNomadHit?: () => void;
     onNomadFightEnd?: () => void;
+    onNomadDefeatTaunt?: () => void;
   }) {
     this.onLand = callbacks.onLand || null;
     this.onTakeoff = callbacks.onTakeoff || null;
@@ -1257,6 +1259,7 @@ export class SpaceGame {
     this.onNomadFightStart = callbacks.onNomadFightStart || null;
     this.onNomadHit = callbacks.onNomadHit || null;
     this.onNomadFightEnd = callbacks.onNomadFightEnd || null;
+    this.onNomadDefeatTaunt = callbacks.onNomadDefeatTaunt || null;
   }
 
   public setAchievementCallback(callback: ((achievementId: string) => void) | null) {
@@ -10020,6 +10023,9 @@ export class SpaceGame {
 
     // Big screen shake
     this.screenShake = { intensity: 30, timer: 40 };
+
+    // Fade out boss music over the death animation
+    soundManager.stopNomadBossTheme(5000);
   }
 
   private triggerNomadVictory() {
@@ -10096,6 +10102,10 @@ export class SpaceGame {
     this.nomadProjectiles = [];
     soundManager.stopNomadBossTheme();
     this.onNomadFightEnd?.();
+    if (!victory) {
+      // Taunt the player after respawn (short delay so they see they're alive)
+      setTimeout(() => this.onNomadDefeatTaunt?.(), 1500);
+    }
   }
 
   private renderNomadProjectiles() {

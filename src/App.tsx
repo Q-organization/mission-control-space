@@ -523,6 +523,7 @@ function App() {
     onNomadFightStart: () => void;
     onNomadHit: () => void;
     onNomadFightEnd: () => void;
+    onNomadDefeatTaunt: () => void;
   }>({
     onLand: () => {},
     onTakeoff: () => {},
@@ -544,6 +545,7 @@ function App() {
     onNomadFightStart: () => {},
     onNomadHit: () => {},
     onNomadFightEnd: () => {},
+    onNomadDefeatTaunt: () => {},
   });
   const [state, setState] = useState<SavedState>(loadState);
   const [customPlanets, setCustomPlanets] = useState<CustomPlanet[]>([]); // Loaded from Supabase
@@ -3008,6 +3010,9 @@ function App() {
       onNomadFightEnd: () => {
         soundManager.stopNomadBossTheme();
       },
+      onNomadDefeatTaunt: () => {
+        voiceService.playNomadDefeatTaunt();
+      },
     };
   });
 
@@ -3881,6 +3886,7 @@ function App() {
       onNomadFightStart: () => landingCallbacksRef.current.onNomadFightStart(),
       onNomadHit: () => landingCallbacksRef.current.onNomadHit(),
       onNomadFightEnd: () => landingCallbacksRef.current.onNomadFightEnd(),
+      onNomadDefeatTaunt: () => landingCallbacksRef.current.onNomadDefeatTaunt(),
     });
 
     // Set up weapon fire broadcast callback (game → WS)
