@@ -445,6 +445,8 @@ Deno.serve(async (req) => {
         x: Math.round(position.x),
         y: Math.round(position.y),
         completed: false,
+        auto_analyze: body.auto_analyze || false,
+        analysis_status: body.auto_analyze ? 'pending' : 'idle',
       })
       .select()
       .single();

@@ -251,6 +251,10 @@ function parseNativeNotionPayload(raw: any): NotionWebhookPayload | null {
   const data = raw.data;
   const props = data.properties;
 
+  // Debug: log all property keys and their types
+  console.log('NOTION PROPERTY KEYS:', Object.keys(props).join(', '));
+  console.log('AUTO ANALYZE RAW:', JSON.stringify(props['Auto Analyze']));
+
   // Extract title from "Ticket" property
   let name = '';
   if (props['Ticket']?.title?.[0]?.plain_text) {
@@ -1083,20 +1087,18 @@ Deno.serve(async (req) => {
     if (createdPlanets.length > 0 || updatedPlanets.length > 0) {
       const quickPrompt = generateQuickPrompt(payload);
 
-      // Get all planet IDs that were created or updated for this task
+      // Get all planets for this task (including auto_analyze flag set by the game)
       const { data: taskPlanets } = await supabase
         .from('notion_planets')
-        .select('id')
+        .select('id, auto_analyze, deep_analysis')
         .eq('notion_task_id', normalizedTaskId);
 
       if (taskPlanets && taskPlanets.length > 0) {
-        // Save quick prompt and auto_analyze flag to all planets for this task
+        // Save quick prompt to all planets for this task
+        // Don't overwrite auto_analyze — it's set by the game (Quick Add modal)
         await supabase
           .from('notion_planets')
-          .update({
-            quick_prompt: quickPrompt,
-            auto_analyze: payload.auto_analyze || false,
-          })
+          .update({ quick_prompt: quickPrompt })
           .eq('notion_task_id', normalizedTaskId);
 
         console.log(`Saved quick prompt for "${payload.name}" (${taskPlanets.length} planet(s))`);
@@ -1104,16 +1106,12 @@ Deno.serve(async (req) => {
         // Write quick prompt to Notion (fire and forget)
         writeQuickPromptToNotion(normalizedTaskId, quickPrompt);
 
-        // Trigger deep analysis if Auto Analyze is checked (on create OR update)
-        if (payload.auto_analyze) {
-          // Check if this planet already has a deep analysis to avoid re-triggering
-          const { data: analysisCheck } = await supabase
-            .from('notion_planets')
-            .select('deep_analysis')
-            .eq('id', taskPlanets[0].id)
-            .single();
-
-          if (!analysisCheck?.deep_analysis) {
+        // Trigger deep analysis if auto_analyze is set in DB (by game) or Notion payload
+        const shouldAnalyze = payload.auto_analyze || taskPlanets.some(p => p.auto_analyze);
+        console.log(`Auto analyze check: payload=${payload.auto_analyze}, db=${taskPlanets.map(p => p.auto_analyze)}, shouldAnalyze=${shouldAnalyze}`);
+        if (shouldAnalyze) {
+          // Check if any planet already has a deep analysis to avoid re-triggering
+          if (!taskPlanets.some(p => p.deep_analysis)) {
             const firstPlanetId = taskPlanets[0].id;
             const triggered = await triggerDeepAnalysis(payload, firstPlanetId);
             // Set analysis_status to 'pending' on all planets for this task
