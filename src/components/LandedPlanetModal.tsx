@@ -102,6 +102,7 @@ export function LandedPlanetModal({
   const [editName, setEditName] = useState(planet.name || '');
   const [editDescription, setEditDescription] = useState(planet.description || '');
   const [copiedPrompt, setCopiedPrompt] = useState<'quick' | 'deep' | null>(null);
+  const [viewingPrompt, setViewingPrompt] = useState<'quick' | 'deep' | null>(null);
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -462,7 +463,7 @@ export function LandedPlanetModal({
           )}
         </div>
 
-        {/* Copy Prompt Buttons */}
+        {/* Prompt Buttons */}
         {(planet.quickPrompt || planet.deepAnalysis || planet.analysisStatus === 'pending') && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
             {planet.quickPrompt && (
@@ -470,10 +471,10 @@ export function LandedPlanetModal({
                 style={{
                   flex: 1,
                   padding: '10px 14px',
-                  background: copiedPrompt === 'quick' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${copiedPrompt === 'quick' ? 'rgba(74, 222, 128, 0.3)' : 'rgba(255,255,255,0.08)'}`,
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
                   borderRadius: 10,
-                  color: copiedPrompt === 'quick' ? '#4ade80' : '#aaa',
+                  color: '#aaa',
                   fontSize: '0.8rem',
                   fontFamily: 'Space Grotesk, sans-serif',
                   cursor: 'pointer',
@@ -483,17 +484,15 @@ export function LandedPlanetModal({
                   justifyContent: 'center',
                   gap: 6,
                 }}
-                onClick={() => {
-                  navigator.clipboard.writeText(planet.quickPrompt!);
-                  setCopiedPrompt('quick');
-                  setTimeout(() => setCopiedPrompt(null), 2000);
-                }}
+                onClick={() => setViewingPrompt('quick')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
                 </svg>
-                {copiedPrompt === 'quick' ? 'Copied!' : 'Quick Prompt'}
+                Quick Prompt
               </button>
             )}
             {planet.deepAnalysis ? (
@@ -501,10 +500,10 @@ export function LandedPlanetModal({
                 style={{
                   flex: 1,
                   padding: '10px 14px',
-                  background: copiedPrompt === 'deep' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(168, 85, 247, 0.06)',
-                  border: `1px solid ${copiedPrompt === 'deep' ? 'rgba(168, 85, 247, 0.4)' : 'rgba(168, 85, 247, 0.15)'}`,
+                  background: 'rgba(168, 85, 247, 0.06)',
+                  border: '1px solid rgba(168, 85, 247, 0.15)',
                   borderRadius: 10,
-                  color: copiedPrompt === 'deep' ? '#c084fc' : '#a855f7',
+                  color: '#a855f7',
                   fontSize: '0.8rem',
                   fontFamily: 'Space Grotesk, sans-serif',
                   fontWeight: 600,
@@ -515,17 +514,15 @@ export function LandedPlanetModal({
                   justifyContent: 'center',
                   gap: 6,
                 }}
-                onClick={() => {
-                  navigator.clipboard.writeText(planet.deepAnalysis!);
-                  setCopiedPrompt('deep');
-                  setTimeout(() => setCopiedPrompt(null), 2000);
-                }}
+                onClick={() => setViewingPrompt('deep')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
                 </svg>
-                {copiedPrompt === 'deep' ? 'Copied!' : 'Deep Analysis'}
+                Deep Analysis
               </button>
             ) : planet.analysisStatus === 'pending' ? (
               <div
@@ -579,6 +576,131 @@ export function LandedPlanetModal({
                 Analysis Failed
               </div>
             ) : null}
+          </div>
+        )}
+
+        {/* Prompt Reader Overlay */}
+        {viewingPrompt && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.92)',
+              zIndex: 1100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+            }}
+            onClick={() => setViewingPrompt(null)}
+          >
+            <div
+              className="landed-modal"
+              style={{
+                background: '#12121e',
+                borderRadius: 16,
+                width: '96%',
+                maxWidth: 720,
+                maxHeight: '88vh',
+                display: 'flex',
+                flexDirection: 'column',
+                border: `1px solid ${viewingPrompt === 'deep' ? 'rgba(168, 85, 247, 0.25)' : 'rgba(255,255,255,0.1)'}`,
+                overflow: 'hidden',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Reader Header */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '18px 24px',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                flexShrink: 0,
+              }}>
+                <span style={{
+                  fontFamily: 'Orbitron, sans-serif',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  color: viewingPrompt === 'deep' ? '#a855f7' : '#aaa',
+                }}>
+                  {viewingPrompt === 'deep' ? 'Deep Analysis' : 'Quick Prompt'}
+                </span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    style={{
+                      padding: '6px 14px',
+                      background: copiedPrompt === viewingPrompt ? 'rgba(74, 222, 128, 0.15)' : viewingPrompt === 'deep' ? 'rgba(168, 85, 247, 0.1)' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${copiedPrompt === viewingPrompt ? 'rgba(74, 222, 128, 0.3)' : viewingPrompt === 'deep' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(255,255,255,0.1)'}`,
+                      borderRadius: 8,
+                      color: copiedPrompt === viewingPrompt ? '#4ade80' : viewingPrompt === 'deep' ? '#c084fc' : '#aaa',
+                      fontSize: '0.75rem',
+                      fontFamily: 'Space Grotesk, sans-serif',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
+                    }}
+                    onClick={() => {
+                      const text = viewingPrompt === 'deep' ? planet.deepAnalysis! : planet.quickPrompt!;
+                      navigator.clipboard.writeText(text);
+                      setCopiedPrompt(viewingPrompt);
+                      setTimeout(() => setCopiedPrompt(null), 2000);
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                    </svg>
+                    {copiedPrompt === viewingPrompt ? 'Copied!' : 'Copy'}
+                  </button>
+                  <button
+                    style={{
+                      padding: '6px 10px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 8,
+                      color: '#666',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                    onClick={() => setViewingPrompt(null)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              {/* Reader Content */}
+              <div style={{
+                padding: '20px 24px',
+                overflowY: 'auto',
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+                flex: 1,
+              }}>
+                <pre style={{
+                  fontFamily: 'Space Grotesk, monospace',
+                  fontSize: '0.82rem',
+                  lineHeight: 1.7,
+                  color: '#ccc',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  margin: 0,
+                }}>
+                  {viewingPrompt === 'deep' ? planet.deepAnalysis : planet.quickPrompt}
+                </pre>
+              </div>
+            </div>
           </div>
         )}
 
