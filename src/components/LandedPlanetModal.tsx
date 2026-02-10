@@ -101,6 +101,7 @@ export function LandedPlanetModal({
   const [editingField, setEditingField] = useState<EditingField>(null);
   const [editName, setEditName] = useState(planet.name || '');
   const [editDescription, setEditDescription] = useState(planet.description || '');
+  const [copiedPrompt, setCopiedPrompt] = useState<'quick' | 'deep' | null>(null);
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -459,6 +460,75 @@ export function LandedPlanetModal({
             </div>
           )}
         </div>
+
+        {/* Copy Prompt Buttons */}
+        {(planet.quickPrompt || planet.deepAnalysis) && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            {planet.quickPrompt && (
+              <button
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  background: copiedPrompt === 'quick' ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${copiedPrompt === 'quick' ? 'rgba(74, 222, 128, 0.3)' : 'rgba(255,255,255,0.08)'}`,
+                  borderRadius: 10,
+                  color: copiedPrompt === 'quick' ? '#4ade80' : '#aaa',
+                  fontSize: '0.8rem',
+                  fontFamily: 'Space Grotesk, sans-serif',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                }}
+                onClick={() => {
+                  navigator.clipboard.writeText(planet.quickPrompt!);
+                  setCopiedPrompt('quick');
+                  setTimeout(() => setCopiedPrompt(null), 2000);
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                {copiedPrompt === 'quick' ? 'Copied!' : 'Quick Prompt'}
+              </button>
+            )}
+            {planet.deepAnalysis && (
+              <button
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  background: copiedPrompt === 'deep' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(168, 85, 247, 0.06)',
+                  border: `1px solid ${copiedPrompt === 'deep' ? 'rgba(168, 85, 247, 0.4)' : 'rgba(168, 85, 247, 0.15)'}`,
+                  borderRadius: 10,
+                  color: copiedPrompt === 'deep' ? '#c084fc' : '#a855f7',
+                  fontSize: '0.8rem',
+                  fontFamily: 'Space Grotesk, sans-serif',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                }}
+                onClick={() => {
+                  navigator.clipboard.writeText(planet.deepAnalysis!);
+                  setCopiedPrompt('deep');
+                  setTimeout(() => setCopiedPrompt(null), 2000);
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                {copiedPrompt === 'deep' ? 'Copied!' : 'Deep Analysis'}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Divider */}
         <div style={styles.divider} />

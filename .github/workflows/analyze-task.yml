@@ -1,0 +1,160 @@
+name: Analyze Task
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_title:
+        description: 'Task title'
+        required: true
+        type: string
+      task_description:
+        description: 'Task description'
+        required: false
+        type: string
+        default: ''
+      task_type:
+        description: 'Task type (bug, enhancement, etc.)'
+        required: false
+        type: string
+        default: ''
+      task_priority:
+        description: 'Task priority (critical, high, medium, low)'
+        required: false
+        type: string
+        default: ''
+      notion_planet_id:
+        description: 'Notion planet UUID in Supabase'
+        required: true
+        type: string
+      notion_task_id:
+        description: 'Notion page ID'
+        required: true
+        type: string
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/UniqueQuizzSaas
+          path: workspace/UniqueQuizzSaas
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/UniqueQuizzSaasBackend
+          path: workspace/UniqueQuizzSaasBackend
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/UniqueQuizzForms
+          path: workspace/UniqueQuizzForms
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/UniqueQuizzHulkSmash
+          path: workspace/UniqueQuizzHulkSmash
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/UniqueQuizzAnalyticsBackend
+          path: workspace/UniqueQuizzAnalyticsBackend
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/UniqueQuizzPrisma
+          path: workspace/UniqueQuizzPrisma
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/UniqueQuizzAutomations
+          path: workspace/UniqueQuizzAutomations
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/UniqueQuizzMonitoring
+          path: workspace/UniqueQuizzMonitoring
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/Landing-Page
+          path: workspace/Landing-Page
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/HulkSmashVideo
+          path: workspace/HulkSmashVideo
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Q-organization/mission-control-space
+          path: workspace/mission-control-space
+          token: ${{ secrets.GH_PAT }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run deep analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          cd workspace
+
+          # Read the analysis agent system prompt
+          SYSTEM_PROMPT=$(cat mission-control-space/.github/analysis-agent-prompt.md)
+
+          # Build the task prompt
+          TASK_PROMPT="Analyze this task and produce a detailed implementation plan.
+
+          Task: ${{ inputs.task_title }}
+          Type: ${{ inputs.task_type }}
+          Priority: ${{ inputs.task_priority }}
+          Description: ${{ inputs.task_description }}"
+
+          claude -p \
+            --dangerously-skip-permissions \
+            --no-session-persistence \
+            --max-budget-usd 1.00 \
+            --model sonnet \
+            --allowedTools "Read Glob Grep" \
+            --append-system-prompt "$SYSTEM_PROMPT" \
+            "$TASK_PROMPT" > /tmp/analysis.txt 2>&1
+
+          echo "Analysis complete. Size: $(wc -c < /tmp/analysis.txt) bytes"
+
+      - name: Send analysis to Supabase
+        run: |
+          ANALYSIS=$(cat /tmp/analysis.txt)
+
+          HTTP_STATUS=$(curl -s -o /tmp/callback_response.txt -w "%{http_code}" \
+            -X POST "https://qdizfhhsqolvuddoxugj.supabase.co/functions/v1/task-analysis-callback" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg planet_id "${{ inputs.notion_planet_id }}" \
+              --arg task_id "${{ inputs.notion_task_id }}" \
+              --arg analysis "$ANALYSIS" \
+              '{notion_planet_id: $planet_id, notion_task_id: $task_id, analysis: $analysis}')")
+
+          echo "Callback response ($HTTP_STATUS):"
+          cat /tmp/callback_response.txt
+          echo ""
+
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "Warning: Callback returned non-200 status"
+            exit 1
+          fi

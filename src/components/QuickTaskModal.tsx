@@ -39,6 +39,9 @@ export function QuickTaskModal({ isOpen, onClose, currentUser, teamMembers, onCr
   const [autoOpenNotion, setAutoOpenNotion] = useState(
     () => localStorage.getItem('mission-control-auto-open-notion') === 'true'
   );
+  const [autoAnalyze, setAutoAnalyze] = useState(
+    () => localStorage.getItem('mission-control-auto-analyze') === 'true'
+  );
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -133,6 +136,7 @@ export function QuickTaskModal({ isOpen, onClose, currentUser, teamMembers, onCr
       priority: priority,
       assigned_to: assignedTo || null,
       created_by: currentUser,
+      auto_analyze: autoAnalyze,
     };
 
     // Play voice line + send animation (use content as temp name)
@@ -370,44 +374,82 @@ export function QuickTaskModal({ isOpen, onClose, currentUser, teamMembers, onCr
           </button>
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            marginTop: '1rem',
-            cursor: 'pointer',
-            userSelect: 'none',
-          }}
-          onClick={() => {
-            const newValue = !autoOpenNotion;
-            setAutoOpenNotion(newValue);
-            localStorage.setItem('mission-control-auto-open-notion', String(newValue));
-          }}
-        >
-          <div style={{
-            width: 28,
-            height: 14,
-            borderRadius: 7,
-            background: autoOpenNotion ? 'rgba(0, 200, 255, 0.4)' : 'rgba(255,255,255,0.1)',
-            position: 'relative',
-            transition: 'background 0.2s ease',
-          }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginTop: '1rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            onClick={() => {
+              const newValue = !autoOpenNotion;
+              setAutoOpenNotion(newValue);
+              localStorage.setItem('mission-control-auto-open-notion', String(newValue));
+            }}
+          >
             <div style={{
-              width: 10,
-              height: 10,
-              borderRadius: '50%',
-              background: autoOpenNotion ? '#00c8ff' : '#555',
-              position: 'absolute',
-              top: 2,
-              left: autoOpenNotion ? 16 : 2,
-              transition: 'all 0.2s ease',
-            }} />
+              width: 28,
+              height: 14,
+              borderRadius: 7,
+              background: autoOpenNotion ? 'rgba(0, 200, 255, 0.4)' : 'rgba(255,255,255,0.1)',
+              position: 'relative',
+              transition: 'background 0.2s ease',
+            }}>
+              <div style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                background: autoOpenNotion ? '#00c8ff' : '#555',
+                position: 'absolute',
+                top: 2,
+                left: autoOpenNotion ? 16 : 2,
+                transition: 'all 0.2s ease',
+              }} />
+            </div>
+            <span style={{ color: autoOpenNotion ? '#00c8ff' : '#555', fontSize: '0.7rem', letterSpacing: '0.02em' }}>
+              Open Notion
+            </span>
           </div>
-          <span style={{ color: autoOpenNotion ? '#00c8ff' : '#555', fontSize: '0.7rem', letterSpacing: '0.02em' }}>
-            Auto-open in Notion
-          </span>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            onClick={() => {
+              const newValue = !autoAnalyze;
+              setAutoAnalyze(newValue);
+              localStorage.setItem('mission-control-auto-analyze', String(newValue));
+            }}
+          >
+            <div style={{
+              width: 28,
+              height: 14,
+              borderRadius: 7,
+              background: autoAnalyze ? 'rgba(168, 85, 247, 0.4)' : 'rgba(255,255,255,0.1)',
+              position: 'relative',
+              transition: 'background 0.2s ease',
+            }}>
+              <div style={{
+                width: 10,
+                height: 10,
+                borderRadius: '50%',
+                background: autoAnalyze ? '#a855f7' : '#555',
+                position: 'absolute',
+                top: 2,
+                left: autoAnalyze ? 16 : 2,
+                transition: 'all 0.2s ease',
+              }} />
+            </div>
+            <span style={{ color: autoAnalyze ? '#a855f7' : '#555', fontSize: '0.7rem', letterSpacing: '0.02em' }}>
+              Claude Agent
+            </span>
+          </div>
         </div>
 
         <p style={styles.shortcutHint}>Press Esc to close</p>

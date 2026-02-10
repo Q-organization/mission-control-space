@@ -26,6 +26,7 @@ interface NotionWebhookPayload {
   status?: string;
   url?: string;
   due_date?: string; // ISO date from Notion "Due Date" property
+  auto_analyze?: boolean; // Whether to trigger deep analysis via GitHub Actions
 }
 
 interface ExistingPlanet {
@@ -333,6 +334,9 @@ function parseNativeNotionPayload(raw: any): NotionWebhookPayload | null {
   const hasDueDate = 'Due Date' in props;
   const dueDate = hasDueDate ? (props['Due Date']?.date?.start || null) : undefined;
 
+  // Extract "Auto Analyze" checkbox
+  const autoAnalyze = props['Auto Analyze']?.checkbox === true;
+
   return {
     id: data.id,
     name: name || 'Untitled',
@@ -345,6 +349,7 @@ function parseNativeNotionPayload(raw: any): NotionWebhookPayload | null {
     status: status || undefined,
     url: data.url || undefined,
     due_date: dueDate,
+    auto_analyze: autoAnalyze,
   };
 }
 
@@ -353,6 +358,118 @@ function calculatePoints(priority: string | undefined): number {
   if (!priority) return PRIORITY_POINTS.default;
   const key = priority.toLowerCase();
   return PRIORITY_POINTS[key] || PRIORITY_POINTS.default;
+}
+
+// Generate a quick prompt template from task metadata
+function generateQuickPrompt(payload: NotionWebhookPayload): string {
+  const typeLabel = payload.type || 'task';
+  const priorityLabel = payload.priority || 'medium';
+  const description = payload.description || '(no description provided)';
+
+  return `Task: ${payload.name}
+Type: ${typeLabel} | Priority: ${priorityLabel}
+
+Description:
+${description}
+
+Instructions:
+1. Read the CLAUDE.md in the relevant repository to understand the project structure and conventions
+2. Search the codebase for files related to this task
+3. Read the relevant source files and understand the current behavior
+4. Propose the required changes
+5. Implement after approval`;
+}
+
+// Trigger GitHub Actions deep analysis workflow
+async function triggerDeepAnalysis(
+  payload: NotionWebhookPayload,
+  notionPlanetId: string
+): Promise<boolean> {
+  const githubPat = Deno.env.get('GITHUB_PAT');
+  if (!githubPat) {
+    console.log('No GITHUB_PAT configured, skipping deep analysis trigger');
+    return false;
+  }
+
+  try {
+    const response = await fetch(
+      'https://api.github.com/repos/Q-organization/mission-control-space/actions/workflows/analyze-task.yml/dispatches',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${githubPat}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ref: 'main',
+          inputs: {
+            task_title: payload.name,
+            task_description: payload.description || '',
+            task_type: payload.type || '',
+            task_priority: payload.priority || '',
+            notion_planet_id: notionPlanetId,
+            notion_task_id: formatUuidWithDashes(payload.id),
+          },
+        }),
+      }
+    );
+
+    if (response.status === 204) {
+      console.log(`Triggered deep analysis for "${payload.name}" (planet ${notionPlanetId})`);
+      return true;
+    } else {
+      const errorText = await response.text();
+      console.error(`Failed to trigger deep analysis: ${response.status} ${errorText}`);
+      return false;
+    }
+  } catch (err) {
+    console.error('Error triggering GitHub Actions:', err);
+    return false;
+  }
+}
+
+// Write quick prompt back to Notion page
+async function writeQuickPromptToNotion(
+  notionTaskId: string,
+  quickPrompt: string
+): Promise<void> {
+  const notionToken = Deno.env.get('NOTION_API_TOKEN');
+  if (!notionToken) return;
+
+  const truncated = quickPrompt.length > 2000
+    ? quickPrompt.substring(0, 1997) + '...'
+    : quickPrompt;
+
+  try {
+    const response = await fetch(`https://api.notion.com/v1/pages/${notionTaskId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${notionToken}`,
+        'Content-Type': 'application/json',
+        'Notion-Version': '2022-06-28',
+      },
+      body: JSON.stringify({
+        properties: {
+          'Quick Prompt': {
+            rich_text: [{
+              type: 'text',
+              text: { content: truncated },
+            }],
+          },
+        },
+      }),
+    });
+
+    if (response.ok) {
+      console.log(`Wrote quick prompt to Notion page ${notionTaskId}`);
+    } else {
+      const errorText = await response.text();
+      console.error(`Failed to write quick prompt to Notion: ${response.status} ${errorText}`);
+    }
+  } catch (err) {
+    console.error('Error writing quick prompt to Notion:', err);
+  }
 }
 
 // Normalize UUID for consistent comparison (Notion IDs can have or not have dashes)
@@ -962,6 +1079,40 @@ Deno.serve(async (req) => {
     const action = createdPlanets.length > 0 ? 'created' : (updatedPlanets.length > 0 ? 'updated' : 'no_change');
     console.log(`Processed "${payload.name}": created=${createdPlanets.length}, updated=${updatedPlanets.length}, deleted=${deletedPlanets.length}`);
 
+    // Generate quick prompt and handle auto-analysis for created/updated planets
+    if (createdPlanets.length > 0 || updatedPlanets.length > 0) {
+      const quickPrompt = generateQuickPrompt(payload);
+
+      // Get all planet IDs that were created or updated for this task
+      const { data: taskPlanets } = await supabase
+        .from('notion_planets')
+        .select('id')
+        .eq('notion_task_id', normalizedTaskId);
+
+      if (taskPlanets && taskPlanets.length > 0) {
+        // Save quick prompt and auto_analyze flag to all planets for this task
+        await supabase
+          .from('notion_planets')
+          .update({
+            quick_prompt: quickPrompt,
+            auto_analyze: payload.auto_analyze || false,
+          })
+          .eq('notion_task_id', normalizedTaskId);
+
+        console.log(`Saved quick prompt for "${payload.name}" (${taskPlanets.length} planet(s))`);
+
+        // Write quick prompt to Notion (fire and forget)
+        writeQuickPromptToNotion(normalizedTaskId, quickPrompt);
+
+        // Trigger deep analysis if Auto Analyze is checked
+        if (payload.auto_analyze && createdPlanets.length > 0) {
+          const firstPlanetId = taskPlanets[0].id;
+          const triggered = await triggerDeepAnalysis(payload, firstPlanetId);
+          console.log(`Deep analysis trigger for "${payload.name}": ${triggered ? 'success' : 'failed'}`);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -975,6 +1126,8 @@ Deno.serve(async (req) => {
         priority: payload.priority || null,
         notion_url: payload.url || null,
         team_id: team.id,
+        quick_prompt_generated: createdPlanets.length > 0 || updatedPlanets.length > 0,
+        deep_analysis_triggered: payload.auto_analyze && createdPlanets.length > 0,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

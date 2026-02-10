@@ -19,6 +19,7 @@ interface CreateRequest {
   priority?: 'low' | 'medium' | 'high' | 'critical';
   assigned_to?: string;  // Username or null for unassigned
   created_by: string;    // Username of creator
+  auto_analyze?: boolean; // Whether to trigger deep analysis via GitHub Actions
 }
 
 interface ExistingPlanet {
@@ -357,6 +358,13 @@ Deno.serve(async (req) => {
     if (body.type && typeMapping[body.type]) {
       notionProperties['What is it ?'] = {
         select: { name: typeMapping[body.type] },
+      };
+    }
+
+    // Add Auto Analyze checkbox if enabled
+    if (body.auto_analyze) {
+      notionProperties['Auto Analyze'] = {
+        checkbox: true,
       };
     }
 
