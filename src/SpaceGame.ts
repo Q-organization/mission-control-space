@@ -10212,6 +10212,12 @@ export class SpaceGame {
       ctx.fillRect(nomadBarX + 2, hudY + 2, (barW - 4) * hpRatio, 3);
     }
 
+    // HP text on Nomad bar
+    ctx.font = 'bold 9px Orbitron';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`${Math.max(0, Math.ceil(fight.nomadHP))} / 2000`, nomadBarX + barW / 2, hudY + barH / 2 + 3);
+
     // Enrage pulsing border
     if (fight.enraged) {
       const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.01);
@@ -10252,6 +10258,13 @@ export class SpaceGame {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
       ctx.fillRect(fillX, hudY + 2, fillW, 3);
     }
+
+    // HP text on Player bar
+    const playerMaxHP = this.getPlayerMaxHP();
+    ctx.font = 'bold 9px Orbitron';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`${Math.max(0, Math.ceil(fight.playerHP))} / ${playerMaxHP}`, pBarX + barW / 2, hudY + barH / 2 + 3);
 
     // ── VS medallion in center ──
     ctx.beginPath();
