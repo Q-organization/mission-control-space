@@ -2505,6 +2505,15 @@ function App() {
     setLandedPlanet(planet);
   }, [state.currentUser]);
 
+  // Keep landedPlanet in sync with realtime updates (e.g. deep_analysis arriving)
+  useEffect(() => {
+    if (!landedPlanet || landedPlanet.type !== 'notion') return;
+    const updated = notionGamePlanets.find(p => p.id === landedPlanet.id);
+    if (updated && (updated.quickPrompt !== landedPlanet.quickPrompt || updated.deepAnalysis !== landedPlanet.deepAnalysis)) {
+      setLandedPlanet(updated);
+    }
+  }, [notionGamePlanets, landedPlanet]);
+
   // Handle takeoff from a planet
   const handleTakeoff = useCallback(() => {
     gameRef.current?.setSuppressLandedPanel(false);
