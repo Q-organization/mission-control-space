@@ -159,22 +159,22 @@ const EMOTE_ITEMS = [
 
 // Companion items (sold by The Hatchery)
 const COMPANION_ITEMS = [
-  { id: 'spark', name: 'Spark', icon: '\u2728', cost: 100, planetsToHatch: 1 },
-  { id: 'nibbles', name: 'Nibbles', icon: '\u{1F43E}', cost: 150, planetsToHatch: 1 },
-  { id: 'astro_frog', name: 'Astro Frog', icon: '\u{1F438}', cost: 250, planetsToHatch: 1 },
-  { id: 'void_kitten', name: 'Void Kitten', icon: '\u{1F431}', cost: 400, planetsToHatch: 2 },
-  { id: 'jellybloom', name: 'Jellybloom', icon: '\u{1FAB7}', cost: 500, planetsToHatch: 2 },
-  { id: 'frost_sprite', name: 'Frost Sprite', icon: '\u2744\uFE0F', cost: 500, planetsToHatch: 2 },
-  { id: 'pixel_ghost', name: 'Pixel Ghost', icon: '\u{1F47B}', cost: 650, planetsToHatch: 2 },
-  { id: 'comet_fox', name: 'Comet Fox', icon: '\u{1F98A}', cost: 800, planetsToHatch: 3 },
-  { id: 'crystal_bat', name: 'Crystal Bat', icon: '\u{1F987}', cost: 800, planetsToHatch: 3 },
-  { id: 'flame_wisp', name: 'Flame Wisp', icon: '\u{1F525}', cost: 1000, planetsToHatch: 3 },
-  { id: 'baby_black_hole', name: 'Baby Black Hole', icon: '\u{1F573}\uFE0F', cost: 1500, planetsToHatch: 4 },
-  { id: 'golden_scarab', name: 'Golden Scarab', icon: '\u{1FAB2}', cost: 2000, planetsToHatch: 4 },
+  { id: 'spark', name: 'Spark', icon: '\u2728', cost: 100, planetsToHatch: 5 },
+  { id: 'nibbles', name: 'Nibbles', icon: '\u{1F43E}', cost: 150, planetsToHatch: 5 },
+  { id: 'astro_frog', name: 'Astro Frog', icon: '\u{1F438}', cost: 250, planetsToHatch: 5 },
+  { id: 'void_kitten', name: 'Void Kitten', icon: '\u{1F431}', cost: 400, planetsToHatch: 7 },
+  { id: 'jellybloom', name: 'Jellybloom', icon: '\u{1FAB7}', cost: 500, planetsToHatch: 7 },
+  { id: 'frost_sprite', name: 'Frost Sprite', icon: '\u2744\uFE0F', cost: 500, planetsToHatch: 7 },
+  { id: 'pixel_ghost', name: 'Pixel Ghost', icon: '\u{1F47B}', cost: 650, planetsToHatch: 8 },
+  { id: 'comet_fox', name: 'Comet Fox', icon: '\u{1F98A}', cost: 800, planetsToHatch: 10 },
+  { id: 'crystal_bat', name: 'Crystal Bat', icon: '\u{1F987}', cost: 800, planetsToHatch: 10 },
+  { id: 'flame_wisp', name: 'Flame Wisp', icon: '\u{1F525}', cost: 1000, planetsToHatch: 12 },
+  { id: 'baby_black_hole', name: 'Baby Black Hole', icon: '\u{1F573}\uFE0F', cost: 1500, planetsToHatch: 15 },
+  { id: 'golden_scarab', name: 'Golden Scarab', icon: '\u{1FAB2}', cost: 2000, planetsToHatch: 15 },
   // Legendaries
-  { id: 'cosmic_dragon', name: 'Cosmic Dragon', icon: '\u{1F432}', cost: 5000, planetsToHatch: 7, isLegendary: true },
-  { id: 'phoenix_eternal', name: 'Phoenix Eternal', icon: '\u{1F985}', cost: 7500, planetsToHatch: 10, isLegendary: true },
-  { id: 'void_leviathan', name: 'Void Leviathan', icon: '\u{1F419}', cost: 10000, planetsToHatch: 15, isLegendary: true },
+  { id: 'cosmic_dragon', name: 'Cosmic Dragon', icon: '\u{1F432}', cost: 5000, planetsToHatch: 25, isLegendary: true },
+  { id: 'phoenix_eternal', name: 'Phoenix Eternal', icon: '\u{1F985}', cost: 7500, planetsToHatch: 35, isLegendary: true },
+  { id: 'void_leviathan', name: 'Void Leviathan', icon: '\u{1F419}', cost: 10000, planetsToHatch: 50, isLegendary: true },
 ];
 
 // Weapon costs (one-time purchases)

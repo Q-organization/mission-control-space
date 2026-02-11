@@ -100,22 +100,22 @@ interface Companion {
 }
 
 const COMPANION_DEFS: CompanionDef[] = [
-  { id: 'spark', name: 'Spark', color: '#ffff88', glowColor: '#ffff44', size: 8, cost: 100, icon: '\u2728', planetsToHatch: 1 },
-  { id: 'nibbles', name: 'Nibbles', color: '#ff88aa', glowColor: '#ff4488', size: 8, cost: 150, icon: '\u{1F43E}', planetsToHatch: 1 },
-  { id: 'astro_frog', name: 'Astro Frog', color: '#44ff66', glowColor: '#22cc44', size: 9, cost: 250, icon: '\u{1F438}', planetsToHatch: 1 },
-  { id: 'void_kitten', name: 'Void Kitten', color: '#bb66ff', glowColor: '#9933ff', size: 10, cost: 400, icon: '\u{1F431}', planetsToHatch: 2 },
-  { id: 'jellybloom', name: 'Jellybloom', color: '#66ffee', glowColor: '#33ddcc', size: 11, cost: 500, icon: '\u{1FAB7}', planetsToHatch: 2 },
-  { id: 'frost_sprite', name: 'Frost Sprite', color: '#88ddff', glowColor: '#55bbff', size: 9, cost: 500, icon: '\u2744\uFE0F', planetsToHatch: 2 },
-  { id: 'pixel_ghost', name: 'Pixel Ghost', color: '#eeeeff', glowColor: '#ccccff', size: 10, cost: 650, icon: '\u{1F47B}', planetsToHatch: 2 },
-  { id: 'comet_fox', name: 'Comet Fox', color: '#ff8844', glowColor: '#ff6622', size: 9, cost: 800, icon: '\u{1F98A}', planetsToHatch: 3 },
-  { id: 'crystal_bat', name: 'Crystal Bat', color: '#ff44ff', glowColor: '#cc22cc', size: 10, cost: 800, icon: '\u{1F987}', planetsToHatch: 3 },
-  { id: 'flame_wisp', name: 'Flame Wisp', color: '#ff4422', glowColor: '#cc2200', size: 9, cost: 1000, icon: '\u{1F525}', planetsToHatch: 3 },
-  { id: 'baby_black_hole', name: 'Baby Black Hole', color: '#222233', glowColor: '#ffffff', size: 12, cost: 1500, icon: '\u{1F573}\uFE0F', planetsToHatch: 4 },
-  { id: 'golden_scarab', name: 'Golden Scarab', color: '#ffd700', glowColor: '#ccaa00', size: 11, cost: 2000, icon: '\u{1FAB2}', planetsToHatch: 4 },
+  { id: 'spark', name: 'Spark', color: '#ffff88', glowColor: '#ffff44', size: 8, cost: 100, icon: '\u2728', planetsToHatch: 5 },
+  { id: 'nibbles', name: 'Nibbles', color: '#ff88aa', glowColor: '#ff4488', size: 8, cost: 150, icon: '\u{1F43E}', planetsToHatch: 5 },
+  { id: 'astro_frog', name: 'Astro Frog', color: '#44ff66', glowColor: '#22cc44', size: 9, cost: 250, icon: '\u{1F438}', planetsToHatch: 5 },
+  { id: 'void_kitten', name: 'Void Kitten', color: '#bb66ff', glowColor: '#9933ff', size: 10, cost: 400, icon: '\u{1F431}', planetsToHatch: 7 },
+  { id: 'jellybloom', name: 'Jellybloom', color: '#66ffee', glowColor: '#33ddcc', size: 11, cost: 500, icon: '\u{1FAB7}', planetsToHatch: 7 },
+  { id: 'frost_sprite', name: 'Frost Sprite', color: '#88ddff', glowColor: '#55bbff', size: 9, cost: 500, icon: '\u2744\uFE0F', planetsToHatch: 7 },
+  { id: 'pixel_ghost', name: 'Pixel Ghost', color: '#eeeeff', glowColor: '#ccccff', size: 10, cost: 650, icon: '\u{1F47B}', planetsToHatch: 8 },
+  { id: 'comet_fox', name: 'Comet Fox', color: '#ff8844', glowColor: '#ff6622', size: 9, cost: 800, icon: '\u{1F98A}', planetsToHatch: 10 },
+  { id: 'crystal_bat', name: 'Crystal Bat', color: '#ff44ff', glowColor: '#cc22cc', size: 10, cost: 800, icon: '\u{1F987}', planetsToHatch: 10 },
+  { id: 'flame_wisp', name: 'Flame Wisp', color: '#ff4422', glowColor: '#cc2200', size: 9, cost: 1000, icon: '\u{1F525}', planetsToHatch: 12 },
+  { id: 'baby_black_hole', name: 'Baby Black Hole', color: '#222233', glowColor: '#ffffff', size: 12, cost: 1500, icon: '\u{1F573}\uFE0F', planetsToHatch: 15 },
+  { id: 'golden_scarab', name: 'Golden Scarab', color: '#ffd700', glowColor: '#ccaa00', size: 11, cost: 2000, icon: '\u{1FAB2}', planetsToHatch: 15 },
   // Legendaries — massive companions (3x ship size)
-  { id: 'cosmic_dragon', name: 'Cosmic Dragon', color: '#ff2222', glowColor: '#cc0000', size: 42, cost: 5000, icon: '\u{1F432}', planetsToHatch: 7, isLegendary: true },
-  { id: 'phoenix_eternal', name: 'Phoenix Eternal', color: '#ffaa00', glowColor: '#ff8800', size: 40, cost: 7500, icon: '\u{1F985}', planetsToHatch: 10, isLegendary: true },
-  { id: 'void_leviathan', name: 'Void Leviathan', color: '#8b5cf6', glowColor: '#6d28d9', size: 45, cost: 10000, icon: '\u{1F419}', planetsToHatch: 15, isLegendary: true },
+  { id: 'cosmic_dragon', name: 'Cosmic Dragon', color: '#ff2222', glowColor: '#cc0000', size: 42, cost: 5000, icon: '\u{1F432}', planetsToHatch: 25, isLegendary: true },
+  { id: 'phoenix_eternal', name: 'Phoenix Eternal', color: '#ffaa00', glowColor: '#ff8800', size: 40, cost: 7500, icon: '\u{1F985}', planetsToHatch: 35, isLegendary: true },
+  { id: 'void_leviathan', name: 'Void Leviathan', color: '#8b5cf6', glowColor: '#6d28d9', size: 45, cost: 10000, icon: '\u{1F419}', planetsToHatch: 50, isLegendary: true },
 ];
 
 // Store terraform counts and size levels for scaling
@@ -2025,6 +2025,7 @@ export class SpaceGame {
     this.updateCompanionPositions();
     this.updateEggPositions();
     this.updateOtherPlayersInterpolation();
+    this.updateOtherPlayerCompanions();
     this.updateOtherPlayersParticles();
     this.updateZoneTitle();
     this.updateShootingStars();
@@ -9176,6 +9177,35 @@ export class SpaceGame {
       if (!this.renderStates.has(player.id)) {
         this.renderStates.set(player.id, this.createInitialRenderState(player.x, player.y, player.rotation, player.vx, player.vy, player.thrusting));
       }
+
+      // Sync companion instances for this player
+      const equipped = player.shipEffects?.equippedCompanions ?? [];
+      const existing = this.otherPlayerCompanions.get(player.id) ?? [];
+      const existingMap = new Map<string, Companion>();
+      for (const c of existing) existingMap.set(c.type, c);
+      if (equipped.length > 0 || existing.length > 0) {
+        const synced = equipped.map(type => {
+          const prev = existingMap.get(type);
+          if (prev) return prev;
+          return {
+            type,
+            worldX: player.x + (Math.random() - 0.5) * 60,
+            worldY: player.y + (Math.random() - 0.5) * 60,
+            prevWorldX: player.x,
+            prevWorldY: player.y,
+            vx: 0, vy: 0,
+            wobble: Math.random() * Math.PI * 2,
+            angle: Math.random() * Math.PI * 2,
+            timer: 0, stateFlag: 0,
+            idleWanderTarget: null, alpha: 1,
+          };
+        });
+        if (synced.length > 0) {
+          this.otherPlayerCompanions.set(player.id, synced);
+        } else {
+          this.otherPlayerCompanions.delete(player.id);
+        }
+      }
     }
 
     // Clean up render states, snapshots, and image caches for players who left
@@ -9563,13 +9593,123 @@ export class SpaceGame {
         this.drawOtherPlayerAt(player, pos.x, pos.y, renderRotation, renderThrusting);
       }
 
-      // TODO: Add escort drones for other players (following behavior)
+      // Render companions for this player
+      const companions = this.otherPlayerCompanions.get(player.id);
+      if (companions && companions.length > 0) {
+        this.renderOtherPlayerCompanions(companions);
+      }
     }
   }
 
   /**
    * Draw another player's ship at a specific screen position.
    */
+  // Update companion positions for all other players
+  private updateOtherPlayerCompanions() {
+    for (const player of this.otherPlayers) {
+      const companions = this.otherPlayerCompanions.get(player.id);
+      if (!companions || companions.length === 0) continue;
+
+      const renderState = this.renderStates.get(player.id);
+      const px = renderState?.renderX ?? player.x;
+      const py = renderState?.renderY ?? player.y;
+      const prot = renderState?.renderRotation ?? player.rotation;
+      const pvx = renderState?.renderVx ?? player.vx;
+      const pvy = renderState?.renderVy ?? player.vy;
+      const speed = Math.sqrt(pvx * pvx + pvy * pvy);
+      const moveBlend = Math.min(speed / 2.5, 1);
+
+      for (let i = 0; i < companions.length; i++) {
+        const c = companions[i];
+        c.wobble += (0.03 + i * 0.005) * this.dt;
+
+        // Chain target
+        let chainX: number, chainY: number;
+        if (i === 0) {
+          const backAngle = prot + Math.PI;
+          chainX = px + Math.cos(backAngle) * 50;
+          chainY = py + Math.sin(backAngle) * 50;
+        } else {
+          const leader = companions[i - 1];
+          const dx = c.worldX - leader.worldX;
+          const dy = c.worldY - leader.worldY;
+          const angle = Math.atan2(dy, dx);
+          chainX = leader.worldX + Math.cos(angle) * 32;
+          chainY = leader.worldY + Math.sin(angle) * 32;
+        }
+
+        // Idle target
+        const idleAngle = (Math.PI * 2 * i) / Math.max(companions.length, 1) + c.wobble * 0.1;
+        const idleX = px + Math.cos(idleAngle) * 60;
+        const idleY = py + Math.sin(idleAngle) * 60;
+
+        const targetX = chainX * moveBlend + idleX * (1 - moveBlend) + Math.sin(c.wobble) * 2;
+        const targetY = chainY * moveBlend + idleY * (1 - moveBlend) + Math.cos(c.wobble * 1.3) * 2;
+
+        c.prevWorldX = c.worldX;
+        c.prevWorldY = c.worldY;
+
+        const dx = targetX - c.worldX;
+        const dy = targetY - c.worldY;
+        const elasticity = 1 + i * 0.6;
+        const springK = 0.1 / elasticity;
+        const damping = Math.min(0.8 + i * 0.03, 0.92);
+
+        c.vx += dx * springK * this.dt;
+        c.vy += dy * springK * this.dt;
+        c.vx *= Math.pow(damping, this.dt);
+        c.vy *= Math.pow(damping, this.dt);
+        c.worldX += c.vx * this.dt;
+        c.worldY += c.vy * this.dt;
+      }
+    }
+  }
+
+  // Render companions for another player
+  private renderOtherPlayerCompanions(companions: Companion[]) {
+    const { ctx } = this;
+    const { camera } = this.state;
+
+    for (const c of companions) {
+      const def = COMPANION_DEFS.find(d => d.id === c.type);
+      if (!def) continue;
+
+      const screenX = c.worldX - camera.x;
+      const screenY = c.worldY - camera.y;
+      const isLegendary = def.isLegendary ?? false;
+      const margin = isLegendary ? 200 : 50;
+      if (screenX < -margin || screenX > this.canvas.width + margin || screenY < -margin || screenY > this.canvas.height + margin) continue;
+
+      ctx.save();
+      ctx.globalAlpha = c.alpha * 0.85; // Slightly transparent for other players
+
+      const size = def.size;
+      const img = this.companionImages.get(c.type);
+      const glowColor = def.glowColor;
+
+      if (img) {
+        const renderSize = size * 4;
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = isLegendary ? 20 : 10;
+        ctx.drawImage(img, screenX - renderSize / 2, screenY - renderSize / 2, renderSize, renderSize);
+      } else {
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = isLegendary ? 20 : 10;
+        const grad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, size);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.3, def.color);
+        grad.addColorStop(0.7, glowColor + 'aa');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+  }
+
   private drawOtherPlayerAt(player: OtherPlayer, x: number, y: number, rotation?: number, thrusting?: boolean) {
     const { ctx } = this;
     const shipImage = this.otherPlayerImages.get(player.id) || this.baseShipImage;
