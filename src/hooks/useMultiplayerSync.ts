@@ -74,6 +74,7 @@ const defaultShipEffects: ShipEffects = {
   healthBonus: 0,
   ownedCompanions: [],
   equippedCompanions: [],
+  companionEggs: [],
 };
 
 // How long before we consider a player offline even if is_online is true

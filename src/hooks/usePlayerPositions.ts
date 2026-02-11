@@ -150,6 +150,7 @@ const defaultShipEffects: ShipEffects = {
   healthBonus: 0,
   ownedCompanions: [],
   equippedCompanions: [],
+  companionEggs: [],
 };
 
 export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlayerPositionsReturn {

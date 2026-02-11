@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 
 import { SpaceGame, ACHIEVEMENTS } from './SpaceGame';
-import { Planet, RewardType, OtherPlayer, PointTransaction as PointTx, ShipEffects as TypedShipEffects } from './types';
+import { Planet, RewardType, OtherPlayer, PointTransaction as PointTx, ShipEffects as TypedShipEffects, CompanionEgg } from './types';
 import { soundManager } from './SoundManager';
 import { useTeam } from './hooks/useTeam';
 import { useMultiplayerSync } from './hooks/useMultiplayerSync';
@@ -159,18 +159,22 @@ const EMOTE_ITEMS = [
 
 // Companion items (sold by The Hatchery)
 const COMPANION_ITEMS = [
-  { id: 'spark', name: 'Spark', icon: '\u2728', cost: 200 },
-  { id: 'nibbles', name: 'Nibbles', icon: '\u{1F43E}', cost: 250 },
-  { id: 'astro_frog', name: 'Astro Frog', icon: '\u{1F438}', cost: 300 },
-  { id: 'void_kitten', name: 'Void Kitten', icon: '\u{1F431}', cost: 350 },
-  { id: 'jellybloom', name: 'Jellybloom', icon: '\u{1FAB7}', cost: 400 },
-  { id: 'frost_sprite', name: 'Frost Sprite', icon: '\u2744\uFE0F', cost: 400 },
-  { id: 'pixel_ghost', name: 'Pixel Ghost', icon: '\u{1F47B}', cost: 450 },
-  { id: 'comet_fox', name: 'Comet Fox', icon: '\u{1F98A}', cost: 500 },
-  { id: 'crystal_bat', name: 'Crystal Bat', icon: '\u{1F987}', cost: 500 },
-  { id: 'flame_wisp', name: 'Flame Wisp', icon: '\u{1F525}', cost: 550 },
-  { id: 'baby_black_hole', name: 'Baby Black Hole', icon: '\u{1F573}\uFE0F', cost: 600 },
-  { id: 'golden_scarab', name: 'Golden Scarab', icon: '\u{1FAB2}', cost: 750 },
+  { id: 'spark', name: 'Spark', icon: '\u2728', cost: 100, planetsToHatch: 1 },
+  { id: 'nibbles', name: 'Nibbles', icon: '\u{1F43E}', cost: 150, planetsToHatch: 1 },
+  { id: 'astro_frog', name: 'Astro Frog', icon: '\u{1F438}', cost: 250, planetsToHatch: 1 },
+  { id: 'void_kitten', name: 'Void Kitten', icon: '\u{1F431}', cost: 400, planetsToHatch: 2 },
+  { id: 'jellybloom', name: 'Jellybloom', icon: '\u{1FAB7}', cost: 500, planetsToHatch: 2 },
+  { id: 'frost_sprite', name: 'Frost Sprite', icon: '\u2744\uFE0F', cost: 500, planetsToHatch: 2 },
+  { id: 'pixel_ghost', name: 'Pixel Ghost', icon: '\u{1F47B}', cost: 650, planetsToHatch: 2 },
+  { id: 'comet_fox', name: 'Comet Fox', icon: '\u{1F98A}', cost: 800, planetsToHatch: 3 },
+  { id: 'crystal_bat', name: 'Crystal Bat', icon: '\u{1F987}', cost: 800, planetsToHatch: 3 },
+  { id: 'flame_wisp', name: 'Flame Wisp', icon: '\u{1F525}', cost: 1000, planetsToHatch: 3 },
+  { id: 'baby_black_hole', name: 'Baby Black Hole', icon: '\u{1F573}\uFE0F', cost: 1500, planetsToHatch: 4 },
+  { id: 'golden_scarab', name: 'Golden Scarab', icon: '\u{1FAB2}', cost: 2000, planetsToHatch: 4 },
+  // Legendaries
+  { id: 'cosmic_dragon', name: 'Cosmic Dragon', icon: '\u{1F432}', cost: 5000, planetsToHatch: 7, isLegendary: true },
+  { id: 'phoenix_eternal', name: 'Phoenix Eternal', icon: '\u{1F985}', cost: 7500, planetsToHatch: 10, isLegendary: true },
+  { id: 'void_leviathan', name: 'Void Leviathan', icon: '\u{1F419}', cost: 10000, planetsToHatch: 15, isLegendary: true },
 ];
 
 // Weapon costs (one-time purchases)
@@ -286,6 +290,7 @@ interface ShipEffects {
   healthBonus: number; // 0-5 levels, each gives +25 HP in boss fights
   ownedCompanions: string[];
   equippedCompanions: string[];
+  companionEggs: CompanionEgg[];
 }
 
 interface UserShip {
@@ -1332,6 +1337,10 @@ function App() {
       const equipped = currentShip.effects.equippedCompanions;
       if (equipped && equipped.length > 0) {
         gameRef.current.setEquippedCompanions(equipped);
+      }
+      const eggs = currentShip.effects.companionEggs;
+      if (eggs && eggs.length > 0) {
+        gameRef.current.setCompanionEggs(eggs);
       }
     }
     if (currentShip?.currentImage) {
@@ -2411,6 +2420,7 @@ function App() {
       completeNotionPlanet(planet.id);
 
       gameRef.current?.completePlanet(planet.id);
+      progressEggs();
 
       // Auto-unpin completed planet from HUD
       setFeaturedPlanetIds(prev => {
@@ -2440,6 +2450,7 @@ function App() {
     }));
 
     gameRef.current?.completePlanet(planet.id);
+    progressEggs();
 
     // Auto-unpin completed planet from HUD
     setFeaturedPlanetIds(prev => {
@@ -2624,6 +2635,7 @@ function App() {
       completeNotionPlanet(planet.id);
 
       gameRef.current?.completePlanet(planet.id);
+      progressEggs();
 
       // Auto-unpin completed planet from HUD
       setFeaturedPlanetIds(prev => {
@@ -2651,6 +2663,7 @@ function App() {
       }));
 
       gameRef.current?.completePlanet(planet.id);
+      progressEggs();
 
       // Auto-unpin completed planet from HUD
       setFeaturedPlanetIds(prev => {
@@ -3796,6 +3809,7 @@ function App() {
     healthBonus: effects?.healthBonus ?? 0,
     ownedCompanions: effects?.ownedCompanions ?? [],
     equippedCompanions: effects?.equippedCompanions ?? [],
+    companionEggs: effects?.companionEggs ?? [],
   });
 
   // Helper to update ship effects
@@ -3862,15 +3876,15 @@ function App() {
     soundManager.playPowerUp();
   };
 
-  // Hatchery: Buy companion
-  const buyCompanion = (companionId: string, cost: number) => {
+  // Hatchery: Buy companion (egg-based flow)
+  const buyCompanion = (companionId: string, cost: number, planetsToHatch: number) => {
     if (!state.currentUser) return;
     const userId = state.currentUser;
     const currentShip = getCurrentUserShip();
     const currentEffects = getEffectsWithDefaults(currentShip.effects);
 
     if (currentEffects.ownedCompanions.includes(companionId)) {
-      // Already owned → toggle equip/unequip
+      // Already hatched/owned → toggle equip/unequip
       const isEquipped = currentEffects.equippedCompanions.includes(companionId);
       const newEquipped = isEquipped
         ? currentEffects.equippedCompanions.filter(c => c !== companionId)
@@ -3882,15 +3896,71 @@ function App() {
       return;
     }
 
+    // Already have this egg incubating → no-op
+    if (currentEffects.companionEggs.some(e => e.companionId === companionId)) return;
+
     if (personalPoints < cost) return;
     setPersonalPoints(prev => prev - cost);
-    updateRemotePersonalPoints(-cost, `Companion: ${companionId}`);
-    const newOwned = [...currentEffects.ownedCompanions, companionId];
-    const newEquipped = [...currentEffects.equippedCompanions, companionId]; // Auto-equip on purchase
-    const newEffects = { ...currentEffects, ownedCompanions: newOwned, equippedCompanions: newEquipped };
+    updateRemotePersonalPoints(-cost, `Egg: ${companionId}`);
+
+    const newEgg: CompanionEgg = {
+      companionId,
+      planetsNeeded: planetsToHatch,
+      planetsCompleted: 0,
+      purchasedAt: Date.now(),
+    };
+    const newEggs = [...currentEffects.companionEggs, newEgg];
+    const newEffects = { ...currentEffects, companionEggs: newEggs };
+    updateUserShipEffects(userId, currentShip, newEffects);
+    gameRef.current?.setCompanionEggs(newEggs);
+    soundManager.playPowerUp();
+  };
+
+  // Progress all incubating eggs by 1 planet (called after any planet completion)
+  const progressEggs = () => {
+    if (!state.currentUser) return;
+    const userId = state.currentUser;
+    const currentShip = getCurrentUserShip();
+    const currentEffects = getEffectsWithDefaults(currentShip.effects);
+    if (currentEffects.companionEggs.length === 0) return;
+
+    const hatched: string[] = [];
+    const remaining: CompanionEgg[] = [];
+
+    for (const egg of currentEffects.companionEggs) {
+      const updated = { ...egg, planetsCompleted: egg.planetsCompleted + 1 };
+      if (updated.planetsCompleted >= updated.planetsNeeded) {
+        hatched.push(egg.companionId);
+      } else {
+        remaining.push(updated);
+      }
+    }
+
+    if (hatched.length === 0) {
+      // Just update progress
+      const newEffects = { ...currentEffects, companionEggs: remaining };
+      updateUserShipEffects(userId, currentShip, newEffects);
+      gameRef.current?.setCompanionEggs(remaining);
+      return;
+    }
+
+    // Hatch: move to owned + auto-equip
+    const newOwned = [...currentEffects.ownedCompanions, ...hatched];
+    const newEquipped = [...currentEffects.equippedCompanions, ...hatched];
+    const newEffects = {
+      ...currentEffects,
+      companionEggs: remaining,
+      ownedCompanions: newOwned,
+      equippedCompanions: newEquipped,
+    };
     updateUserShipEffects(userId, currentShip, newEffects);
     gameRef.current?.setEquippedCompanions(newEquipped);
-    soundManager.playPowerUp();
+    gameRef.current?.setCompanionEggs(remaining);
+
+    // Trigger hatch animation for each hatched companion
+    for (const id of hatched) {
+      gameRef.current?.triggerHatchAnimation(id);
+    }
   };
 
   // Select user
@@ -4124,6 +4194,11 @@ function App() {
       const equipped = currentShip.effects.equippedCompanions;
       if (equipped && equipped.length > 0) {
         game.setEquippedCompanions(equipped);
+      }
+      // Initialize eggs from saved list
+      const eggs = currentShip.effects.companionEggs;
+      if (eggs && eggs.length > 0) {
+        game.setCompanionEggs(eggs);
       }
     }
 
@@ -6033,53 +6108,103 @@ function App() {
       )}
 
       {/* Hatchery Shop Modal */}
-      {showHatcheryShop && (
-        <div style={styles.modalOverlay} onClick={() => { setShowHatcheryShop(false); gameRef.current?.clearLandedState(); }}>
-          <div style={{ ...styles.modal, maxWidth: 420 }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ ...styles.modalTitle, color: '#44ff88' }}>The Hatchery</h2>
-            <p style={styles.shopPoints}>{'\u2B50'} {personalPoints} Your Points Available</p>
+      {showHatcheryShop && (() => {
+        const currentShip = getCurrentUserShip();
+        const effects = getEffectsWithDefaults(currentShip.effects);
+        const regularItems = COMPANION_ITEMS.filter(i => !(i as any).isLegendary);
+        const legendaryItems = COMPANION_ITEMS.filter(i => (i as any).isLegendary);
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '400px', overflow: 'auto', scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const }}>
-              <style>{`.hatchery-list::-webkit-scrollbar { display: none; }`}</style>
-              {COMPANION_ITEMS.map(item => {
-                const currentShip = getCurrentUserShip();
-                const effects = getEffectsWithDefaults(currentShip.effects);
-                const owned = effects.ownedCompanions.includes(item.id);
-                const equipped = effects.equippedCompanions.includes(item.id);
-                const canAfford = personalPoints >= item.cost;
+        const renderItem = (item: typeof COMPANION_ITEMS[0]) => {
+          const owned = effects.ownedCompanions.includes(item.id);
+          const equipped = effects.equippedCompanions.includes(item.id);
+          const egg = effects.companionEggs.find(e => e.companionId === item.id);
+          const canAfford = personalPoints >= item.cost;
+          const isLeg = (item as any).isLegendary;
 
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => buyCompanion(item.id, item.cost)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '10px',
-                      padding: '8px 12px', borderRadius: 8, cursor: !owned && !canAfford ? 'not-allowed' : 'pointer',
-                      background: equipped ? 'rgba(68, 255, 136, 0.1)' : 'rgba(255,255,255,0.03)',
-                      border: equipped ? '1px solid rgba(68, 255, 136, 0.4)' : '1px solid #222',
-                      opacity: !owned && !canAfford ? 0.5 : 1,
-                      transition: 'border-color 0.2s',
-                    }}
-                  >
-                    <img src={`/companions/${item.id}.png`} alt={item.name} style={{ width: 28, height: 28, flexShrink: 0, objectFit: 'contain', borderRadius: '50%' }} />
-                    <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 500, color: equipped ? '#44ff88' : owned ? '#ccc' : '#aaa' }}>{item.name}</span>
-                    <span style={{
-                      fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
-                      color: equipped ? '#44ff88' : owned ? '#888' : canAfford ? '#ffd700' : '#555',
-                    }}>
-                      {equipped ? 'ACTIVE' : owned ? 'EQUIP' : `${item.cost} \u2B50`}
-                    </span>
+          // Three states: egg incubating, hatched/owned, not bought
+          const isEgg = !!egg;
+
+          return (
+            <div
+              key={item.id}
+              onClick={() => {
+                if (isEgg) return; // Egg incubating, not clickable
+                buyCompanion(item.id, item.cost, item.planetsToHatch);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '8px 12px', borderRadius: 8,
+                cursor: isEgg ? 'default' : (!owned && !canAfford ? 'not-allowed' : 'pointer'),
+                background: isEgg
+                  ? 'rgba(255, 200, 50, 0.06)'
+                  : equipped ? 'rgba(68, 255, 136, 0.1)'
+                  : isLeg ? 'rgba(255, 215, 0, 0.04)' : 'rgba(255,255,255,0.03)',
+                border: isEgg
+                  ? '1px solid rgba(255, 200, 50, 0.3)'
+                  : equipped ? '1px solid rgba(68, 255, 136, 0.4)'
+                  : isLeg ? '1px solid rgba(255, 215, 0, 0.2)' : '1px solid #222',
+                opacity: !owned && !isEgg && !canAfford ? 0.5 : 1,
+                transition: 'border-color 0.2s',
+              }}
+            >
+              {isEgg ? (
+                <img src="/companions/egg.png" alt="Egg" style={{ width: 28, height: 28, flexShrink: 0, objectFit: 'contain', borderRadius: '50%' }} />
+              ) : (
+                <img src={`/companions/${item.id}.png`} alt={item.name} style={{ width: 28, height: 28, flexShrink: 0, objectFit: 'contain', borderRadius: '50%' }} />
+              )}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, gap: 2 }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 500, color: equipped ? '#44ff88' : isEgg ? '#ffcc44' : owned ? '#ccc' : isLeg ? '#ffd700' : '#aaa' }}>{item.name}</span>
+                {isEgg && egg && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ width: `${Math.min(100, (egg.planetsCompleted / egg.planetsNeeded) * 100)}%`, height: '100%', background: 'linear-gradient(90deg, #ffcc44, #ff8800)', borderRadius: 2, transition: 'width 0.3s' }} />
+                    </div>
+                    <span style={{ fontSize: '0.65rem', color: '#ffcc44', whiteSpace: 'nowrap' }}>{egg.planetsCompleted}/{egg.planetsNeeded}</span>
                   </div>
-                );
-              })}
+                )}
+              </div>
+              <span style={{
+                fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
+                color: isEgg ? '#ffcc44'
+                  : equipped ? '#44ff88'
+                  : owned ? '#888'
+                  : canAfford ? (isLeg ? '#ffd700' : '#ffd700') : '#555',
+              }}>
+                {isEgg ? `\u{1F95A} ${egg!.planetsCompleted}/${egg!.planetsNeeded}`
+                  : equipped ? 'ACTIVE'
+                  : owned ? 'EQUIP'
+                  : `${item.cost.toLocaleString()} \u2B50 (${item.planetsToHatch}\u{1FA90})`}
+              </span>
             </div>
+          );
+        };
 
-            <button style={{ ...styles.cancelButton, width: '100%', marginTop: '0.75rem' }} onClick={() => { setShowHatcheryShop(false); gameRef.current?.clearLandedState(); }}>
-              Close
-            </button>
+        return (
+          <div style={styles.modalOverlay} onClick={() => { setShowHatcheryShop(false); gameRef.current?.clearLandedState(); }}>
+            <div style={{ ...styles.modal, maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+              <h2 style={{ ...styles.modalTitle, color: '#44ff88' }}>The Hatchery</h2>
+              <p style={styles.shopPoints}>{'\u2B50'} {personalPoints.toLocaleString()} Your Points Available</p>
+
+              <div className="hatchery-list" style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '450px', overflow: 'auto', scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const }}>
+                <style>{`.hatchery-list::-webkit-scrollbar { display: none; }`}</style>
+                {regularItems.map(renderItem)}
+
+                {/* Legendary divider */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0 4px', padding: '0 4px' }}>
+                  <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#ffd700', letterSpacing: 2, fontFamily: 'Orbitron, sans-serif' }}>LEGENDARY</span>
+                  <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, #ffd700, transparent)' }} />
+                </div>
+                {legendaryItems.map(renderItem)}
+              </div>
+
+              <button style={{ ...styles.cancelButton, width: '100%', marginTop: '0.75rem' }} onClick={() => { setShowHatcheryShop(false); gameRef.current?.clearLandedState(); }}>
+                Close
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Control Hub Modal */}
       {showControlHub && (

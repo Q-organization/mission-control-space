@@ -79,6 +79,8 @@ interface CompanionDef {
   size: number;
   cost: number;
   icon: string;
+  planetsToHatch: number;
+  isLegendary?: boolean;
 }
 
 interface Companion {
@@ -98,18 +100,22 @@ interface Companion {
 }
 
 const COMPANION_DEFS: CompanionDef[] = [
-  { id: 'spark', name: 'Spark', color: '#ffff88', glowColor: '#ffff44', size: 8, cost: 200, icon: '\u2728' },
-  { id: 'nibbles', name: 'Nibbles', color: '#ff88aa', glowColor: '#ff4488', size: 8, cost: 250, icon: '\u{1F43E}' },
-  { id: 'astro_frog', name: 'Astro Frog', color: '#44ff66', glowColor: '#22cc44', size: 9, cost: 300, icon: '\u{1F438}' },
-  { id: 'void_kitten', name: 'Void Kitten', color: '#bb66ff', glowColor: '#9933ff', size: 10, cost: 350, icon: '\u{1F431}' },
-  { id: 'jellybloom', name: 'Jellybloom', color: '#66ffee', glowColor: '#33ddcc', size: 11, cost: 400, icon: '\u{1FAB7}' },
-  { id: 'frost_sprite', name: 'Frost Sprite', color: '#88ddff', glowColor: '#55bbff', size: 9, cost: 400, icon: '\u2744\uFE0F' },
-  { id: 'pixel_ghost', name: 'Pixel Ghost', color: '#eeeeff', glowColor: '#ccccff', size: 10, cost: 450, icon: '\u{1F47B}' },
-  { id: 'comet_fox', name: 'Comet Fox', color: '#ff8844', glowColor: '#ff6622', size: 9, cost: 500, icon: '\u{1F98A}' },
-  { id: 'crystal_bat', name: 'Crystal Bat', color: '#ff44ff', glowColor: '#cc22cc', size: 10, cost: 500, icon: '\u{1F987}' },
-  { id: 'flame_wisp', name: 'Flame Wisp', color: '#ff4422', glowColor: '#cc2200', size: 9, cost: 550, icon: '\u{1F525}' },
-  { id: 'baby_black_hole', name: 'Baby Black Hole', color: '#222233', glowColor: '#ffffff', size: 12, cost: 600, icon: '\u{1F573}\uFE0F' },
-  { id: 'golden_scarab', name: 'Golden Scarab', color: '#ffd700', glowColor: '#ccaa00', size: 11, cost: 750, icon: '\u{1FAB2}' },
+  { id: 'spark', name: 'Spark', color: '#ffff88', glowColor: '#ffff44', size: 8, cost: 100, icon: '\u2728', planetsToHatch: 1 },
+  { id: 'nibbles', name: 'Nibbles', color: '#ff88aa', glowColor: '#ff4488', size: 8, cost: 150, icon: '\u{1F43E}', planetsToHatch: 1 },
+  { id: 'astro_frog', name: 'Astro Frog', color: '#44ff66', glowColor: '#22cc44', size: 9, cost: 250, icon: '\u{1F438}', planetsToHatch: 1 },
+  { id: 'void_kitten', name: 'Void Kitten', color: '#bb66ff', glowColor: '#9933ff', size: 10, cost: 400, icon: '\u{1F431}', planetsToHatch: 2 },
+  { id: 'jellybloom', name: 'Jellybloom', color: '#66ffee', glowColor: '#33ddcc', size: 11, cost: 500, icon: '\u{1FAB7}', planetsToHatch: 2 },
+  { id: 'frost_sprite', name: 'Frost Sprite', color: '#88ddff', glowColor: '#55bbff', size: 9, cost: 500, icon: '\u2744\uFE0F', planetsToHatch: 2 },
+  { id: 'pixel_ghost', name: 'Pixel Ghost', color: '#eeeeff', glowColor: '#ccccff', size: 10, cost: 650, icon: '\u{1F47B}', planetsToHatch: 2 },
+  { id: 'comet_fox', name: 'Comet Fox', color: '#ff8844', glowColor: '#ff6622', size: 9, cost: 800, icon: '\u{1F98A}', planetsToHatch: 3 },
+  { id: 'crystal_bat', name: 'Crystal Bat', color: '#ff44ff', glowColor: '#cc22cc', size: 10, cost: 800, icon: '\u{1F987}', planetsToHatch: 3 },
+  { id: 'flame_wisp', name: 'Flame Wisp', color: '#ff4422', glowColor: '#cc2200', size: 9, cost: 1000, icon: '\u{1F525}', planetsToHatch: 3 },
+  { id: 'baby_black_hole', name: 'Baby Black Hole', color: '#222233', glowColor: '#ffffff', size: 12, cost: 1500, icon: '\u{1F573}\uFE0F', planetsToHatch: 4 },
+  { id: 'golden_scarab', name: 'Golden Scarab', color: '#ffd700', glowColor: '#ccaa00', size: 11, cost: 2000, icon: '\u{1FAB2}', planetsToHatch: 4 },
+  // Legendaries — massive companions (3x ship size)
+  { id: 'cosmic_dragon', name: 'Cosmic Dragon', color: '#ff2222', glowColor: '#cc0000', size: 42, cost: 5000, icon: '\u{1F432}', planetsToHatch: 7, isLegendary: true },
+  { id: 'phoenix_eternal', name: 'Phoenix Eternal', color: '#ffaa00', glowColor: '#ff8800', size: 40, cost: 7500, icon: '\u{1F985}', planetsToHatch: 10, isLegendary: true },
+  { id: 'void_leviathan', name: 'Void Leviathan', color: '#8b5cf6', glowColor: '#6d28d9', size: 45, cost: 10000, icon: '\u{1F419}', planetsToHatch: 15, isLegendary: true },
 ];
 
 // Store terraform counts and size levels for scaling
@@ -562,6 +568,11 @@ export class SpaceGame {
   private companions: Companion[] = [];
   private companionImages: Map<string, HTMLImageElement> = new Map();
 
+  // Companion Eggs
+  private companionEggInstances: { companionId: string; worldX: number; worldY: number; vx: number; vy: number; wobble: number }[] = [];
+  private eggImage: HTMLImageElement | null = null;
+  private hatchAnimations: { companionId: string; x: number; y: number; timer: number; maxTimer: number; color: string }[] = [];
+
   // The Hatchery (roaming companion merchant)
   private hatcheryImage: HTMLImageElement | null = null;
   private hatchery: { x: number; y: number; rotation: number; scale: number } = { x: 3000, y: 7000, rotation: 0, scale: 1 };
@@ -775,6 +786,12 @@ export class SpaceGame {
     hatcheryImg.onload = () => {
       this.hatcheryImage = hatcheryImg;
     };
+
+    // Load egg image
+    const eggImg = new Image();
+    eggImg.crossOrigin = 'anonymous';
+    eggImg.src = '/companions/egg.png';
+    eggImg.onload = () => { this.eggImage = eggImg; };
 
     // Load companion images
     for (const def of COMPANION_DEFS) {
@@ -1708,12 +1725,17 @@ export class SpaceGame {
       return;
     }
 
-    // Handle nuclear bomb cinematic (blocks all other input)
+    // Handle nuclear bomb cinematic (blocks all other input once rocket launches)
     if (this.nukeCinematic) {
       this.updateNuclearBomb();
       this.updateNukeCinematicCamera();
       this.updateParticles();
       return;
+    }
+
+    // Update nuke alarm phase (player can still move during alarm)
+    if (this.nuclearBomb && this.nuclearBomb.phase === 'alarm') {
+      this.updateNuclearBomb();
     }
 
     // Handle destroy animation
@@ -2001,6 +2023,7 @@ export class SpaceGame {
     this.updateParticles();
     this.updateUpgradeSatellites();
     this.updateCompanionPositions();
+    this.updateEggPositions();
     this.updateOtherPlayersInterpolation();
     this.updateOtherPlayersParticles();
     this.updateZoneTitle();
@@ -5220,7 +5243,7 @@ export class SpaceGame {
       { x: targetX, y: targetY },
     ];
 
-    // Start alarm phase — nuke stays on the ship, siren plays, red alarm light
+    // Start alarm phase — siren plays, red alarm light, player can still move
     this.nuclearBomb = {
       x: ship.x,
       y: ship.y,
@@ -5235,8 +5258,7 @@ export class SpaceGame {
       detonationRadius: 0,
     };
 
-    this.nukeCinematic = true;
-    this.nukeCameraTarget = { x: ship.x, y: ship.y };
+    // Don't set nukeCinematic yet — player can still move during alarm
     this.nukeAlarmTimer = 0;
     this.nukeLaunchStartTime = Date.now();
 
@@ -5259,24 +5281,43 @@ export class SpaceGame {
       this.nukeAlarmTimer += this.dt;
       const { ship } = this.state;
 
-      // Keep nuke position on ship during alarm
+      // Keep nuke position on ship during alarm (player is still moving)
       nuke.x = ship.x;
       nuke.y = ship.y;
       nuke.rotation = ship.rotation;
-      this.nukeCameraTarget = { x: ship.x, y: ship.y };
 
       // Transition to flight after alarm duration
       if (this.nukeAlarmTimer >= this.NUKE_ALARM_DURATION) {
         nuke.phase = 'flight';
+
+        // Recalculate waypoints from current ship position (player may have moved)
+        const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
+        const targetX = playerZone ? playerZone.centerX : 5000;
+        const targetY = playerZone ? playerZone.centerY : 5000;
+        const midX = (ship.x + targetX) / 2 + (Math.random() - 0.5) * 2000;
+        const midY = (ship.y + targetY) / 2 + (Math.random() - 0.5) * 2000;
+        nuke.waypoints = [
+          { x: ship.x + Math.cos(ship.rotation) * 200, y: ship.y + Math.sin(ship.rotation) * 200 },
+          { x: Math.max(500, Math.min(9500, midX)), y: Math.max(500, Math.min(9500, midY)) },
+          { x: targetX, y: targetY },
+        ];
+        nuke.waypointIndex = 0;
+
         const spawnDist = 30;
         nuke.x = ship.x + Math.cos(ship.rotation) * spawnDist;
         nuke.y = ship.y + Math.sin(ship.rotation) * spawnDist;
         nuke.vx = Math.cos(ship.rotation) * this.NUKE_SPEED;
         nuke.vy = Math.sin(ship.rotation) * this.NUKE_SPEED;
+        nuke.rotation = ship.rotation;
+
+        // Now lock camera to follow the nuke
+        this.nukeCinematic = true;
+        this.nukeCameraTarget = { x: nuke.x, y: nuke.y };
         this.screenShake = { intensity: 15, timer: 20 };
 
-        // Play flying sound as missile leaves the ship
+        // Play flying sound immediately, thrust kicks in after 2 seconds
         soundManager.playNukeFlying();
+        setTimeout(() => soundManager.playNukeThrust(), 2000);
       }
 
     } else if (nuke.phase === 'flight') {
@@ -5361,8 +5402,9 @@ export class SpaceGame {
         this.nukeCameraTarget = { x: detX, y: detY };
         this.screenShake = { intensity: 40, timer: 60 };
 
-        // Stop flying sound, play explosion
+        // Stop flying sounds, play explosion
         soundManager.stopNukeFlying();
+        soundManager.stopNukeThrust();
         soundManager.playNukeExplosion();
       }
 
@@ -5434,6 +5476,7 @@ export class SpaceGame {
     this.nukeLaunchStartTime = 0;
     soundManager.stopNukeLaunch();
     soundManager.stopNukeFlying();
+    soundManager.stopNukeThrust();
     this.onNukeComplete?.();
   }
 
@@ -6627,6 +6670,173 @@ export class SpaceGame {
     });
   }
 
+  // Set companion eggs from App.tsx (rebuilds egg instances)
+  public setCompanionEggs(eggs: { companionId: string; planetsNeeded: number; planetsCompleted: number; purchasedAt: number }[]) {
+    const { ship } = this.state;
+    const existing = new Map<string, typeof this.companionEggInstances[0]>();
+    for (const e of this.companionEggInstances) {
+      existing.set(e.companionId, e);
+    }
+    this.companionEggInstances = eggs.map(egg => {
+      const prev = existing.get(egg.companionId);
+      if (prev) return prev;
+      return {
+        companionId: egg.companionId,
+        worldX: ship.x + (Math.random() - 0.5) * 60,
+        worldY: ship.y + (Math.random() - 0.5) * 60,
+        vx: 0,
+        vy: 0,
+        wobble: Math.random() * Math.PI * 2,
+      };
+    });
+  }
+
+  // Trigger hatch animation at egg position, then remove egg instance
+  public triggerHatchAnimation(companionId: string) {
+    const egg = this.companionEggInstances.find(e => e.companionId === companionId);
+    const def = COMPANION_DEFS.find(d => d.id === companionId);
+    const x = egg?.worldX ?? this.state.ship.x;
+    const y = egg?.worldY ?? this.state.ship.y;
+    const color = def?.color ?? '#ffffff';
+
+    // Burst of colored particles
+    for (let i = 0; i < 40; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1 + Math.random() * 4;
+      this.state.particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 25 + Math.random() * 20,
+        maxLife: 45,
+        size: 2 + Math.random() * 4,
+        color: Math.random() > 0.5 ? color : '#ffffff',
+      });
+    }
+
+    // White flash ring animation
+    this.hatchAnimations.push({ companionId, x, y, timer: 0, maxTimer: 30, color });
+
+    // Remove egg instance
+    this.companionEggInstances = this.companionEggInstances.filter(e => e.companionId !== companionId);
+  }
+
+  // Update egg positions (follow ship/companions chain)
+  private updateEggPositions() {
+    if (this.companionEggInstances.length === 0 || this.shipBeingSucked) return;
+    const { ship } = this.state;
+
+    // Eggs follow after the last companion in the chain (or ship if no companions)
+    for (let i = 0; i < this.companionEggInstances.length; i++) {
+      const egg = this.companionEggInstances[i];
+      egg.wobble += 0.04 * this.dt;
+
+      let targetX: number;
+      let targetY: number;
+
+      if (i === 0 && this.companions.length > 0) {
+        // Follow last companion
+        const last = this.companions[this.companions.length - 1];
+        const dx = egg.worldX - last.worldX;
+        const dy = egg.worldY - last.worldY;
+        const angle = Math.atan2(dy, dx);
+        targetX = last.worldX + Math.cos(angle) * 30;
+        targetY = last.worldY + Math.sin(angle) * 30;
+      } else if (i === 0) {
+        // Follow ship directly
+        const backAngle = ship.rotation + Math.PI;
+        targetX = ship.x + Math.cos(backAngle) * 50;
+        targetY = ship.y + Math.sin(backAngle) * 50;
+      } else {
+        // Follow previous egg
+        const prev = this.companionEggInstances[i - 1];
+        const dx = egg.worldX - prev.worldX;
+        const dy = egg.worldY - prev.worldY;
+        const angle = Math.atan2(dy, dx);
+        targetX = prev.worldX + Math.cos(angle) * 28;
+        targetY = prev.worldY + Math.sin(angle) * 28;
+      }
+
+      // Gentle wobble
+      targetX += Math.sin(egg.wobble) * 3;
+      targetY += Math.cos(egg.wobble * 1.3) * 3;
+
+      const dx = targetX - egg.worldX;
+      const dy = targetY - egg.worldY;
+      egg.vx += dx * 0.06 * this.dt;
+      egg.vy += dy * 0.06 * this.dt;
+      egg.vx *= Math.pow(0.85, this.dt);
+      egg.vy *= Math.pow(0.85, this.dt);
+      egg.worldX += egg.vx * this.dt;
+      egg.worldY += egg.vy * this.dt;
+    }
+  }
+
+  // Render eggs following the ship
+  private renderEggs() {
+    if (this.companionEggInstances.length === 0 || this.shipBeingSucked) return;
+    const { ctx, state } = this;
+    const { camera } = state;
+
+    for (const egg of this.companionEggInstances) {
+      const screenX = egg.worldX - camera.x;
+      const screenY = egg.worldY - camera.y;
+      if (screenX < -50 || screenX > this.canvas.width + 50 || screenY < -50 || screenY > this.canvas.height + 50) continue;
+
+      const def = COMPANION_DEFS.find(d => d.id === egg.companionId);
+      const glowColor = def?.glowColor ?? '#aaaaff';
+      const pulseIntensity = 8 + Math.sin(Date.now() * 0.005 + egg.wobble) * 4;
+
+      ctx.save();
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = pulseIntensity;
+
+      if (this.eggImage) {
+        ctx.drawImage(this.eggImage, screenX - 16, screenY - 16, 32, 32);
+      } else {
+        // Fallback: glowing oval
+        ctx.fillStyle = glowColor + '88';
+        ctx.beginPath();
+        ctx.ellipse(screenX, screenY, 8, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // Render hatch flash animations
+  private renderHatchAnimations() {
+    if (this.hatchAnimations.length === 0) return;
+    const { ctx, state } = this;
+    const { camera } = state;
+
+    for (let i = this.hatchAnimations.length - 1; i >= 0; i--) {
+      const anim = this.hatchAnimations[i];
+      anim.timer += this.dt;
+      const progress = anim.timer / anim.maxTimer;
+      if (progress >= 1) {
+        this.hatchAnimations.splice(i, 1);
+        continue;
+      }
+
+      const screenX = anim.x - camera.x;
+      const screenY = anim.y - camera.y;
+      const radius = 20 + progress * 60;
+      const alpha = 1 - progress;
+
+      ctx.save();
+      ctx.strokeStyle = anim.color;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = 3 * (1 - progress);
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 20 * alpha;
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // Get idle wander offset for a companion based on its type
   // Called only when ship is stationary so each type has a unique idle personality
   private getCompanionIdleOffset(c: Companion): { ox: number; oy: number } {
@@ -6732,6 +6942,23 @@ export class SpaceGame {
           });
         }
         return { ox: Math.cos(c.angle) * 45, oy: Math.sin(c.angle) * 45 };
+      }
+      case 'cosmic_dragon': {
+        // Sweeping figure-8 orbit
+        c.angle += 0.03 * this.dt;
+        const fx = Math.sin(c.angle) * 80;
+        const fy = Math.sin(c.angle * 2) * 40;
+        return { ox: fx, oy: fy };
+      }
+      case 'phoenix_eternal': {
+        // Slow majestic wide circle
+        c.angle += 0.02 * this.dt;
+        return { ox: Math.cos(c.angle) * 90, oy: Math.sin(c.angle) * 90 };
+      }
+      case 'void_leviathan': {
+        // Undulating serpentine drift
+        c.wobble += 0.015 * this.dt;
+        return { ox: Math.sin(c.wobble) * 70, oy: Math.cos(c.wobble * 0.6) * 50 };
       }
       default:
         return { ox: 0, oy: 0 };
@@ -6851,9 +7078,11 @@ export class SpaceGame {
 
       const screenX = c.worldX - camera.x;
       const screenY = c.worldY - camera.y;
+      const isLegendary = def.isLegendary ?? false;
+      const margin = isLegendary ? 200 : 50;
 
       // Off-screen check
-      if (screenX < -50 || screenX > this.canvas.width + 50 || screenY < -50 || screenY > this.canvas.height + 50) continue;
+      if (screenX < -margin || screenX > this.canvas.width + margin || screenY < -margin || screenY > this.canvas.height + margin) continue;
 
       ctx.save();
       ctx.globalAlpha = c.alpha;
@@ -6868,11 +7097,42 @@ export class SpaceGame {
         glowColor = `hsl(${hue}, 80%, 50%)`;
       }
 
+      // Legendary pulsing glow aura
+      if (isLegendary) {
+        const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.003 + c.wobble);
+        const auraRadius = size * 4 * 0.7;
+        const grad = ctx.createRadialGradient(screenX, screenY, auraRadius * 0.3, screenX, screenY, auraRadius);
+        grad.addColorStop(0, glowColor + '44');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.globalAlpha = pulse * 0.5;
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, auraRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = c.alpha;
+
+        // Legendary particles
+        if (Math.random() < 0.4) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = Math.random() * size * 2;
+          this.state.particles.push({
+            x: c.worldX + Math.cos(angle) * dist,
+            y: c.worldY + Math.sin(angle) * dist,
+            vx: (Math.random() - 0.5) * 1.2,
+            vy: (Math.random() - 0.5) * 1.2 - 0.3,
+            life: 15 + Math.random() * 15,
+            maxLife: 30,
+            size: 1.5 + Math.random() * 3,
+            color: Math.random() > 0.5 ? def.color : '#ffd700',
+          });
+        }
+      }
+
       if (img) {
         // Render with image sprite
         const renderSize = size * 4; // Images are larger than the orb radius
         ctx.shadowColor = glowColor;
-        ctx.shadowBlur = 14;
+        ctx.shadowBlur = isLegendary ? 25 : 14;
         ctx.drawImage(img, screenX - renderSize / 2, screenY - renderSize / 2, renderSize, renderSize);
       } else {
         // Fallback: glowing orb
@@ -6883,7 +7143,7 @@ export class SpaceGame {
         }
 
         ctx.shadowColor = glowColor;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = isLegendary ? 25 : 12;
 
         if (c.type === 'baby_black_hole') {
           const grad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, size);
@@ -7123,6 +7383,10 @@ export class SpaceGame {
 
     // Draw companions (following pets)
     this.renderCompanions();
+
+    // Draw companion eggs
+    this.renderEggs();
+    this.renderHatchAnimations();
 
     // Draw upgrade satellites/robots orbiting the ship
     this.renderUpgradeSatellites();

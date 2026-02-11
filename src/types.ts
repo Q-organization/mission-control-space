@@ -216,6 +216,14 @@ export interface ShipEffects {
   healthBonus: number;
   ownedCompanions: string[];
   equippedCompanions: string[];
+  companionEggs: CompanionEgg[];
+}
+
+export interface CompanionEgg {
+  companionId: string;
+  planetsNeeded: number;
+  planetsCompleted: number;
+  purchasedAt: number;
 }
 
 export interface MultiplayerTeam {
