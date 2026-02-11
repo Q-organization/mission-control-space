@@ -3968,50 +3968,64 @@ function App() {
   };
 
   // Progress all incubating eggs by 1 planet (called after any planet completion)
+  // Uses setUserShips functional updater to always read latest state (avoids stale closure bugs)
   const progressEggs = () => {
     if (!state.currentUser) return;
     const userId = state.currentUser;
-    const currentShip = getCurrentUserShip();
-    const currentEffects = getEffectsWithDefaults(currentShip.effects);
-    if (currentEffects.companionEggs.length === 0) return;
 
-    const hatched: string[] = [];
-    const remaining: CompanionEgg[] = [];
+    setUserShips(prev => {
+      const currentShip = prev[userId] || {
+        baseImage: '/ship-base.png',
+        upgrades: [],
+        currentImage: '/ship-base.png',
+        effects: undefined,
+      };
+      const currentEffects = getEffectsWithDefaults(currentShip.effects);
+      if (currentEffects.companionEggs.length === 0) return prev;
 
-    for (const egg of currentEffects.companionEggs) {
-      const updated = { ...egg, planetsCompleted: egg.planetsCompleted + 1 };
-      if (updated.planetsCompleted >= updated.planetsNeeded) {
-        hatched.push(egg.companionId);
-      } else {
-        remaining.push(updated);
+      const hatched: string[] = [];
+      const remaining: CompanionEgg[] = [];
+
+      for (const egg of currentEffects.companionEggs) {
+        const updated = { ...egg, planetsCompleted: egg.planetsCompleted + 1 };
+        if (updated.planetsCompleted >= updated.planetsNeeded) {
+          hatched.push(egg.companionId);
+        } else {
+          remaining.push(updated);
+        }
       }
-    }
 
-    if (hatched.length === 0) {
-      // Just update progress
-      const newEffects = { ...currentEffects, companionEggs: remaining };
-      updateUserShipEffects(userId, currentShip, newEffects);
+      let newEffects: ShipEffects;
+      if (hatched.length === 0) {
+        newEffects = { ...currentEffects, companionEggs: remaining };
+      } else {
+        const newOwned = [...currentEffects.ownedCompanions, ...hatched];
+        const newEquipped = [...currentEffects.equippedCompanions, ...hatched];
+        newEffects = {
+          ...currentEffects,
+          companionEggs: remaining,
+          ownedCompanions: newOwned,
+          equippedCompanions: newEquipped,
+        };
+
+        // Schedule game engine updates + hatch animations after state update
+        setTimeout(() => {
+          gameRef.current?.setEquippedCompanions(newEquipped);
+          for (const id of hatched) {
+            gameRef.current?.triggerHatchAnimation(id);
+          }
+        }, 0);
+      }
+
+      // Update game engine with new egg state
       gameRef.current?.setCompanionEggs(remaining);
-      return;
-    }
+      gameRef.current?.updateShipEffects(newEffects);
 
-    // Hatch: move to owned + auto-equip
-    const newOwned = [...currentEffects.ownedCompanions, ...hatched];
-    const newEquipped = [...currentEffects.equippedCompanions, ...hatched];
-    const newEffects = {
-      ...currentEffects,
-      companionEggs: remaining,
-      ownedCompanions: newOwned,
-      equippedCompanions: newEquipped,
-    };
-    updateUserShipEffects(userId, currentShip, newEffects);
-    gameRef.current?.setEquippedCompanions(newEquipped);
-    gameRef.current?.setCompanionEggs(remaining);
+      // Sync to backend
+      updatePlayerData({ ship_effects: newEffects });
 
-    // Trigger hatch animation for each hatched companion
-    for (const id of hatched) {
-      gameRef.current?.triggerHatchAnimation(id);
-    }
+      return { ...prev, [userId]: { ...currentShip, effects: newEffects } };
+    });
   };
 
   // Select user
