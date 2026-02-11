@@ -430,8 +430,13 @@ export class SpaceGame {
   private lastNukeTime: number = 0;
   private readonly NUKE_COOLDOWN: number = 60000; // 60 seconds
   private readonly NUKE_SPEED: number = 10;
-  private readonly NUKE_DETONATION_DURATION: number = 180; // ~3 seconds of explosion
+  private readonly NUKE_DETONATION_DURATION: number = 180; // ~3 seconds of explosion (extended to 360 when targets exist)
+  private readonly NUKE_DETONATION_DURATION_EXTENDED: number = 360; // ~6 seconds when destroying planets
   private readonly NUKE_ALARM_DURATION: number = 300; // 5 seconds at 60fps
+  private readonly NUKE_SHOCKWAVE_RADIUS: number = 2200;
+  private readonly NUKE_PLANET_EXPLOSION_DURATION: number = 45; // ~0.75s per planet
+  private nukePlanetExplosions: Map<string, { x: number; y: number; radius: number; color: string; scale: number; progress: number; particles: { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; color: string; size: number }[] }> = new Map();
+  private nukeTargetPlanets: { id: string; x: number; y: number; radius: number; color: string; distance: number; triggered: boolean }[] = [];
   private nukeAlarmTimer: number = 0;
   private nukeLaunchStartTime: number = 0; // tracks when nuke.mp3 started for 11s max
   private onNukeComplete: (() => void) | null = null;
@@ -5454,9 +5459,26 @@ export class SpaceGame {
           });
         }
 
+        // Collect completed Notion planets owned by current user as nuke targets
+        this.nukeTargetPlanets = this.state.planets
+          .filter(p => p.completed && p.id.startsWith('notion-') && p.ownerId === this.currentUser)
+          .map(p => ({
+            id: p.id,
+            x: p.x,
+            y: p.y,
+            radius: p.radius,
+            color: p.color,
+            distance: Math.sqrt((p.x - detX) ** 2 + (p.y - detY) ** 2),
+            triggered: false,
+          }))
+          .sort((a, b) => a.distance - b.distance);
+        this.nukePlanetExplosions.clear();
+
+        const hasTargets = this.nukeTargetPlanets.length > 0;
+
         this.nukeDetonation = {
           x: detX, y: detY, progress: 0,
-          maxDuration: this.NUKE_DETONATION_DURATION,
+          maxDuration: hasTargets ? this.NUKE_DETONATION_DURATION_EXTENDED : this.NUKE_DETONATION_DURATION,
           shockwaveRadius: 0, flashAlpha: 0.8,
           particles: detonationParticles,
         };
@@ -5478,7 +5500,7 @@ export class SpaceGame {
         det.progress = nuke.detonationTimer / det.maxDuration;
 
         // Expanding shockwave
-        det.shockwaveRadius = det.progress * 1500;
+        det.shockwaveRadius = det.progress * this.NUKE_SHOCKWAVE_RADIUS;
 
         // Flash fades out
         det.flashAlpha = Math.max(0, 0.8 * (1 - det.progress));
@@ -5500,10 +5522,69 @@ export class SpaceGame {
         if (det.progress < 0.7) {
           this.screenShake = { intensity: 30 * (1 - det.progress), timer: 5 };
         }
+
+        // Trigger planet explosions as shockwave reaches them
+        for (const target of this.nukeTargetPlanets) {
+          if (!target.triggered && det.shockwaveRadius >= target.distance) {
+            target.triggered = true;
+
+            // Create explosion particles for this planet
+            const explosionColors = ['#ff6600', '#ff4400', '#ffaa00', '#ff0000', '#ffffff', '#ffcc00'];
+            const particles: { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; color: string; size: number }[] = [];
+            for (let i = 0; i < 30; i++) {
+              const angle = Math.random() * Math.PI * 2;
+              const speed = Math.random() * 6 + 2;
+              const life = 30 + Math.random() * 40;
+              particles.push({
+                x: target.x, y: target.y,
+                vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                life, maxLife: life,
+                color: explosionColors[Math.floor(Math.random() * explosionColors.length)],
+                size: Math.random() * 5 + 2,
+              });
+            }
+
+            this.nukePlanetExplosions.set(target.id, {
+              x: target.x, y: target.y,
+              radius: target.radius,
+              color: target.color,
+              scale: 1,
+              progress: 0,
+              particles,
+            });
+
+            // Remove the planet from game state
+            this.state.planets = this.state.planets.filter(p => p.id !== target.id);
+
+            // Small screen shake for each planet hit
+            this.screenShake = { intensity: 15, timer: 10 };
+          }
+        }
+
+        // Update active planet explosions
+        for (const [id, explosion] of this.nukePlanetExplosions) {
+          explosion.progress += (1 / this.NUKE_PLANET_EXPLOSION_DURATION) * this.dt;
+          explosion.scale = Math.max(0, 1 - explosion.progress * 1.5); // shrink to 0 at ~67% progress
+
+          // Update explosion particles
+          for (let i = explosion.particles.length - 1; i >= 0; i--) {
+            const p = explosion.particles[i];
+            p.x += p.vx * this.dt;
+            p.y += p.vy * this.dt;
+            p.life -= this.dt;
+            p.vx *= Math.pow(0.97, this.dt);
+            p.vy *= Math.pow(0.97, this.dt);
+            if (p.life <= 0) {
+              explosion.particles.splice(i, 1);
+            }
+          }
+        }
       }
 
-      // End detonation
-      if (nuke.detonationTimer >= this.NUKE_DETONATION_DURATION) {
+      // End detonation when timer is up AND all planet explosions are past 85%
+      const allExplosionsDone = this.nukeTargetPlanets.length === 0 ||
+        [...this.nukePlanetExplosions.values()].every(e => e.progress >= 0.85);
+      if (nuke.detonationTimer >= (this.nukeDetonation?.maxDuration ?? this.NUKE_DETONATION_DURATION) && allExplosionsDone) {
         this.endNukeCinematic();
       }
     }
@@ -5536,6 +5617,8 @@ export class SpaceGame {
     this.nukeCameraTarget = null;
     this.nukeAlarmTimer = 0;
     this.nukeLaunchStartTime = 0;
+    this.nukePlanetExplosions.clear();
+    this.nukeTargetPlanets = [];
     soundManager.stopNukeLaunch();
     soundManager.stopNukeFlying();
     soundManager.stopNukeThrust();
@@ -5736,6 +5819,70 @@ export class SpaceGame {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+
+    // Render planet explosions
+    for (const [, explosion] of this.nukePlanetExplosions) {
+      const ex = explosion.x - camera.x;
+      const ey = explosion.y - camera.y;
+
+      // Shrinking planet remnant with hot gradient
+      if (explosion.scale > 0) {
+        ctx.save();
+        const remnantRadius = explosion.radius * explosion.scale;
+        const hotGradient = ctx.createRadialGradient(ex, ey, 0, ex, ey, remnantRadius);
+        hotGradient.addColorStop(0, '#ffffff');
+        hotGradient.addColorStop(0.3, '#ffcc00');
+        hotGradient.addColorStop(0.6, '#ff6600');
+        hotGradient.addColorStop(1, '#ff2200');
+        ctx.fillStyle = hotGradient;
+        ctx.globalAlpha = Math.max(0, 1 - explosion.progress * 1.2);
+        ctx.beginPath();
+        ctx.arc(ex, ey, remnantRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Crack lines on the remnant
+        ctx.strokeStyle = `rgba(255, 255, 200, ${Math.max(0, 0.8 - explosion.progress)})`;
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 5; i++) {
+          const crackAngle = (i / 5) * Math.PI * 2 + explosion.progress * 2;
+          const crackLen = remnantRadius * (0.5 + Math.random() * 0.5);
+          ctx.beginPath();
+          ctx.moveTo(ex, ey);
+          ctx.lineTo(ex + Math.cos(crackAngle) * crackLen, ey + Math.sin(crackAngle) * crackLen);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Flash burst at moment of disintegration (~67% progress when scale hits 0)
+      if (explosion.progress > 0.5 && explosion.progress < 0.8) {
+        const burstAlpha = 1 - Math.abs(explosion.progress - 0.65) / 0.15;
+        const burstRadius = explosion.radius * 2;
+        ctx.save();
+        const burstGradient = ctx.createRadialGradient(ex, ey, 0, ex, ey, burstRadius);
+        burstGradient.addColorStop(0, `rgba(255, 255, 255, ${burstAlpha * 0.6})`);
+        burstGradient.addColorStop(0.5, `rgba(255, 160, 0, ${burstAlpha * 0.3})`);
+        burstGradient.addColorStop(1, 'rgba(255, 60, 0, 0)');
+        ctx.fillStyle = burstGradient;
+        ctx.beginPath();
+        ctx.arc(ex, ey, burstRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Explosion particles
+      for (const p of explosion.particles) {
+        const px = p.x - camera.x;
+        const py = p.y - camera.y;
+        const alpha = p.life / p.maxLife;
+        ctx.beginPath();
+        ctx.arc(px, py, p.size * alpha, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = alpha;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
 
     // Screen flash overlay
     if (det.flashAlpha > 0) {
