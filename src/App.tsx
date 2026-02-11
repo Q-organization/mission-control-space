@@ -159,22 +159,22 @@ const EMOTE_ITEMS = [
 
 // Companion items (sold by The Hatchery)
 const COMPANION_ITEMS = [
-  { id: 'spark', name: 'Spark', icon: '\u2728', cost: 100, planetsToHatch: 5 },
-  { id: 'nibbles', name: 'Nibbles', icon: '\u{1F43E}', cost: 150, planetsToHatch: 5 },
-  { id: 'astro_frog', name: 'Astro Frog', icon: '\u{1F438}', cost: 250, planetsToHatch: 5 },
-  { id: 'void_kitten', name: 'Void Kitten', icon: '\u{1F431}', cost: 400, planetsToHatch: 7 },
-  { id: 'jellybloom', name: 'Jellybloom', icon: '\u{1FAB7}', cost: 500, planetsToHatch: 7 },
-  { id: 'frost_sprite', name: 'Frost Sprite', icon: '\u2744\uFE0F', cost: 500, planetsToHatch: 7 },
-  { id: 'pixel_ghost', name: 'Pixel Ghost', icon: '\u{1F47B}', cost: 650, planetsToHatch: 8 },
-  { id: 'comet_fox', name: 'Comet Fox', icon: '\u{1F98A}', cost: 800, planetsToHatch: 10 },
-  { id: 'crystal_bat', name: 'Crystal Bat', icon: '\u{1F987}', cost: 800, planetsToHatch: 10 },
-  { id: 'flame_wisp', name: 'Flame Wisp', icon: '\u{1F525}', cost: 1000, planetsToHatch: 12 },
-  { id: 'baby_black_hole', name: 'Baby Black Hole', icon: '\u{1F573}\uFE0F', cost: 1500, planetsToHatch: 15 },
-  { id: 'golden_scarab', name: 'Golden Scarab', icon: '\u{1FAB2}', cost: 2000, planetsToHatch: 15 },
+  { id: 'spark', name: 'Spark', icon: '\u2728', cost: 100, planetsToHatch: 5, glowColor: '#ffff44' },
+  { id: 'nibbles', name: 'Nibbles', icon: '\u{1F43E}', cost: 150, planetsToHatch: 5, glowColor: '#ff4488' },
+  { id: 'astro_frog', name: 'Astro Frog', icon: '\u{1F438}', cost: 250, planetsToHatch: 5, glowColor: '#22cc44' },
+  { id: 'void_kitten', name: 'Void Kitten', icon: '\u{1F431}', cost: 400, planetsToHatch: 7, glowColor: '#9933ff' },
+  { id: 'jellybloom', name: 'Jellybloom', icon: '\u{1FAB7}', cost: 500, planetsToHatch: 7, glowColor: '#33ddcc' },
+  { id: 'frost_sprite', name: 'Frost Sprite', icon: '\u2744\uFE0F', cost: 500, planetsToHatch: 7, glowColor: '#55bbff' },
+  { id: 'pixel_ghost', name: 'Pixel Ghost', icon: '\u{1F47B}', cost: 650, planetsToHatch: 8, glowColor: '#ccccff' },
+  { id: 'comet_fox', name: 'Comet Fox', icon: '\u{1F98A}', cost: 800, planetsToHatch: 10, glowColor: '#ff6622' },
+  { id: 'crystal_bat', name: 'Crystal Bat', icon: '\u{1F987}', cost: 800, planetsToHatch: 10, glowColor: '#cc22cc' },
+  { id: 'flame_wisp', name: 'Flame Wisp', icon: '\u{1F525}', cost: 1000, planetsToHatch: 12, glowColor: '#cc2200' },
+  { id: 'baby_black_hole', name: 'Baby Black Hole', icon: '\u{1F573}\uFE0F', cost: 1500, planetsToHatch: 15, glowColor: '#ffffff' },
+  { id: 'golden_scarab', name: 'Golden Scarab', icon: '\u{1FAB2}', cost: 2000, planetsToHatch: 15, glowColor: '#ccaa00' },
   // Legendaries
-  { id: 'cosmic_dragon', name: 'Cosmic Dragon', icon: '\u{1F432}', cost: 5000, planetsToHatch: 25, isLegendary: true },
-  { id: 'phoenix_eternal', name: 'Phoenix Eternal', icon: '\u{1F985}', cost: 7500, planetsToHatch: 35, isLegendary: true },
-  { id: 'void_leviathan', name: 'Void Leviathan', icon: '\u{1F419}', cost: 10000, planetsToHatch: 50, isLegendary: true },
+  { id: 'cosmic_dragon', name: 'Cosmic Dragon', icon: '\u{1F432}', cost: 5000, planetsToHatch: 25, isLegendary: true, glowColor: '#cc0000' },
+  { id: 'phoenix_eternal', name: 'Phoenix Eternal', icon: '\u{1F985}', cost: 7500, planetsToHatch: 35, isLegendary: true, glowColor: '#ff8800' },
+  { id: 'void_leviathan', name: 'Void Leviathan', icon: '\u{1F419}', cost: 10000, planetsToHatch: 50, isLegendary: true, glowColor: '#6d28d9' },
 ];
 
 // Weapon costs (one-time purchases)
@@ -600,6 +600,7 @@ function App() {
   const [showTerraform, setShowTerraform] = useState(false);
   const [terraformPrompt, setTerraformPrompt] = useState('');
   const [showShipHistory, setShowShipHistory] = useState(false);
+  const [showPlayerHub, setShowPlayerHub] = useState(false);
   const [showQuickTaskModal, setShowQuickTaskModal] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [reassignPlanet, setReassignPlanet] = useState<Planet | null>(null);
@@ -3152,7 +3153,7 @@ function App() {
       if (e.key === 'Escape' && !isUpgrading) {
         const isGameLanded = gameRef.current?.isPlayerLanded();
         const hasOpenModal = editingGoal || showSettings || showGameSettings || showTerraform ||
-          viewingPlanetOwner || showShop || showNomadShop || showHatcheryShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal || showReassignModal || showEditModal || featuredViewPlanet || showAchievements || showTaskSearch;
+          viewingPlanetOwner || showShop || showNomadShop || showHatcheryShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal || showReassignModal || showEditModal || featuredViewPlanet || showAchievements || showTaskSearch || showPlayerHub;
 
         if (hasOpenModal) {
           e.preventDefault();
@@ -3176,6 +3177,7 @@ function App() {
           setFeaturedViewPlanet(null);
           setShowAchievements(false);
           setShowTaskSearch(false);
+          setShowPlayerHub(false);
           // Also clear SpaceGame's internal landed state
           gameRef.current?.setSuppressLandedPanel(false);
           gameRef.current?.clearLandedState();
@@ -4662,11 +4664,247 @@ function App() {
         );
       })()}
 
+      {/* Player Hub Panel */}
+      {showPlayerHub && (() => {
+        const currentShip = getCurrentUserShip();
+        const effects = getEffectsWithDefaults(currentShip.effects);
+        const playerColor = USERS.find(u => u.id === state.currentUser)?.color || '#ffa500';
+        const playerName = USERS.find(u => u.id === state.currentUser)?.name || state.currentUser || 'Pilot';
+        const goalMissions = state.completedPlanets.length;
+        const notionMissions = notionGamePlanets.filter(p => p.completed && p.ownerId?.toLowerCase() === state.currentUser?.toLowerCase()).length;
+        const totalMissions = goalMissions + notionMissions;
+        const eggs = effects.companionEggs || [];
+        const ownedCompanions = effects.ownedCompanions || [];
+        const equippedCompanions = effects.equippedCompanions || [];
+
+        // Weapons list
+        const weapons: { icon: string; name: string; equipped: boolean }[] = [];
+        if (effects.hasSpaceRifle) weapons.push({ icon: '\u{1F52B}', name: 'Space Rifle', equipped: effects.spaceRifleEquipped });
+        if (effects.hasDestroyCanon) weapons.push({ icon: '\u{1F4A5}', name: 'Destroy Canon', equipped: effects.destroyCanonEquipped });
+        if (effects.hasPlasmaCanon) weapons.push({ icon: '\u{1F52E}', name: 'Plasma Canon', equipped: effects.plasmaCanonEquipped });
+        if (effects.hasRocketLauncher) weapons.push({ icon: '\u{1F680}', name: 'Rocket Launcher', equipped: effects.rocketLauncherEquipped });
+        if (effects.hasNuclearBomb) weapons.push({ icon: '\u2622\uFE0F', name: 'Nuclear Bomb', equipped: effects.nuclearBombEquipped });
+
+        const sectionStyle: React.CSSProperties = { padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)' };
+        const sectionTitle: React.CSSProperties = { fontSize: '0.65rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.08em', textTransform: 'uppercase' as const, marginBottom: 8 };
+        const statBarBg: React.CSSProperties = { flex: 1, height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)' };
+
+        return (
+          <>
+            {/* Transparent backdrop */}
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 949 }}
+              onClick={() => setShowPlayerHub(false)}
+            />
+            {/* Panel */}
+            <style>{`.player-hub-panel::-webkit-scrollbar { display: none; }`}</style>
+            <div className="player-hub-panel" style={{
+              position: 'fixed',
+              bottom: 110,
+              right: 20,
+              width: 300,
+              maxHeight: '65vh',
+              overflowY: 'auto',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              background: 'rgba(10, 10, 18, 0.95)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 14,
+              zIndex: 950,
+              fontFamily: "'Space Grotesk', sans-serif",
+              backdropFilter: 'blur(20px)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+            }}>
+
+              {/* Header */}
+              <div style={{ ...sectionStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <img src={currentShip.currentImage} alt="Ship" style={{ width: 48, height: 48, objectFit: 'contain', filter: `drop-shadow(0 0 6px ${playerColor})` }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: playerColor, fontFamily: "'Orbitron', sans-serif" }}>{playerName}</div>
+                  <div style={{ display: 'flex', gap: 12, fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>
+                    <span>{'\u2B50'} {personalPoints.toLocaleString()} pts</span>
+                    <span>{'\u2713'} {totalMissions} missions</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Incubating Eggs */}
+              {eggs.length > 0 && (
+                <div style={sectionStyle}>
+                  <div style={sectionTitle}>{'\u{1F95A}'} Incubating</div>
+                  {eggs.map(egg => {
+                    const companionDef = COMPANION_ITEMS.find(c => c.id === egg.companionId);
+                    if (!companionDef) return null;
+                    const progress = egg.planetsCompleted / egg.planetsNeeded;
+                    return (
+                      <div key={egg.companionId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontSize: '1.1rem' }}>{companionDef.icon}</span>
+                        <span style={{ fontSize: '0.8rem', color: '#fff', flex: '0 0 auto', minWidth: 60 }}>{companionDef.name}</span>
+                        <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', flex: '0 0 auto' }}>{egg.planetsCompleted}/{egg.planetsNeeded}</span>
+                        <div style={statBarBg}>
+                          <div style={{ width: `${Math.min(progress * 100, 100)}%`, height: '100%', borderRadius: 3, background: companionDef.glowColor || '#ffa500', transition: 'width 0.3s' }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Companions */}
+              {ownedCompanions.length > 0 && (
+                <div style={sectionStyle}>
+                  <div style={sectionTitle}>{'\u{1F43E}'} Companions</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {ownedCompanions.map(id => {
+                      const def = COMPANION_ITEMS.find(c => c.id === id);
+                      if (!def) return null;
+                      const isEquipped = equippedCompanions.includes(id);
+                      return (
+                        <div key={id} title={`${def.name}${isEquipped ? ' (equipped)' : ''}`} style={{
+                          width: 36, height: 36, borderRadius: 8,
+                          background: isEquipped ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                          border: isEquipped ? `1.5px solid ${def.glowColor || '#fff'}` : '1px solid rgba(255,255,255,0.08)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '1.2rem', position: 'relative',
+                        }}>
+                          {def.icon}
+                          {isEquipped && <div style={{ position: 'absolute', top: -2, right: -2, width: 7, height: 7, borderRadius: '50%', background: def.glowColor || '#4ade80', border: '1px solid rgba(0,0,0,0.5)' }} />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Equipment */}
+              <div style={sectionStyle}>
+                <div style={sectionTitle}>{'\u2694\uFE0F'} Equipment</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {/* Weapons */}
+                  {weapons.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', width: 52 }}>Weapons</span>
+                      {weapons.map(w => (
+                        <span key={w.name} title={`${w.name}${w.equipped ? ' (equipped)' : ''}`} style={{
+                          fontSize: '1.1rem', opacity: w.equipped ? 1 : 0.4,
+                          filter: w.equipped ? 'drop-shadow(0 0 4px rgba(255,165,0,0.6))' : 'none',
+                        }}>{w.icon}</span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Glow */}
+                  {effects.glowColor && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', width: 52 }}>Glow</span>
+                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: effects.glowColor, boxShadow: `0 0 6px ${effects.glowColor}`, display: 'inline-block' }} />
+                      <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)' }}>{GLOW_EFFECTS.find(g => g.value === effects.glowColor)?.name || ''}</span>
+                    </div>
+                  )}
+                  {/* Trail */}
+                  {effects.trailType !== 'default' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', width: 52 }}>Trail</span>
+                      <span style={{ fontSize: '1rem' }}>{TRAIL_EFFECTS.find(t => t.value === effects.trailType)?.icon || '\u{1F525}'}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)' }}>{TRAIL_EFFECTS.find(t => t.value === effects.trailType)?.name || effects.trailType}</span>
+                    </div>
+                  )}
+                  {/* Horn */}
+                  {effects.equippedHorn && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', width: 52 }}>Horn</span>
+                      <span style={{ fontSize: '1rem' }}>{HORN_ITEMS.find(h => h.id === effects.equippedHorn)?.icon || '\u{1F4E2}'}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)' }}>{HORN_ITEMS.find(h => h.id === effects.equippedHorn)?.name || ''}</span>
+                    </div>
+                  )}
+                  {/* Emote */}
+                  {effects.equippedEmote && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', width: 52 }}>Emote</span>
+                      <span style={{ fontSize: '1rem' }}>{EMOTE_ITEMS.find(e => e.id === effects.equippedEmote)?.icon || '\u{1F4A5}'}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)' }}>{EMOTE_ITEMS.find(e => e.id === effects.equippedEmote)?.name || ''}</span>
+                    </div>
+                  )}
+                  {/* Warp Drive & Portal */}
+                  {effects.hasWarpDrive && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', width: 52 }}>Utility</span>
+                      <span style={{ fontSize: '1rem' }}>{'\u26A1'}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)' }}>Warp Drive</span>
+                    </div>
+                  )}
+                  {effects.hasMissionControlPortal && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {!effects.hasWarpDrive && <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', width: 52 }}>Utility</span>}
+                      {effects.hasWarpDrive && <span style={{ width: 52 }} />}
+                      <span style={{ fontSize: '1rem' }}>{'\u{1F300}'}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)' }}>Portal</span>
+                    </div>
+                  )}
+                  {/* Nothing equipped */}
+                  {weapons.length === 0 && !effects.glowColor && effects.trailType === 'default' && !effects.equippedHorn && !effects.equippedEmote && !effects.hasWarpDrive && !effects.hasMissionControlPortal && (
+                    <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.25)', fontStyle: 'italic' }}>No equipment yet</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Ship Stats */}
+              <div style={sectionStyle}>
+                <div style={sectionTitle}>{'\u{1F4CA}'} Ship Stats</div>
+                {[
+                  { icon: '\u{1F4C8}', label: 'Size', level: Math.floor(effects.sizeBonus / 10), max: 10, color: '#ffa500' },
+                  { icon: '\u26A1', label: 'Speed', level: effects.speedBonus, max: 10, color: '#5490ff' },
+                  { icon: '\u{1F6EC}', label: 'Landing', level: effects.landingSpeedBonus, max: 5, color: '#4ade80' },
+                  { icon: '\u{1F6E1}\uFE0F', label: 'HP', level: effects.healthBonus, max: 10, color: '#ff6b9d' },
+                ].map(stat => (
+                  <div key={stat.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: '0.85rem', width: 20, textAlign: 'center' }}>{stat.icon}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', width: 46 }}>{stat.label}</span>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1 }}>
+                      {Array.from({ length: stat.max }, (_, i) => (
+                        <div key={i} style={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          background: i < stat.level ? stat.color : 'rgba(255,255,255,0.12)',
+                          transition: 'background 0.2s',
+                          boxShadow: i < stat.level ? `0 0 4px ${stat.color}44` : 'none',
+                        }} />
+                      ))}
+                    </div>
+                    {stat.level >= stat.max ? (
+                      <span style={{ fontSize: '0.6rem', color: '#ffd700', fontWeight: 700 }}>MAX</span>
+                    ) : (
+                      <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.35)' }}>{stat.level}/{stat.max}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Ship Versions button */}
+              <div style={{ padding: '10px 14px' }}>
+                <button
+                  onClick={() => { setShowPlayerHub(false); setShowShipHistory(true); }}
+                  style={{
+                    width: '100%', padding: '8px 0', borderRadius: 8,
+                    background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                    color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', fontWeight: 600,
+                    cursor: 'pointer', fontFamily: "'Space Grotesk', sans-serif",
+                    transition: 'background 0.2s, color 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#fff'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.7)'; }}
+                >
+                  {'\u{1F680}'} Ship Versions
+                </button>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
       {/* Ship preview */}
       <div
         style={styles.robotPreview}
-        onClick={() => setShowShipHistory(true)}
-        title="Click to view ship history"
+        onClick={() => setShowPlayerHub(prev => !prev)}
+        title="Player Hub"
       >
         <img src={currentShip.currentImage} alt="Ship" style={styles.robotImage} />
         {(() => {
@@ -4690,21 +4928,23 @@ function App() {
         })()}
       </div>
 
-      {/* Game Settings Button - bottom right */}
-      <button
-        style={{
-          ...styles.audioToggleIcon,
-          bottom: 110,
-          borderColor: 'rgba(255, 255, 255, 0.3)',
-        }}
-        onClick={() => setShowGameSettings(true)}
-        title="Game Settings"
-      >
-        ⚙️
-      </button>
+      {/* Game Settings Button - bottom right (hidden when player hub is open) */}
+      {!showPlayerHub && (
+        <button
+          style={{
+            ...styles.audioToggleIcon,
+            bottom: 110,
+            borderColor: 'rgba(255, 255, 255, 0.3)',
+          }}
+          onClick={() => setShowGameSettings(true)}
+          title="Game Settings"
+        >
+          ⚙️
+        </button>
+      )}
 
       {/* Quick Task FAB + Search button - hidden when modals are open */}
-      {!editingGoal && !showSettings && !showGameSettings && !showTerraform && !viewingPlanetOwner && !showShop && !showControlHub && !showPlanetCreator && !landedPlanet && !showQuickTaskModal && !showLeaderboard && !showPointsHistory && !showAchievements && !showShipHistory && !showTaskSearch && !gameRef.current?.isPlayerLanded() && (
+      {!editingGoal && !showSettings && !showGameSettings && !showTerraform && !viewingPlanetOwner && !showShop && !showControlHub && !showPlanetCreator && !landedPlanet && !showQuickTaskModal && !showLeaderboard && !showPointsHistory && !showAchievements && !showShipHistory && !showTaskSearch && !showPlayerHub && !gameRef.current?.isPlayerLanded() && (
         <div style={{ position: 'fixed', bottom: 24, left: 24, display: 'flex', gap: 10, zIndex: 900 }}>
           <button
             style={{
