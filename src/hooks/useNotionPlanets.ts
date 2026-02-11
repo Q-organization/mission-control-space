@@ -121,6 +121,7 @@ interface UseNotionPlanetsReturn {
   reassignPlanet: (notionPlanetId: string, newOwnerUsername: string) => Promise<{ x: number; y: number } | null>;
   updatePlanet: (notionPlanetId: string, updates: UpdatePlanetFields) => Promise<UpdatePlanetResult | null>;
   markPlanetSeen: (notionPlanetId: string, username: string) => Promise<void>;
+  triggerAnalysis: (notionPlanetId: string) => Promise<boolean>;
 }
 
 export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPlanetsReturn {
@@ -291,6 +292,46 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
     }
   }, []);
 
+  // Trigger deep analysis on demand for any planet
+  const triggerAnalysis = useCallback(async (notionPlanetId: string): Promise<boolean> => {
+    const actualId = notionPlanetId.startsWith('notion-')
+      ? notionPlanetId.slice(7)
+      : notionPlanetId;
+
+    // Optimistic update — show spinner immediately
+    setNotionPlanets((prev) =>
+      prev.map((p) =>
+        p.id === actualId
+          ? { ...p, analysis_status: 'pending' }
+          : p
+      )
+    );
+
+    try {
+      const { data, error } = await supabase.functions.invoke('notion-analyze', {
+        body: { notion_planet_id: actualId },
+      });
+
+      if (error) {
+        console.error('Error triggering analysis:', error);
+        // Revert optimistic update
+        setNotionPlanets((prev) =>
+          prev.map((p) =>
+            p.id === actualId
+              ? { ...p, analysis_status: 'idle' }
+              : p
+          )
+        );
+        return false;
+      }
+
+      return data?.success || false;
+    } catch (error) {
+      console.error('Error triggering analysis:', error);
+      return false;
+    }
+  }, []);
+
   // Set up realtime subscriptions
   useEffect(() => {
     if (!teamId) {
@@ -386,5 +427,6 @@ export function useNotionPlanets(options: UseNotionPlanetsOptions): UseNotionPla
     reassignPlanet,
     updatePlanet,
     markPlanetSeen,
+    triggerAnalysis,
   };
 }

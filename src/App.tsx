@@ -816,6 +816,7 @@ function App() {
     reassignPlanet: reassignNotionPlanet,
     updatePlanet: updateNotionPlanet,
     markPlanetSeen: markNotionPlanetSeen,
+    triggerAnalysis: triggerNotionAnalysis,
   } = useNotionPlanets({
     teamId: team?.id || null,
     currentUser: state.currentUser?.toLowerCase(),
@@ -4560,6 +4561,7 @@ function App() {
           onUpdate={handleLandedUpdate}
           onFeatureToggle={handleFeatureToggle}
           featuredPlanetIds={featuredPlanetIds}
+          onTriggerAnalysis={triggerNotionAnalysis}
         />
       )}
 
@@ -4600,6 +4602,7 @@ function App() {
           }}
           onFeatureToggle={handleFeatureToggle}
           featuredPlanetIds={featuredPlanetIds}
+          onTriggerAnalysis={triggerNotionAnalysis}
         />
       )}
 

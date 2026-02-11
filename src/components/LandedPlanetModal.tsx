@@ -22,6 +22,7 @@ interface LandedPlanetModalProps {
   onUpdate: (updates: EditTaskUpdates) => void;
   onFeatureToggle?: (planet: Planet) => void;
   featuredPlanetIds?: Set<string>;
+  onTriggerAnalysis?: (notionPlanetId: string) => Promise<boolean>;
 }
 
 const TEAM_MEMBERS = [
@@ -97,6 +98,7 @@ export function LandedPlanetModal({
   onUpdate,
   onFeatureToggle,
   featuredPlanetIds,
+  onTriggerAnalysis,
 }: LandedPlanetModalProps) {
   const [editingField, setEditingField] = useState<EditingField>(null);
   const [editName, setEditName] = useState(planet.name || '');
@@ -464,7 +466,7 @@ export function LandedPlanetModal({
         </div>
 
         {/* Prompt Buttons */}
-        {(planet.quickPrompt || planet.deepAnalysis || planet.analysisStatus === 'pending') && (
+        {(planet.quickPrompt || planet.deepAnalysis || planet.analysisStatus === 'pending' || onTriggerAnalysis) && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
             {planet.quickPrompt && (
               <button
@@ -575,6 +577,32 @@ export function LandedPlanetModal({
                 </svg>
                 Analysis Failed
               </div>
+            ) : onTriggerAnalysis ? (
+              <button
+                style={{
+                  flex: 1,
+                  padding: '10px 14px',
+                  background: 'rgba(168, 85, 247, 0.04)',
+                  border: '1px dashed rgba(168, 85, 247, 0.2)',
+                  borderRadius: 10,
+                  color: '#8b5cf6',
+                  fontSize: '0.8rem',
+                  fontFamily: 'Space Grotesk, sans-serif',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                }}
+                onClick={() => onTriggerAnalysis(planet.id)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                Run Analysis
+              </button>
             ) : null}
           </div>
         )}
