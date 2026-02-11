@@ -11504,7 +11504,7 @@ export class SpaceGame {
 
     // Window dimensions — compact card style matching game UI
     const padding = 12;
-    const imgSize = 280;
+    const imgSize = 380;
     const aspect = img.width / img.height;
     const imgW = aspect > 1 ? imgSize : imgSize * aspect;
     const imgH = aspect > 1 ? imgSize / aspect : imgSize;
