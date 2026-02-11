@@ -63,6 +63,8 @@ const defaultShipEffects: ShipEffects = {
   plasmaCanonEquipped: false,
   hasRocketLauncher: false,
   rocketLauncherEquipped: false,
+  hasNuclearBomb: false,
+  nuclearBombEquipped: false,
   hasWarpDrive: false,
   hasMissionControlPortal: false,
   ownedHorns: [],
@@ -70,6 +72,8 @@ const defaultShipEffects: ShipEffects = {
   ownedEmotes: [],
   equippedEmote: null,
   healthBonus: 0,
+  ownedCompanions: [],
+  equippedCompanions: [],
 };
 
 // How long before we consider a player offline even if is_online is true

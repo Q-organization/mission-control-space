@@ -87,6 +87,7 @@ const USERS = [
   { id: 'alex', name: 'Alex', color: '#5490ff' },
   { id: 'milya', name: 'Milya', color: '#ff6b9d' },
   { id: 'hugues', name: 'Hugues', color: '#8b5cf6' },
+  { id: 'testpilot', name: 'Test Pilot', color: '#888888' },
 ];
 
 const TEST_PLAYER_ID = 'testpilot';
@@ -156,13 +157,30 @@ const EMOTE_ITEMS = [
   { id: 'wave_emoji', name: 'Wave', icon: '\u{1F44B}', cost: 300 },
 ];
 
+// Companion items (sold by The Hatchery)
+const COMPANION_ITEMS = [
+  { id: 'spark', name: 'Spark', icon: '\u2728', cost: 200 },
+  { id: 'nibbles', name: 'Nibbles', icon: '\u{1F43E}', cost: 250 },
+  { id: 'astro_frog', name: 'Astro Frog', icon: '\u{1F438}', cost: 300 },
+  { id: 'void_kitten', name: 'Void Kitten', icon: '\u{1F431}', cost: 350 },
+  { id: 'jellybloom', name: 'Jellybloom', icon: '\u{1FAB7}', cost: 400 },
+  { id: 'frost_sprite', name: 'Frost Sprite', icon: '\u2744\uFE0F', cost: 400 },
+  { id: 'pixel_ghost', name: 'Pixel Ghost', icon: '\u{1F47B}', cost: 450 },
+  { id: 'comet_fox', name: 'Comet Fox', icon: '\u{1F98A}', cost: 500 },
+  { id: 'crystal_bat', name: 'Crystal Bat', icon: '\u{1F987}', cost: 500 },
+  { id: 'flame_wisp', name: 'Flame Wisp', icon: '\u{1F525}', cost: 550 },
+  { id: 'baby_black_hole', name: 'Baby Black Hole', icon: '\u{1F573}\uFE0F', cost: 600 },
+  { id: 'golden_scarab', name: 'Golden Scarab', icon: '\u{1FAB2}', cost: 750 },
+];
+
 // Weapon costs (one-time purchases)
 const SPACE_RIFLE_COST = 500;
 const WARP_DRIVE_COST = 750;
 const MISSION_CONTROL_PORTAL_COST = 600;
 const SPACE_TNT_COST = 1000;
 const PLASMA_CANON_COST = 1500;
-const ROCKET_LAUNCHER_COST = 2500;
+const ROCKET_LAUNCHER_COST = 1500;
+const NUCLEAR_BOMB_COST = 2000;
 
 
 interface Goal {
@@ -257,6 +275,8 @@ interface ShipEffects {
   plasmaCanonEquipped: boolean; // Plasma Canon is equipped
   hasRocketLauncher: boolean; // Owns Rocket Launcher weapon
   rocketLauncherEquipped: boolean; // Rocket Launcher is equipped
+  hasNuclearBomb: boolean; // Owns Nuclear Bomb weapon
+  nuclearBombEquipped: boolean; // Nuclear Bomb is equipped
   hasWarpDrive: boolean; // Owns Warp Drive (teleport home with H key)
   hasMissionControlPortal: boolean; // Owns Mission Control Portal (teleport to MC from home)
   ownedHorns: string[];
@@ -264,6 +284,8 @@ interface ShipEffects {
   ownedEmotes: string[];
   equippedEmote: string | null;
   healthBonus: number; // 0-5 levels, each gives +25 HP in boss fights
+  ownedCompanions: string[];
+  equippedCompanions: string[];
 }
 
 interface UserShip {
@@ -520,6 +542,8 @@ function App() {
     onCollisionVoice: () => void;
     onNomadDock: () => void;
     onNomadApproach: () => void;
+    onHatcheryDock: () => void;
+    onHatcheryApproach: () => void;
     onHornActivate: () => void;
     onEmoteActivate: () => void;
     onNomadFightStart: () => void;
@@ -542,6 +566,8 @@ function App() {
     onCollisionVoice: () => {},
     onNomadDock: () => {},
     onNomadApproach: () => {},
+    onHatcheryDock: () => {},
+    onHatcheryApproach: () => {},
     onHornActivate: () => {},
     onEmoteActivate: () => {},
     onNomadFightStart: () => {},
@@ -591,6 +617,7 @@ function App() {
   const [showPlanetCreator, setShowPlanetCreator] = useState(false);
   const [showShop, setShowShop] = useState(false);
   const [showNomadShop, setShowNomadShop] = useState(false);
+  const [showHatcheryShop, setShowHatcheryShop] = useState(false);
   const [nomadShopTab, setNomadShopTab] = useState<'horns' | 'emotes'>('horns');
   const [showControlHub, setShowControlHub] = useState(false);
   const [shopTab, setShopTab] = useState<'stats' | 'cosmetics' | 'weapons' | 'utility'>('stats');
@@ -654,7 +681,7 @@ function App() {
   const [activityLoading, setActivityLoading] = useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [playerPointsInput, setPlayerPointsInput] = useState('');
-  const [debugShipLevel, setDebugShipLevel] = useState(1);
+
 
   // Prompt configs (loaded from JSON)
   const [shipPrompts, setShipPrompts] = useState<ShipPrompts>(DEFAULT_SHIP_PROMPTS);
@@ -691,7 +718,7 @@ function App() {
     baseImage: '/ship-base.png',
     upgrades: [],
     currentImage: '/ship-base.png',
-    effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false },
+    effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasNuclearBomb: false, nuclearBombEquipped: false, ownedCompanions: [], equippedCompanions: [] },
   };
 
   // Multiplayer sync hook - handles team state sync
@@ -1260,6 +1287,10 @@ function App() {
             plasmaCanonEquipped: false,
             hasRocketLauncher: false,
             rocketLauncherEquipped: false,
+            hasNuclearBomb: false,
+            nuclearBombEquipped: false,
+            ownedCompanions: [],
+            equippedCompanions: [],
           },
         };
       }
@@ -1298,6 +1329,10 @@ function App() {
     const currentShip = userShips[state.currentUser];
     if (currentShip?.effects) {
       gameRef.current.updateShipEffects(currentShip.effects);
+      const equipped = currentShip.effects.equippedCompanions;
+      if (equipped && equipped.length > 0) {
+        gameRef.current.setEquippedCompanions(equipped);
+      }
     }
     if (currentShip?.currentImage) {
       gameRef.current.updateShipImage(currentShip.currentImage, currentShip.upgrades?.length || 0);
@@ -1377,7 +1412,7 @@ function App() {
           .from('players')
           .update({
             ship_current_image: '/ship-base.png',
-            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false },
+            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasNuclearBomb: false, nuclearBombEquipped: false, ownedCompanions: [], equippedCompanions: [] },
             ship_upgrades: [],
           })
           .eq('team_id', team.id);
@@ -1525,7 +1560,7 @@ function App() {
           .update({
             personal_points: 0,
             ship_current_image: '/ship-base.png',
-            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false },
+            ship_effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasNuclearBomb: false, nuclearBombEquipped: false, ownedCompanions: [], equippedCompanions: [] },
             ship_upgrades: [],
             planet_image_url: null,
             planet_terraform_count: 0,
@@ -2094,7 +2129,7 @@ function App() {
       baseImage: '/ship-base.png',
       upgrades: [],
       currentImage: '/ship-base.png',
-      effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false },
+      effects: { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasNuclearBomb: false, nuclearBombEquipped: false, ownedCompanions: [], equippedCompanions: [] },
     };
   };
 
@@ -2376,6 +2411,15 @@ function App() {
       completeNotionPlanet(planet.id);
 
       gameRef.current?.completePlanet(planet.id);
+
+      // Auto-unpin completed planet from HUD
+      setFeaturedPlanetIds(prev => {
+        if (!prev.has(planet.id)) return prev;
+        const next = new Set(prev);
+        next.delete(planet.id);
+        localStorage.setItem('mission-control-featured-tasks', JSON.stringify([...next]));
+        return next;
+      });
       return;
     }
 
@@ -2396,6 +2440,15 @@ function App() {
     }));
 
     gameRef.current?.completePlanet(planet.id);
+
+    // Auto-unpin completed planet from HUD
+    setFeaturedPlanetIds(prev => {
+      if (!prev.has(planet.id)) return prev;
+      const next = new Set(prev);
+      next.delete(planet.id);
+      localStorage.setItem('mission-control-featured-tasks', JSON.stringify([...next]));
+      return next;
+    });
 
     // Sync to multiplayer (if connected)
     if (team) {
@@ -2476,6 +2529,10 @@ function App() {
     if (planet.id === '__nomad__') {
       setShowNomadShop(true);
       voiceService.playNomadGreeting();
+      return;
+    }
+    if (planet.id === '__hatchery__') {
+      setShowHatcheryShop(true);
       return;
     }
     if (planet.id === 'planet-builder') {
@@ -2567,6 +2624,15 @@ function App() {
       completeNotionPlanet(planet.id);
 
       gameRef.current?.completePlanet(planet.id);
+
+      // Auto-unpin completed planet from HUD
+      setFeaturedPlanetIds(prev => {
+        if (!prev.has(planet.id)) return prev;
+        const next = new Set(prev);
+        next.delete(planet.id);
+        localStorage.setItem('mission-control-featured-tasks', JSON.stringify([...next]));
+        return next;
+      });
     } else {
       // Regular planets
       if (state.completedPlanets.includes(planet.id)) return;
@@ -2585,6 +2651,15 @@ function App() {
       }));
 
       gameRef.current?.completePlanet(planet.id);
+
+      // Auto-unpin completed planet from HUD
+      setFeaturedPlanetIds(prev => {
+        if (!prev.has(planet.id)) return prev;
+        const next = new Set(prev);
+        next.delete(planet.id);
+        localStorage.setItem('mission-control-featured-tasks', JSON.stringify([...next]));
+        return next;
+      });
 
       if (team) {
         completeRemotePlanet(planet.id, pointsEarned);
@@ -3001,6 +3076,10 @@ function App() {
         setShowNomadShop(true);
         voiceService.playNomadGreeting();
       },
+      onHatcheryDock: () => {
+        setShowHatcheryShop(true);
+      },
+      onHatcheryApproach: () => {},
       onHornActivate: () => {
         const currentShip = getCurrentUserShip();
         const effects = getEffectsWithDefaults(currentShip.effects);
@@ -3035,7 +3114,7 @@ function App() {
       if (e.key === 'Escape' && !isUpgrading) {
         const isGameLanded = gameRef.current?.isPlayerLanded();
         const hasOpenModal = editingGoal || showSettings || showGameSettings || showTerraform ||
-          viewingPlanetOwner || showShop || showNomadShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal || showReassignModal || showEditModal || featuredViewPlanet || showAchievements || showTaskSearch;
+          viewingPlanetOwner || showShop || showNomadShop || showHatcheryShop || showControlHub || showPlanetCreator || landedPlanet || isGameLanded || showQuickTaskModal || showReassignModal || showEditModal || featuredViewPlanet || showAchievements || showTaskSearch;
 
         if (hasOpenModal) {
           e.preventDefault();
@@ -3047,6 +3126,7 @@ function App() {
           setViewingPlanetOwner(null);
           setShowShop(false);
           setShowNomadShop(false);
+          setShowHatcheryShop(false);
           setShowControlHub(false);
           setShowPlanetCreator(false);
           setLandedPlanet(null);
@@ -3097,7 +3177,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showTerraform, viewingPlanetOwner, showShop, showControlHub, showPlanetCreator, showSettings, showGameSettings, editingGoal, landedPlanet, isUpgrading, showQuickTaskModal, showWelcome, showUserSelect, showLeaderboard, showPointsHistory, showReassignModal, showEditModal, featuredViewPlanet, showAchievements, showTaskSearch]);
+  }, [showTerraform, viewingPlanetOwner, showShop, showNomadShop, showHatcheryShop, showControlHub, showPlanetCreator, showSettings, showGameSettings, editingGoal, landedPlanet, isUpgrading, showQuickTaskModal, showWelcome, showUserSelect, showLeaderboard, showPointsHistory, showReassignModal, showEditModal, featuredViewPlanet, showAchievements, showTaskSearch]);
 
   // Buy visual upgrade from shop (AI-generated changes to ship appearance)
   const buyVisualUpgrade = async () => {
@@ -3460,6 +3540,7 @@ function App() {
       destroyCanonEquipped: false,
       plasmaCanonEquipped: false,
       rocketLauncherEquipped: false,
+      nuclearBombEquipped: false,
     };
 
     // Deduct personal points and sync to backend
@@ -3486,6 +3567,7 @@ function App() {
       destroyCanonEquipped: willEquip ? false : currentEffects.destroyCanonEquipped,
       plasmaCanonEquipped: willEquip ? false : currentEffects.plasmaCanonEquipped,
       rocketLauncherEquipped: willEquip ? false : currentEffects.rocketLauncherEquipped,
+      nuclearBombEquipped: willEquip ? false : currentEffects.nuclearBombEquipped,
     };
 
     updateUserShipEffects(userId, currentShip, newEffects);
@@ -3510,6 +3592,7 @@ function App() {
       destroyCanonEquipped: false,
       spaceRifleEquipped: false,
       rocketLauncherEquipped: false,
+      nuclearBombEquipped: false,
     };
 
     setPersonalPoints(prev => prev - PLASMA_CANON_COST);
@@ -3535,6 +3618,7 @@ function App() {
       destroyCanonEquipped: willEquip ? false : currentEffects.destroyCanonEquipped,
       spaceRifleEquipped: willEquip ? false : currentEffects.spaceRifleEquipped,
       rocketLauncherEquipped: willEquip ? false : currentEffects.rocketLauncherEquipped,
+      nuclearBombEquipped: willEquip ? false : currentEffects.nuclearBombEquipped,
     };
 
     updateUserShipEffects(userId, currentShip, newEffects);
@@ -3559,6 +3643,7 @@ function App() {
       destroyCanonEquipped: false,
       spaceRifleEquipped: false,
       plasmaCanonEquipped: false,
+      nuclearBombEquipped: false,
     };
 
     setPersonalPoints(prev => prev - ROCKET_LAUNCHER_COST);
@@ -3584,6 +3669,55 @@ function App() {
       destroyCanonEquipped: willEquip ? false : currentEffects.destroyCanonEquipped,
       spaceRifleEquipped: willEquip ? false : currentEffects.spaceRifleEquipped,
       plasmaCanonEquipped: willEquip ? false : currentEffects.plasmaCanonEquipped,
+      nuclearBombEquipped: willEquip ? false : currentEffects.nuclearBombEquipped,
+    };
+
+    updateUserShipEffects(userId, currentShip, newEffects);
+    soundManager.playSelect();
+  };
+
+  // Buy Nuclear Bomb (one-time purchase)
+  const buyNuclearBomb = () => {
+    if (personalPoints < NUCLEAR_BOMB_COST) return;
+
+    const userId = state.currentUser || 'default';
+    const currentShip = getCurrentUserShip();
+    const currentEffects = getEffectsWithDefaults(currentShip.effects);
+
+    if (currentEffects.hasNuclearBomb) return;
+
+    const newEffects: ShipEffects = {
+      ...currentEffects,
+      hasNuclearBomb: true,
+      nuclearBombEquipped: true,
+      destroyCanonEquipped: false,
+      spaceRifleEquipped: false,
+      plasmaCanonEquipped: false,
+      rocketLauncherEquipped: false,
+    };
+
+    setPersonalPoints(prev => prev - NUCLEAR_BOMB_COST);
+    updateRemotePersonalPoints(-NUCLEAR_BOMB_COST, 'Nuclear Bomb');
+    updateUserShipEffects(userId, currentShip, newEffects);
+    soundManager.playShipUpgrade();
+  };
+
+  // Toggle Nuclear Bomb equip state (only one weapon at a time)
+  const toggleNuclearBomb = () => {
+    const userId = state.currentUser || 'default';
+    const currentShip = getCurrentUserShip();
+    const currentEffects = getEffectsWithDefaults(currentShip.effects);
+
+    if (!currentEffects.hasNuclearBomb) return;
+
+    const willEquip = !currentEffects.nuclearBombEquipped;
+    const newEffects: ShipEffects = {
+      ...currentEffects,
+      nuclearBombEquipped: willEquip,
+      destroyCanonEquipped: willEquip ? false : currentEffects.destroyCanonEquipped,
+      spaceRifleEquipped: willEquip ? false : currentEffects.spaceRifleEquipped,
+      plasmaCanonEquipped: willEquip ? false : currentEffects.plasmaCanonEquipped,
+      rocketLauncherEquipped: willEquip ? false : currentEffects.rocketLauncherEquipped,
     };
 
     updateUserShipEffects(userId, currentShip, newEffects);
@@ -3651,6 +3785,8 @@ function App() {
     plasmaCanonEquipped: effects?.plasmaCanonEquipped ?? false,
     hasRocketLauncher: effects?.hasRocketLauncher ?? false,
     rocketLauncherEquipped: effects?.rocketLauncherEquipped ?? false,
+    hasNuclearBomb: effects?.hasNuclearBomb ?? false,
+    nuclearBombEquipped: effects?.nuclearBombEquipped ?? false,
     hasWarpDrive: effects?.hasWarpDrive ?? false,
     hasMissionControlPortal: effects?.hasMissionControlPortal ?? false,
     ownedHorns: effects?.ownedHorns ?? [],
@@ -3658,6 +3794,8 @@ function App() {
     ownedEmotes: effects?.ownedEmotes ?? [],
     equippedEmote: effects?.equippedEmote ?? null,
     healthBonus: effects?.healthBonus ?? 0,
+    ownedCompanions: effects?.ownedCompanions ?? [],
+    equippedCompanions: effects?.equippedCompanions ?? [],
   });
 
   // Helper to update ship effects
@@ -3721,6 +3859,37 @@ function App() {
     const newEquipped = currentEffects.equippedEmote ?? emoteId; // Auto-equip first
     const newEffects = { ...currentEffects, ownedEmotes: newOwned, equippedEmote: newEquipped };
     updateUserShipEffects(userId, currentShip, newEffects);
+    soundManager.playPowerUp();
+  };
+
+  // Hatchery: Buy companion
+  const buyCompanion = (companionId: string, cost: number) => {
+    if (!state.currentUser) return;
+    const userId = state.currentUser;
+    const currentShip = getCurrentUserShip();
+    const currentEffects = getEffectsWithDefaults(currentShip.effects);
+
+    if (currentEffects.ownedCompanions.includes(companionId)) {
+      // Already owned → toggle equip/unequip
+      const isEquipped = currentEffects.equippedCompanions.includes(companionId);
+      const newEquipped = isEquipped
+        ? currentEffects.equippedCompanions.filter(c => c !== companionId)
+        : [...currentEffects.equippedCompanions, companionId];
+      const newEffects = { ...currentEffects, equippedCompanions: newEquipped };
+      updateUserShipEffects(userId, currentShip, newEffects);
+      gameRef.current?.setEquippedCompanions(newEquipped);
+      soundManager.playSelect();
+      return;
+    }
+
+    if (personalPoints < cost) return;
+    setPersonalPoints(prev => prev - cost);
+    updateRemotePersonalPoints(-cost, `Companion: ${companionId}`);
+    const newOwned = [...currentEffects.ownedCompanions, companionId];
+    const newEquipped = [...currentEffects.equippedCompanions, companionId]; // Auto-equip on purchase
+    const newEffects = { ...currentEffects, ownedCompanions: newOwned, equippedCompanions: newEquipped };
+    updateUserShipEffects(userId, currentShip, newEffects);
+    gameRef.current?.setEquippedCompanions(newEquipped);
     soundManager.playPowerUp();
   };
 
@@ -3912,6 +4081,8 @@ function App() {
       onCollisionVoice: () => landingCallbacksRef.current.onCollisionVoice(),
       onNomadDock: () => landingCallbacksRef.current.onNomadDock(),
       onNomadApproach: () => landingCallbacksRef.current.onNomadApproach(),
+      onHatcheryDock: () => landingCallbacksRef.current.onHatcheryDock(),
+      onHatcheryApproach: () => landingCallbacksRef.current.onHatcheryApproach(),
       onHornActivate: () => landingCallbacksRef.current.onHornActivate(),
       onEmoteActivate: () => landingCallbacksRef.current.onEmoteActivate(),
       onNomadBossVictory: () => nomadBossVictoryRef.current(),
@@ -3949,6 +4120,11 @@ function App() {
     // Initialize ship effects if present
     if (currentShip.effects) {
       game.updateShipEffects(currentShip.effects);
+      // Initialize companions from saved equipped list
+      const equipped = currentShip.effects.equippedCompanions;
+      if (equipped && equipped.length > 0) {
+        game.setEquippedCompanions(equipped);
+      }
     }
 
     state.completedPlanets.forEach(id => game.completePlanet(id));
@@ -5673,6 +5849,52 @@ function App() {
                     </div>
                   );
                 })()}
+                {/* Nuclear Bomb - 2000 pts */}
+                {(() => {
+                  const effects = getEffectsWithDefaults(getCurrentUserShip().effects);
+                  const owned = effects.hasNuclearBomb;
+                  const equipped = effects.nuclearBombEquipped;
+                  const canBuy = !owned && personalPoints >= NUCLEAR_BOMB_COST;
+                  return (
+                    <div style={styles.effectLane}>
+                      <div style={styles.effectLaneLabel}>
+                        <span style={styles.effectLaneIcon}>☢️</span>
+                        <span>Nuclear Bomb</span>
+                      </div>
+                      <div style={styles.effectLaneContent}>
+                        <span style={{ fontSize: '0.75rem', color: '#888', flex: 1 }}>
+                          Cinematic nuke (X key)
+                        </span>
+                        {owned ? (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              background: equipped ? 'rgba(255, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)',
+                              borderColor: equipped ? '#ff4444' : '#444',
+                              color: equipped ? '#ff4444' : '#888',
+                              minWidth: 80,
+                            }}
+                            onClick={toggleNuclearBomb}
+                          >
+                            {equipped ? 'EQUIPPED' : 'EQUIP'}
+                          </button>
+                        ) : (
+                          <button
+                            style={{
+                              ...styles.effectBuyButton,
+                              opacity: canBuy ? 1 : 0.5,
+                              minWidth: 100,
+                            }}
+                            onClick={buyNuclearBomb}
+                            disabled={!canBuy}
+                          >
+                            {NUCLEAR_BOMB_COST} ⭐
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -5804,6 +6026,55 @@ function App() {
             </div>
 
             <button style={{ ...styles.cancelButton, width: '100%', marginTop: '0.75rem' }} onClick={() => { setShowNomadShop(false); gameRef.current?.clearLandedState(); }}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Hatchery Shop Modal */}
+      {showHatcheryShop && (
+        <div style={styles.modalOverlay} onClick={() => { setShowHatcheryShop(false); gameRef.current?.clearLandedState(); }}>
+          <div style={{ ...styles.modal, maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ ...styles.modalTitle, color: '#44ff88' }}>The Hatchery</h2>
+            <p style={styles.shopPoints}>{'\u2B50'} {personalPoints} Your Points Available</p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '400px', overflow: 'auto', scrollbarWidth: 'none' as const, msOverflowStyle: 'none' as const }}>
+              <style>{`.hatchery-list::-webkit-scrollbar { display: none; }`}</style>
+              {COMPANION_ITEMS.map(item => {
+                const currentShip = getCurrentUserShip();
+                const effects = getEffectsWithDefaults(currentShip.effects);
+                const owned = effects.ownedCompanions.includes(item.id);
+                const equipped = effects.equippedCompanions.includes(item.id);
+                const canAfford = personalPoints >= item.cost;
+
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => buyCompanion(item.id, item.cost)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '8px 12px', borderRadius: 8, cursor: !owned && !canAfford ? 'not-allowed' : 'pointer',
+                      background: equipped ? 'rgba(68, 255, 136, 0.1)' : 'rgba(255,255,255,0.03)',
+                      border: equipped ? '1px solid rgba(68, 255, 136, 0.4)' : '1px solid #222',
+                      opacity: !owned && !canAfford ? 0.5 : 1,
+                      transition: 'border-color 0.2s',
+                    }}
+                  >
+                    <img src={`/companions/${item.id}.png`} alt={item.name} style={{ width: 28, height: 28, flexShrink: 0, objectFit: 'contain', borderRadius: '50%' }} />
+                    <span style={{ flex: 1, fontSize: '0.85rem', fontWeight: 500, color: equipped ? '#44ff88' : owned ? '#ccc' : '#aaa' }}>{item.name}</span>
+                    <span style={{
+                      fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
+                      color: equipped ? '#44ff88' : owned ? '#888' : canAfford ? '#ffd700' : '#555',
+                    }}>
+                      {equipped ? 'ACTIVE' : owned ? 'EQUIP' : `${item.cost} \u2B50`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button style={{ ...styles.cancelButton, width: '100%', marginTop: '0.75rem' }} onClick={() => { setShowHatcheryShop(false); gameRef.current?.clearLandedState(); }}>
               Close
             </button>
           </div>
@@ -7026,79 +7297,6 @@ function App() {
                       Testing tools for development. Changes are local only (visual).
                     </p>
 
-                    {/* Ship Level Tester */}
-                    <div style={{
-                      background: 'rgba(245, 158, 11, 0.1)',
-                      borderRadius: '8px',
-                      padding: '1rem',
-                      border: '1px solid rgba(245, 158, 11, 0.3)',
-                      marginBottom: '1rem',
-                    }}>
-                      <label style={{ ...styles.label, marginBottom: '12px', display: 'block' }}>
-                        🚀 Ship Level (for Escort Drones)
-                      </label>
-                      <p style={{ color: '#888', fontSize: '11px', marginBottom: '12px' }}>
-                        Drones unlock every 5 levels: Lv.5 = 1 drone, Lv.10 = 2 drones, etc.
-                      </p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                        <input
-                          type="range"
-                          min="1"
-                          max="30"
-                          value={debugShipLevel}
-                          onChange={e => setDebugShipLevel(parseInt(e.target.value))}
-                          style={{ flex: 1, accentColor: '#f59e0b' }}
-                        />
-                        <span style={{
-                          color: '#f59e0b',
-                          fontWeight: 'bold',
-                          fontSize: '1.2rem',
-                          minWidth: '40px',
-                          textAlign: 'center',
-                        }}>
-                          {debugShipLevel}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          style={{
-                            ...styles.resetButtonSmall,
-                            flex: 1,
-                            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                          }}
-                          onClick={() => {
-                            if (gameRef.current) {
-                              // Directly set ship level for testing
-                              (gameRef.current as any).shipLevel = debugShipLevel;
-                              (gameRef.current as any).updateEscortDrones();
-                            }
-                          }}
-                        >
-                          Apply Ship Level
-                        </button>
-                        <button
-                          style={{
-                            ...styles.resetButtonSmall,
-                            flex: 1,
-                            background: 'linear-gradient(135deg, #6b7280, #4b5563)',
-                          }}
-                          onClick={() => {
-                            if (gameRef.current) {
-                              // Reset to actual level
-                              const actualLevel = 1 + state.upgradeCount;
-                              (gameRef.current as any).shipLevel = actualLevel;
-                              (gameRef.current as any).updateEscortDrones();
-                              setDebugShipLevel(actualLevel);
-                            }
-                          }}
-                        >
-                          Reset to Actual
-                        </button>
-                      </div>
-                      <p style={{ color: '#666', fontSize: '10px', marginTop: '8px', textAlign: 'center' }}>
-                        Current drones: {Math.floor(debugShipLevel / 5)} | Actual ship level: {1 + state.upgradeCount}
-                      </p>
-                    </div>
                   </div>
                 )}
 

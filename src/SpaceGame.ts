@@ -1,4 +1,4 @@
-import { Vector2, Planet, Star, Particle, Ship, GameState, RewardType, OtherPlayer, ShipEffects as TypedShipEffects, PositionSnapshot, InterpolationState, Projectile, PlasmaProjectile, Rocket } from './types';
+import { Vector2, Planet, Star, Particle, Ship, GameState, RewardType, OtherPlayer, ShipEffects as TypedShipEffects, PositionSnapshot, InterpolationState, Projectile, PlasmaProjectile, Rocket, NuclearBomb } from './types';
 import { soundManager } from './SoundManager';
 
 interface CustomPlanetData {
@@ -51,9 +51,13 @@ interface ShipEffects {
   plasmaCanonEquipped: boolean;
   hasRocketLauncher: boolean;
   rocketLauncherEquipped: boolean;
+  hasNuclearBomb: boolean;
+  nuclearBombEquipped: boolean;
   hasWarpDrive: boolean;
   hasMissionControlPortal: boolean;
   healthBonus: number;
+  ownedCompanions: string[];
+  equippedCompanions: string[];
 }
 
 interface UpgradeSatellite {
@@ -67,28 +71,46 @@ interface UpgradeSatellite {
   type: 'satellite' | 'robot';
 }
 
-interface EscortDrone {
-  id: number;
-  size: number;
+interface CompanionDef {
+  id: string;
+  name: string;
   color: string;
   glowColor: string;
-  // Position tracking for following behavior
+  size: number;
+  cost: number;
+  icon: string;
+}
+
+interface Companion {
+  type: string;
   worldX: number;
   worldY: number;
   prevWorldX: number;
   prevWorldY: number;
-  // Velocity for smooth following
   vx: number;
   vy: number;
-  // Target offset (where this drone wants to be relative to ship)
-  offsetX: number;
-  offsetY: number;
-  // Wobble for organic movement
   wobble: number;
-  wobbleSpeed: number;
-  // Image skin
-  imageUrl?: string;
+  angle: number;
+  timer: number;
+  stateFlag: number;
+  idleWanderTarget: { x: number; y: number } | null;
+  alpha: number;
 }
+
+const COMPANION_DEFS: CompanionDef[] = [
+  { id: 'spark', name: 'Spark', color: '#ffff88', glowColor: '#ffff44', size: 8, cost: 200, icon: '\u2728' },
+  { id: 'nibbles', name: 'Nibbles', color: '#ff88aa', glowColor: '#ff4488', size: 8, cost: 250, icon: '\u{1F43E}' },
+  { id: 'astro_frog', name: 'Astro Frog', color: '#44ff66', glowColor: '#22cc44', size: 9, cost: 300, icon: '\u{1F438}' },
+  { id: 'void_kitten', name: 'Void Kitten', color: '#bb66ff', glowColor: '#9933ff', size: 10, cost: 350, icon: '\u{1F431}' },
+  { id: 'jellybloom', name: 'Jellybloom', color: '#66ffee', glowColor: '#33ddcc', size: 11, cost: 400, icon: '\u{1FAB7}' },
+  { id: 'frost_sprite', name: 'Frost Sprite', color: '#88ddff', glowColor: '#55bbff', size: 9, cost: 400, icon: '\u2744\uFE0F' },
+  { id: 'pixel_ghost', name: 'Pixel Ghost', color: '#eeeeff', glowColor: '#ccccff', size: 10, cost: 450, icon: '\u{1F47B}' },
+  { id: 'comet_fox', name: 'Comet Fox', color: '#ff8844', glowColor: '#ff6622', size: 9, cost: 500, icon: '\u{1F98A}' },
+  { id: 'crystal_bat', name: 'Crystal Bat', color: '#ff44ff', glowColor: '#cc22cc', size: 10, cost: 500, icon: '\u{1F987}' },
+  { id: 'flame_wisp', name: 'Flame Wisp', color: '#ff4422', glowColor: '#cc2200', size: 9, cost: 550, icon: '\u{1F525}' },
+  { id: 'baby_black_hole', name: 'Baby Black Hole', color: '#222233', glowColor: '#ffffff', size: 12, cost: 600, icon: '\u{1F573}\uFE0F' },
+  { id: 'golden_scarab', name: 'Golden Scarab', color: '#ffd700', glowColor: '#ccaa00', size: 11, cost: 750, icon: '\u{1FAB2}' },
+];
 
 // Store terraform counts and size levels for scaling
 const userPlanetTerraformCounts: Map<string, number> = new Map();
@@ -210,9 +232,11 @@ export class SpaceGame {
   private rifleImage: HTMLImageElement | null = null; // Space Rifle weapon image
   private plasmaCanonImage: HTMLImageElement | null = null; // Plasma Canon weapon image
   private rocketLauncherImage: HTMLImageElement | null = null; // Rocket Launcher weapon image
+  private nukeButtonImage: HTMLImageElement | null = null; // Nuclear Bomb weapon (ship mount - red button)
+  private nukeWarheadImage: HTMLImageElement | null = null; // Nuclear Bomb projectile (flying warhead)
   private portalImage: HTMLImageElement | null = null; // Mission Control Portal image
   private shipLevel: number = 1;
-  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasWarpDrive: false, hasMissionControlPortal: false, healthBonus: 0 };
+  private shipEffects: ShipEffects = { glowColor: null, trailType: 'default', sizeBonus: 0, speedBonus: 0, landingSpeedBonus: 0, ownedGlows: [], ownedTrails: [], hasDestroyCanon: false, destroyCanonEquipped: false, hasSpaceRifle: false, spaceRifleEquipped: false, hasPlasmaCanon: false, plasmaCanonEquipped: false, hasRocketLauncher: false, rocketLauncherEquipped: false, hasNuclearBomb: false, nuclearBombEquipped: false, hasWarpDrive: false, hasMissionControlPortal: false, healthBonus: 0, ownedCompanions: [], equippedCompanions: [] };
   private blackHole: BlackHole;
   private shipBeingSucked: boolean = false;
   private suckProgress: number = 0;
@@ -344,7 +368,7 @@ export class SpaceGame {
   // Other players' upgrade animations
   private otherPlayerUpgrading: Map<string, { targetPlanetId: string | null; satellites: UpgradeSatellite[] }> = new Map();
   // Other players' escort drones (persistent for smooth animation)
-  private otherPlayerDrones: Map<string, EscortDrone[]> = new Map();
+  private otherPlayerCompanions: Map<string, Companion[]> = new Map();
   // Other players' send/push animations (planet being pushed across map)
   private remoteSendAnimations: Map<string, {
     planetId: string;
@@ -386,9 +410,23 @@ export class SpaceGame {
   private lastRocketTime: number = 0;
   private readonly ROCKET_COOLDOWN: number = 1200; // ms between shots (slowest)
   private readonly ROCKET_SPEED: number = 8;
-  private readonly ROCKET_DAMAGE: number = 35;
+  private readonly ROCKET_DAMAGE: number = 100;
   private readonly ROCKET_TURN_SPEED: number = 0.08; // homing turn rate
   private readonly ROCKET_RANGE: number = 800;
+
+  // Nuclear Bomb weapon system
+  private nuclearBomb: NuclearBomb | null = null;
+  private nukeCinematic: boolean = false;
+  private nukeCameraTarget: { x: number; y: number } | null = null;
+  private nukeDetonation: { x: number; y: number; progress: number; maxDuration: number; shockwaveRadius: number; flashAlpha: number; particles: { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; color: string; size: number }[] } | null = null;
+  private lastNukeTime: number = 0;
+  private readonly NUKE_COOLDOWN: number = 60000; // 60 seconds
+  private readonly NUKE_SPEED: number = 10;
+  private readonly NUKE_DETONATION_DURATION: number = 180; // ~3 seconds of explosion
+  private readonly NUKE_ALARM_DURATION: number = 300; // 5 seconds at 60fps
+  private nukeAlarmTimer: number = 0;
+  private nukeLaunchStartTime: number = 0; // tracks when nuke.mp3 started for 11s max
+  private onNukeComplete: (() => void) | null = null;
 
   // Remote projectiles (visual-only, no collision/damage)
   private remoteProjectiles: Projectile[] = [];
@@ -520,20 +558,21 @@ export class SpaceGame {
   private onNomadDefeatTaunt: (() => void) | null = null;
   private nomadVictoryText: { text: string; x: number; y: number; timer: number } | null = null;
 
-  // Escort drones (permanent companions based on ship level)
-  private escortDrones: EscortDrone[] = [];
-  private readonly DRONE_UNLOCK_INTERVAL: number = 5; // Unlock 1 drone every 5 ship levels
-  private droneImages: Map<number, HTMLImageElement> = new Map(); // Drone ID -> loaded image
+  // Companions (purchasable from The Hatchery)
+  private companions: Companion[] = [];
+  private companionImages: Map<string, HTMLImageElement> = new Map();
 
-  // Pre-generated drone skins (permanent, never regenerated)
-  private static readonly DRONE_SKINS: string[] = [
-    'https://v3b.fal.media/files/b/0a8d16e2/FMPZmOGekHcZjkApPP_xZ.png', // Cyan
-    'https://v3b.fal.media/files/b/0a8d16e3/dT_Pq7Pq8Kve3sJBej60D.png', // Pink
-    'https://v3b.fal.media/files/b/0a8d16e3/pp50qnEtkZ4STKnPirq89.png', // Green
-    'https://v3b.fal.media/files/b/0a8d16e4/Q7ggtL-5KgPVdqCuSKvKx.png', // Orange
-    'https://v3b.fal.media/files/b/0a8d16e4/dHlBIychIGWhp5hazNdXb.png', // Purple
-    'https://v3b.fal.media/files/b/0a8d16e5/UBGQqPuv-LEhKrEFUqrHn.png', // Yellow
-  ];
+  // The Hatchery (roaming companion merchant)
+  private hatcheryImage: HTMLImageElement | null = null;
+  private hatchery: { x: number; y: number; rotation: number; scale: number } = { x: 3000, y: 7000, rotation: 0, scale: 1 };
+  private hatcherySparkles: { x: number; y: number; life: number; maxLife: number; color: string; size: number }[] = [];
+  private nearHatchery: boolean = false;
+  private hatcheryApproachFired: boolean = false;
+  private landedOnHatchery: boolean = false;
+  private onHatcheryDock: (() => void) | null = null;
+  private onHatcheryApproach: (() => void) | null = null;
+  private static readonly HATCHERY_DOCKING_DISTANCE = 120;
+  private static readonly HATCHERY_RENDER_SIZE = 140;
 
   constructor(canvas: HTMLCanvasElement, onDock: (planet: Planet) => void, customPlanets: CustomPlanetData[] = [], shipImageUrl?: string, goals?: GoalsData, upgradeCount: number = 0, userPlanets?: Record<string, UserPlanetData>, currentUser: string = 'quentin') {
     this.canvas = canvas;
@@ -616,9 +655,6 @@ export class SpaceGame {
     // Set ship level based on upgrades (affects size)
     this.shipLevel = 1 + upgradeCount;
 
-    // Initialize escort drones based on ship level
-    this.updateEscortDrones();
-
     // Load logo for flags
     this.loadLogo(shipImageUrl);
 
@@ -694,6 +730,20 @@ export class SpaceGame {
       this.rocketLauncherImage = rocketImg;
     };
 
+    // Load Nuclear Bomb images (button for ship mount, warhead for projectile)
+    const nukeButtonImg = new Image();
+    nukeButtonImg.crossOrigin = 'anonymous';
+    nukeButtonImg.src = '/nuke-button.png';
+    nukeButtonImg.onload = () => {
+      this.nukeButtonImage = nukeButtonImg;
+    };
+    const nukeWarheadImg = new Image();
+    nukeWarheadImg.crossOrigin = 'anonymous';
+    nukeWarheadImg.src = '/nuke-warhead.png';
+    nukeWarheadImg.onload = () => {
+      this.nukeWarheadImage = nukeWarheadImg;
+    };
+
     // Load Portal image
     const portalImg = new Image();
     portalImg.crossOrigin = 'anonymous';
@@ -717,6 +767,24 @@ export class SpaceGame {
     nomadImg.onload = () => {
       this.neonNomadImage = nomadImg;
     };
+
+    // Load Hatchery image
+    const hatcheryImg = new Image();
+    hatcheryImg.crossOrigin = 'anonymous';
+    hatcheryImg.src = '/hatchery.png';
+    hatcheryImg.onload = () => {
+      this.hatcheryImage = hatcheryImg;
+    };
+
+    // Load companion images
+    for (const def of COMPANION_DEFS) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = `/companions/${def.id}.png`;
+      img.onload = () => {
+        this.companionImages.set(def.id, img);
+      };
+    }
   }
 
   private createPlanets(goals?: GoalsData): Planet[] {
@@ -1231,6 +1299,8 @@ export class SpaceGame {
     onCollisionVoice?: () => void;
     onNomadDock?: () => void;
     onNomadApproach?: () => void;
+    onHatcheryDock?: () => void;
+    onHatcheryApproach?: () => void;
     onHornActivate?: () => void;
     onEmoteActivate?: () => void;
     onNomadBossVictory?: () => void;
@@ -1254,6 +1324,8 @@ export class SpaceGame {
     this.onCollisionVoice = callbacks.onCollisionVoice || null;
     this.onNomadDock = callbacks.onNomadDock || null;
     this.onNomadApproach = callbacks.onNomadApproach || null;
+    this.onHatcheryDock = callbacks.onHatcheryDock || null;
+    this.onHatcheryApproach = callbacks.onHatcheryApproach || null;
     this.onHornActivate = callbacks.onHornActivate || null;
     this.onEmoteActivate = callbacks.onEmoteActivate || null;
     this.onNomadBossVictory = callbacks.onNomadBossVictory || null;
@@ -1289,6 +1361,10 @@ export class SpaceGame {
     this.onWeaponFire = callback;
   }
 
+  public setNukeCompleteCallback(callback: (() => void) | null) {
+    this.onNukeComplete = callback;
+  }
+
   public setPlanetDestroyBroadcastCallback(callback: ((planetId: string, fromRifle: boolean) => void) | null) {
     this.onPlanetDestroyBroadcast = callback;
   }
@@ -1306,6 +1382,7 @@ export class SpaceGame {
     this.landedPlanet = null;
     this.landedPanelBounds = null;
     this.landedOnNomad = false;
+    this.landedOnHatchery = false;
   }
 
   public setSuppressLandedPanel(suppress: boolean): void {
@@ -1435,7 +1512,6 @@ export class SpaceGame {
 
   public upgradeShip() {
     this.shipLevel = Math.min(10, this.shipLevel + 1);
-    this.updateEscortDrones();
   }
 
   public updateShipImage(imageUrl: string, newUpgradeCount?: number) {
@@ -1451,7 +1527,6 @@ export class SpaceGame {
     } else {
       this.shipLevel += 1;
     }
-    this.updateEscortDrones();
   }
 
   public updateShipEffects(effects: ShipEffects) {
@@ -1629,6 +1704,14 @@ export class SpaceGame {
     if (this.isPortalTeleporting) {
       this.updatePortalAnimation();
       this.updateCamera();
+      this.updateParticles();
+      return;
+    }
+
+    // Handle nuclear bomb cinematic (blocks all other input)
+    if (this.nukeCinematic) {
+      this.updateNuclearBomb();
+      this.updateNukeCinematicCamera();
       this.updateParticles();
       return;
     }
@@ -1867,8 +1950,10 @@ export class SpaceGame {
     }
 
     // All weapons fire with X key (only one weapon can be equipped at a time)
-    if (this.keys.has('x') && !this.shipBeingSucked) {
-      if (this.shipEffects.spaceRifleEquipped) {
+    if (this.keys.has('x') && !this.shipBeingSucked && !this.nukeCinematic) {
+      if (this.shipEffects.nuclearBombEquipped) {
+        this.fireNuclearBomb();
+      } else if (this.shipEffects.spaceRifleEquipped) {
         this.fireProjectile();
       } else if (this.shipEffects.plasmaCanonEquipped) {
         this.firePlasma();
@@ -1915,7 +2000,7 @@ export class SpaceGame {
     this.updateCamera();
     this.updateParticles();
     this.updateUpgradeSatellites();
-    this.updateDronePositions();
+    this.updateCompanionPositions();
     this.updateOtherPlayersInterpolation();
     this.updateOtherPlayersParticles();
     this.updateZoneTitle();
@@ -1924,6 +2009,7 @@ export class SpaceGame {
     this.updatePassiveAchievements();
     this.updateSpaceWhale();
     this.updateNeonNomad();
+    this.updateHatchery();
     if (this.konamiEffectTimer > 0) {
       this.konamiEffectTimer -= this.dt;
       if (this.konamiEffectTimer <= 0) {
@@ -2231,6 +2317,10 @@ export class SpaceGame {
           // If landing on nomad merchant, set flag so ship follows it
           if (this.landingPlanet.id === '__nomad__') {
             this.landedOnNomad = true;
+          }
+          // If landing on hatchery, set flag so ship follows it
+          if (this.landingPlanet.id === '__hatchery__') {
+            this.landedOnHatchery = true;
           }
 
           // Call onLand callback if set
@@ -4555,6 +4645,9 @@ export class SpaceGame {
     } else if (this.shipEffects.rocketLauncherEquipped && this.rocketLauncherImage) {
       weaponImage = this.rocketLauncherImage;
       glowColor = '#ff4444'; // Red for rockets
+    } else if (this.shipEffects.nuclearBombEquipped && this.nukeButtonImage) {
+      weaponImage = this.nukeButtonImage;
+      glowColor = '#ff6600'; // Orange for nuke
     }
 
     if (weaponImage) {
@@ -4630,6 +4723,9 @@ export class SpaceGame {
     } else if (player.shipEffects?.rocketLauncherEquipped && this.rocketLauncherImage) {
       weaponImage = this.rocketLauncherImage;
       glowColor = '#ff4444';
+    } else if (player.shipEffects?.nuclearBombEquipped && this.nukeButtonImage) {
+      weaponImage = this.nukeButtonImage;
+      glowColor = '#ff6600';
     }
 
     if (weaponImage) {
@@ -4697,7 +4793,7 @@ export class SpaceGame {
 
     // Plasma burst particles
     this.emitPlasmaBurst(ship.x, ship.y, ship.rotation);
-    soundManager.playCollision(); // Placeholder sound
+    soundManager.playPlasmaFire();
   }
 
   // Update plasma projectiles
@@ -4852,17 +4948,22 @@ export class SpaceGame {
     this.lastRocketTime = now;
     const { ship } = this.state;
 
-    // Find nearest damageable planet as target
+    // During boss fight, always target the Nomad
+    const targetingNomad = !!(this.nomadFight?.active);
+
+    // Find nearest damageable planet as target (only when not in boss fight)
     let nearestTarget: Planet | null = null;
-    let nearestDist = Infinity;
-    for (const planet of this.state.planets) {
-      if (!this.canDamagePlanet(planet)) continue;
-      const dx = planet.x - ship.x;
-      const dy = planet.y - ship.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < nearestDist && dist < this.ROCKET_RANGE * 1.5) {
-        nearestDist = dist;
-        nearestTarget = planet;
+    if (!targetingNomad) {
+      let nearestDist = Infinity;
+      for (const planet of this.state.planets) {
+        if (!this.canDamagePlanet(planet)) continue;
+        const dx = planet.x - ship.x;
+        const dy = planet.y - ship.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < nearestDist && dist < this.ROCKET_RANGE * 1.5) {
+          nearestDist = dist;
+          nearestTarget = planet;
+        }
       }
     }
 
@@ -4871,7 +4972,7 @@ export class SpaceGame {
     const ry = ship.y + Math.sin(ship.rotation) * spawnDist;
     const rvx = Math.cos(ship.rotation) * this.ROCKET_SPEED + ship.vx * 0.3;
     const rvy = Math.sin(ship.rotation) * this.ROCKET_SPEED + ship.vy * 0.3;
-    const targetId = nearestTarget?.id || null;
+    const targetId = targetingNomad ? null : (nearestTarget?.id || null);
 
     this.rockets.push({
       x: rx,
@@ -4883,6 +4984,7 @@ export class SpaceGame {
       damage: this.ROCKET_DAMAGE,
       rotation: ship.rotation,
       targetPlanetId: targetId,
+      targetNomad: targetingNomad,
     });
 
     // Broadcast to other players
@@ -4890,7 +4992,7 @@ export class SpaceGame {
 
     // Rocket launch particles
     this.emitRocketSmoke(ship.x, ship.y, ship.rotation);
-    soundManager.playCollision(); // Placeholder sound
+    soundManager.playRocketFire();
   }
 
   // Update rockets with homing behavior
@@ -4898,22 +5000,34 @@ export class SpaceGame {
     for (let i = this.rockets.length - 1; i >= 0; i--) {
       const r = this.rockets[i];
 
-      // Homing logic - turn towards target
-      if (r.targetPlanetId) {
+      // Homing logic - turn towards target (Nomad priority during boss fight)
+      if (r.targetNomad && this.nomadFight?.active) {
+        const dx = this.neonNomad.x - r.x;
+        const dy = this.neonNomad.y - r.y;
+        const targetAngle = Math.atan2(dy, dx);
+
+        let angleDiff = targetAngle - r.rotation;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+        r.rotation += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.ROCKET_TURN_SPEED * this.dt);
+      } else if (r.targetNomad && !this.nomadFight?.active) {
+        // Boss fight ended, stop homing
+        r.targetNomad = false;
+      } else if (r.targetPlanetId) {
         const target = this.state.planets.find(p => p.id === r.targetPlanetId);
         if (target && this.canDamagePlanet(target)) {
           const dx = target.x - r.x;
           const dy = target.y - r.y;
           const targetAngle = Math.atan2(dy, dx);
 
-          // Calculate angle difference and turn
           let angleDiff = targetAngle - r.rotation;
           while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
           while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
           r.rotation += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), this.ROCKET_TURN_SPEED * this.dt);
         } else {
-          r.targetPlanetId = null; // Target destroyed or invalid
+          r.targetPlanetId = null;
         }
       }
 
@@ -5076,6 +5190,456 @@ export class SpaceGame {
   }
 
   // ==================== END ROCKET LAUNCHER SYSTEM ====================
+
+  // ==================== NUCLEAR BOMB SYSTEM ====================
+
+  private fireNuclearBomb() {
+    const now = Date.now();
+    if (now - this.lastNukeTime < this.NUKE_COOLDOWN) return;
+    if (this.nuclearBomb || this.nukeCinematic) return;
+
+    this.lastNukeTime = now;
+    const { ship } = this.state;
+
+    // Find player's home zone
+    const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
+    if (!playerZone) return;
+
+    const targetX = playerZone.centerX;
+    const targetY = playerZone.centerY;
+
+    // Generate scenic waypoints: ship → mid-space loop → home zone
+    const midX = (ship.x + targetX) / 2 + (Math.random() - 0.5) * 2000;
+    const midY = (ship.y + targetY) / 2 + (Math.random() - 0.5) * 2000;
+    const clampedMidX = Math.max(500, Math.min(9500, midX));
+    const clampedMidY = Math.max(500, Math.min(9500, midY));
+
+    const waypoints = [
+      { x: ship.x + Math.cos(ship.rotation) * 200, y: ship.y + Math.sin(ship.rotation) * 200 },
+      { x: clampedMidX, y: clampedMidY },
+      { x: targetX, y: targetY },
+    ];
+
+    // Start alarm phase — nuke stays on the ship, siren plays, red alarm light
+    this.nuclearBomb = {
+      x: ship.x,
+      y: ship.y,
+      vx: 0,
+      vy: 0,
+      rotation: ship.rotation,
+      phase: 'alarm',
+      phaseTimer: 0,
+      waypoints,
+      waypointIndex: 0,
+      detonationTimer: 0,
+      detonationRadius: 0,
+    };
+
+    this.nukeCinematic = true;
+    this.nukeCameraTarget = { x: ship.x, y: ship.y };
+    this.nukeAlarmTimer = 0;
+    this.nukeLaunchStartTime = Date.now();
+
+    // Play siren sound (nuke.mp3) during alarm phase
+    soundManager.playNukeLaunch();
+  }
+
+  private updateNuclearBomb() {
+    if (!this.nuclearBomb) return;
+    const nuke = this.nuclearBomb;
+
+    // Stop nuke.mp3 after 11 seconds max
+    if (this.nukeLaunchStartTime > 0 && Date.now() - this.nukeLaunchStartTime >= 11000) {
+      soundManager.stopNukeLaunch();
+      this.nukeLaunchStartTime = 0;
+    }
+
+    if (nuke.phase === 'alarm') {
+      // Alarm phase: red light pulses around ship for 5 seconds, siren plays
+      this.nukeAlarmTimer += this.dt;
+      const { ship } = this.state;
+
+      // Keep nuke position on ship during alarm
+      nuke.x = ship.x;
+      nuke.y = ship.y;
+      nuke.rotation = ship.rotation;
+      this.nukeCameraTarget = { x: ship.x, y: ship.y };
+
+      // Transition to flight after alarm duration
+      if (this.nukeAlarmTimer >= this.NUKE_ALARM_DURATION) {
+        nuke.phase = 'flight';
+        const spawnDist = 30;
+        nuke.x = ship.x + Math.cos(ship.rotation) * spawnDist;
+        nuke.y = ship.y + Math.sin(ship.rotation) * spawnDist;
+        nuke.vx = Math.cos(ship.rotation) * this.NUKE_SPEED;
+        nuke.vy = Math.sin(ship.rotation) * this.NUKE_SPEED;
+        this.screenShake = { intensity: 15, timer: 20 };
+
+        // Play flying sound as missile leaves the ship
+        soundManager.playNukeFlying();
+      }
+
+    } else if (nuke.phase === 'flight') {
+      // Waypoint homing: smoothly rotate toward current waypoint and fly at NUKE_SPEED
+      const wp = nuke.waypoints[nuke.waypointIndex];
+      if (wp) {
+        const dx = wp.x - nuke.x;
+        const dy = wp.y - nuke.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const targetAngle = Math.atan2(dy, dx);
+
+        // Smooth rotation toward waypoint
+        let angleDiff = targetAngle - nuke.rotation;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        const turnSpeed = 0.04;
+        nuke.rotation += angleDiff * turnSpeed * this.dt;
+
+        // Update velocity based on current rotation
+        nuke.vx = Math.cos(nuke.rotation) * this.NUKE_SPEED;
+        nuke.vy = Math.sin(nuke.rotation) * this.NUKE_SPEED;
+
+        // Move
+        nuke.x += nuke.vx * this.dt;
+        nuke.y += nuke.vy * this.dt;
+
+        // Advance to next waypoint when close enough
+        if (dist < 100) {
+          nuke.waypointIndex++;
+        }
+      }
+
+      // Update camera target
+      this.nukeCameraTarget = { x: nuke.x, y: nuke.y };
+
+      // Emit trail particles
+      if (Math.random() < 0.7) {
+        const trailColors = ['#ff6600', '#ff4400', '#ffaa00', '#ff0000'];
+        this.state.particles.push({
+          x: nuke.x - Math.cos(nuke.rotation) * 15,
+          y: nuke.y - Math.sin(nuke.rotation) * 15,
+          vx: (Math.random() - 0.5) * 3 - Math.cos(nuke.rotation) * 2,
+          vy: (Math.random() - 0.5) * 3 - Math.sin(nuke.rotation) * 2,
+          life: 20 + Math.random() * 15,
+          maxLife: 35,
+          size: Math.random() * 5 + 3,
+          color: trailColors[Math.floor(Math.random() * trailColors.length)],
+        });
+      }
+
+      // Detonate when all waypoints reached
+      if (nuke.waypointIndex >= nuke.waypoints.length) {
+        nuke.phase = 'detonation';
+        nuke.detonationTimer = 0;
+
+        const playerZone = ZONES.find(z => z.ownerId === this.currentUser);
+        const detX = playerZone ? playerZone.centerX : nuke.x;
+        const detY = playerZone ? playerZone.centerY : nuke.y;
+
+        const detonationParticles: { x: number; y: number; vx: number; vy: number; life: number; maxLife: number; color: string; size: number }[] = [];
+        const detonationColors = ['#ff6600', '#ff4400', '#ffaa00', '#ff0000', '#ffffff', '#ffcc00', '#ff8800'];
+        for (let i = 0; i < 150; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 12 + 3;
+          const life = 60 + Math.random() * 100;
+          detonationParticles.push({
+            x: detX, y: detY,
+            vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+            life, maxLife: life,
+            color: detonationColors[Math.floor(Math.random() * detonationColors.length)],
+            size: Math.random() * 8 + 2,
+          });
+        }
+
+        this.nukeDetonation = {
+          x: detX, y: detY, progress: 0,
+          maxDuration: this.NUKE_DETONATION_DURATION,
+          shockwaveRadius: 0, flashAlpha: 0.8,
+          particles: detonationParticles,
+        };
+
+        this.nukeCameraTarget = { x: detX, y: detY };
+        this.screenShake = { intensity: 40, timer: 60 };
+
+        // Stop flying sound, play explosion
+        soundManager.stopNukeFlying();
+        soundManager.playNukeExplosion();
+      }
+
+    } else if (nuke.phase === 'detonation') {
+      nuke.detonationTimer += this.dt;
+
+      if (this.nukeDetonation) {
+        const det = this.nukeDetonation;
+        det.progress = nuke.detonationTimer / det.maxDuration;
+
+        // Expanding shockwave
+        det.shockwaveRadius = det.progress * 1500;
+
+        // Flash fades out
+        det.flashAlpha = Math.max(0, 0.8 * (1 - det.progress));
+
+        // Update detonation particles
+        for (let i = det.particles.length - 1; i >= 0; i--) {
+          const p = det.particles[i];
+          p.x += p.vx * this.dt;
+          p.y += p.vy * this.dt;
+          p.life -= this.dt;
+          p.vx *= Math.pow(0.98, this.dt);
+          p.vy *= Math.pow(0.98, this.dt);
+          if (p.life <= 0) {
+            det.particles.splice(i, 1);
+          }
+        }
+
+        // Continuous screen shake during detonation (decreasing)
+        if (det.progress < 0.7) {
+          this.screenShake = { intensity: 30 * (1 - det.progress), timer: 5 };
+        }
+      }
+
+      // End detonation
+      if (nuke.detonationTimer >= this.NUKE_DETONATION_DURATION) {
+        this.endNukeCinematic();
+      }
+    }
+  }
+
+  private updateNukeCinematicCamera() {
+    if (!this.nukeCameraTarget) return;
+    const { camera } = this.state;
+
+    const targetCamX = this.nukeCameraTarget.x - this.canvas.width / 2;
+    const targetCamY = this.nukeCameraTarget.y - this.canvas.height / 2;
+    const camLerp = 1 - Math.pow(1 - 0.04, this.dt);
+    camera.x += (targetCamX - camera.x) * camLerp;
+    camera.y += (targetCamY - camera.y) * camLerp;
+
+    // Screen shake
+    if (this.screenShake.timer > 0) {
+      this.screenShake.timer -= this.dt;
+      const shakeProgress = this.screenShake.timer / 30;
+      const magnitude = this.screenShake.intensity * shakeProgress;
+      camera.x += (Math.random() - 0.5) * magnitude;
+      camera.y += (Math.random() - 0.5) * magnitude;
+    }
+  }
+
+  private endNukeCinematic() {
+    this.nuclearBomb = null;
+    this.nukeDetonation = null;
+    this.nukeCinematic = false;
+    this.nukeCameraTarget = null;
+    this.nukeAlarmTimer = 0;
+    this.nukeLaunchStartTime = 0;
+    soundManager.stopNukeLaunch();
+    soundManager.stopNukeFlying();
+    this.onNukeComplete?.();
+  }
+
+  private renderNukeAlarm() {
+    if (!this.nuclearBomb || this.nuclearBomb.phase !== 'alarm') return;
+    const { ctx } = this;
+    const camera = this.state.camera;
+    const { ship } = this.state;
+
+    const x = ship.x - camera.x;
+    const y = ship.y - camera.y;
+
+    // Pulsing red alarm light — bounces in and out
+    const progress = this.nukeAlarmTimer / this.NUKE_ALARM_DURATION;
+    const pulse = Math.abs(Math.sin(progress * Math.PI * 8)); // fast bouncing pulse
+    const maxRadius = 200;
+    const radius = maxRadius * (0.4 + pulse * 0.6);
+
+    ctx.save();
+
+    // Outer red glow
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, `rgba(255, 0, 0, ${0.3 * pulse})`);
+    gradient.addColorStop(0.5, `rgba(255, 30, 0, ${0.15 * pulse})`);
+    gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner bright core
+    const innerGradient = ctx.createRadialGradient(x, y, 0, x, y, 40);
+    innerGradient.addColorStop(0, `rgba(255, 50, 0, ${0.6 * pulse})`);
+    innerGradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+    ctx.fillStyle = innerGradient;
+    ctx.beginPath();
+    ctx.arc(x, y, 40, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pulsing ring
+    ctx.strokeStyle = `rgba(255, 0, 0, ${0.5 * pulse})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 0.8, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  private renderNuclearBomb() {
+    if (!this.nuclearBomb || this.nuclearBomb.phase !== 'flight') return;
+    const { ctx } = this;
+    const camera = this.state.camera;
+    const nuke = this.nuclearBomb;
+
+    const x = nuke.x - camera.x;
+    const y = nuke.y - camera.y;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(nuke.rotation);
+
+    // Pulsing outer glow
+    const pulsePhase = Math.sin(Date.now() * 0.005) * 0.3 + 0.7;
+    ctx.shadowBlur = 30 * pulsePhase;
+    ctx.shadowColor = '#ff4400';
+
+    if (this.nukeWarheadImage) {
+      // Draw the warhead image (pointing right at rotation=0)
+      const imgW = 60;
+      const imgH = 30;
+      ctx.drawImage(this.nukeWarheadImage, -imgW / 2, -imgH / 2, imgW, imgH);
+    } else {
+      // Fallback: procedural missile
+      ctx.fillStyle = '#444444';
+      ctx.beginPath();
+      ctx.moveTo(20, 0);
+      ctx.lineTo(-12, -7);
+      ctx.lineTo(-12, 7);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#ffaa00';
+      ctx.beginPath();
+      ctx.moveTo(20, 0);
+      ctx.lineTo(12, -4);
+      ctx.lineTo(12, 4);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#ff4400';
+      ctx.fillRect(-2, -5, 4, 10);
+
+      ctx.fillStyle = '#666666';
+      ctx.beginPath();
+      ctx.moveTo(-12, -7);
+      ctx.lineTo(-18, -12);
+      ctx.lineTo(-12, -4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-12, 7);
+      ctx.lineTo(-18, 12);
+      ctx.lineTo(-12, 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Animated thruster flame (always rendered on top)
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = '#ff6600';
+    const flameSize = 7 + Math.sin(Date.now() * 0.02) * 4;
+    const flameX = this.nukeWarheadImage ? -34 : -15;
+    ctx.fillStyle = '#ff8800';
+    ctx.beginPath();
+    ctx.arc(flameX, 0, flameSize, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffcc00';
+    ctx.beginPath();
+    ctx.arc(flameX + 1, 0, flameSize * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Secondary flickering flame
+    const flame2Size = 4 + Math.sin(Date.now() * 0.035) * 2.5;
+    ctx.fillStyle = '#ff4400';
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.arc(flameX - flameSize * 0.8, (Math.sin(Date.now() * 0.03)) * 3, flame2Size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  private renderNukeDetonation() {
+    if (!this.nukeDetonation) return;
+    const { ctx, canvas } = this;
+    const camera = this.state.camera;
+    const det = this.nukeDetonation;
+
+    const cx = det.x - camera.x;
+    const cy = det.y - camera.y;
+
+    // Expanding shockwave ring
+    if (det.shockwaveRadius > 0) {
+      ctx.save();
+      const ringAlpha = Math.max(0, 1 - det.progress * 1.2);
+
+      // Outer shockwave ring
+      ctx.strokeStyle = `rgba(255, 140, 0, ${ringAlpha * 0.8})`;
+      ctx.lineWidth = 4 + (1 - det.progress) * 8;
+      ctx.shadowBlur = 30;
+      ctx.shadowColor = '#ff6600';
+      ctx.beginPath();
+      ctx.arc(cx, cy, det.shockwaveRadius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Inner shockwave ring
+      ctx.strokeStyle = `rgba(255, 255, 200, ${ringAlpha * 0.5})`;
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#ffaa00';
+      ctx.beginPath();
+      ctx.arc(cx, cy, det.shockwaveRadius * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Core glow
+      if (det.progress < 0.4) {
+        const coreAlpha = (0.4 - det.progress) * 2.5;
+        const coreRadius = 50 + det.progress * 200;
+        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, coreRadius);
+        gradient.addColorStop(0, `rgba(255, 255, 200, ${coreAlpha})`);
+        gradient.addColorStop(0.3, `rgba(255, 140, 0, ${coreAlpha * 0.6})`);
+        gradient.addColorStop(1, 'rgba(255, 60, 0, 0)');
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+      ctx.shadowBlur = 0;
+    }
+
+    // Render detonation particles
+    for (const p of det.particles) {
+      const px = p.x - camera.x;
+      const py = p.y - camera.y;
+      const alpha = p.life / p.maxLife;
+      ctx.beginPath();
+      ctx.arc(px, py, p.size * alpha, 0, Math.PI * 2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Screen flash overlay
+    if (det.flashAlpha > 0) {
+      ctx.fillStyle = `rgba(255, 200, 100, ${det.flashAlpha * 0.3})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
+  // ==================== END NUCLEAR BOMB SYSTEM ====================
 
   // Start destroy animation (for cleaning up completed planets)
   public startDestroyAnimation(planet: Planet, fromRifle: boolean = false) {
@@ -6034,290 +6598,318 @@ export class SpaceGame {
     }
   }
 
-  // Update escort drones based on current ship level
-  private updateEscortDrones() {
-    const droneCount = Math.floor(this.shipLevel / this.DRONE_UNLOCK_INTERVAL);
-
-    // If we have the right number already, just return
-    if (this.escortDrones.length === droneCount) return;
-
-    // Preserve existing drones' images
-    const existingImages = new Map<number, string>();
-    for (const drone of this.escortDrones) {
-      if (drone.imageUrl) {
-        existingImages.set(drone.id, drone.imageUrl);
-      }
+  // Set equipped companions from App.tsx (rebuilds companion instances)
+  public setEquippedCompanions(types: string[]) {
+    const { ship } = this.state;
+    // Preserve existing companion instances that are still equipped
+    const existing = new Map<string, Companion>();
+    for (const c of this.companions) {
+      existing.set(c.type, c);
     }
-
-    // Build new drone array
-    this.escortDrones = [];
-
-    // Drone colors - each drone gets a unique color
-    const droneColors = [
-      { color: '#00ffff', glow: '#00ccff' },  // Cyan
-      { color: '#ff6b9d', glow: '#ff4488' },  // Pink
-      { color: '#98fb98', glow: '#66dd66' },  // Green
-      { color: '#ffa500', glow: '#ff8800' },  // Orange
-      { color: '#bf7fff', glow: '#9966ff' },  // Purple
-      { color: '#ffff00', glow: '#cccc00' },  // Yellow
-    ];
-
-    // Formation offsets - drones trail behind in a single file line
-    const formationOffsets = [
-      { x: 0, y: 55 },    // First drone - directly behind
-      { x: 0, y: 95 },    // Second drone - behind first
-      { x: 0, y: 135 },   // Third drone - behind second
-      { x: 0, y: 175 },   // Fourth drone - behind third
-      { x: 0, y: 215 },   // Fifth drone - behind fourth
-      { x: 0, y: 255 },   // Sixth drone - behind fifth
-    ];
-
-    for (let i = 0; i < droneCount; i++) {
-      const colorSet = droneColors[i % droneColors.length];
-      const offset = formationOffsets[i % formationOffsets.length];
-      const skinUrl = SpaceGame.DRONE_SKINS[i % SpaceGame.DRONE_SKINS.length];
-
-      this.escortDrones.push({
-        id: i,
-        size: 10,
-        color: colorSet.color,
-        glowColor: colorSet.glow,
-        worldX: this.state.ship.x + offset.x,
-        worldY: this.state.ship.y + offset.y,
-        prevWorldX: this.state.ship.x + offset.x,
-        prevWorldY: this.state.ship.y + offset.y,
+    this.companions = types.map(type => {
+      const prev = existing.get(type);
+      if (prev) return prev;
+      return {
+        type,
+        worldX: ship.x + (Math.random() - 0.5) * 60,
+        worldY: ship.y + (Math.random() - 0.5) * 60,
+        prevWorldX: ship.x,
+        prevWorldY: ship.y,
         vx: 0,
         vy: 0,
-        offsetX: offset.x,
-        offsetY: offset.y,
         wobble: Math.random() * Math.PI * 2,
-        wobbleSpeed: 0.03 + Math.random() * 0.02,
-        imageUrl: skinUrl,
-      });
-
-      // Auto-load the pre-generated skin if not already loaded
-      if (!this.droneImages.has(i)) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.src = skinUrl;
-        img.onload = () => {
-          this.droneImages.set(i, img);
-        };
-      }
-    }
-  }
-
-  // Update drone positions (called each frame)
-  // Each drone follows the one in front of it, creating a chain/snake effect
-  // Drones further back are more elastic/laggy for organic movement
-  private updateDronePositions() {
-    const { ship } = this.state;
-
-    for (let i = 0; i < this.escortDrones.length; i++) {
-      const drone = this.escortDrones[i];
-
-      // Update wobble
-      drone.wobble += drone.wobbleSpeed * this.dt;
-
-      let targetX: number;
-      let targetY: number;
-
-      if (i === 0) {
-        // First drone follows the ship directly
-        const backAngle = ship.rotation + Math.PI;
-        const followDistance = 50;
-        targetX = ship.x + Math.cos(backAngle) * followDistance;
-        targetY = ship.y + Math.sin(backAngle) * followDistance;
-      } else {
-        // Other drones follow the drone in front of them
-        const leader = this.escortDrones[i - 1];
-        const dx = drone.worldX - leader.worldX;
-        const dy = drone.worldY - leader.worldY;
-        const angleToLeader = Math.atan2(dy, dx);
-        const followDistance = 32; // Distance between drones in the chain
-        targetX = leader.worldX + Math.cos(angleToLeader) * followDistance;
-        targetY = leader.worldY + Math.sin(angleToLeader) * followDistance;
-      }
-
-      // Add small wobble for organic movement
-      const wobbleX = Math.sin(drone.wobble) * 2;
-      const wobbleY = Math.cos(drone.wobble * 1.3) * 2;
-      targetX += wobbleX;
-      targetY += wobbleY;
-
-      // Store previous position
-      drone.prevWorldX = drone.worldX;
-      drone.prevWorldY = drone.worldY;
-
-      // Calculate distance to target
-      const dx = targetX - drone.worldX;
-      const dy = targetY - drone.worldY;
-
-      // Elasticity increases for drones further back in the chain
-      // First drone is snappy, later drones are increasingly laggy/elastic
-      const elasticityFactor = 1 + (i * 0.5); // 1.0, 1.5, 2.0, 2.5, 3.0, 3.5
-      const baseSpringK = 0.1;
-      const baseDamping = 0.8;
-
-      // Softer spring for drones further back = more elastic/laggy
-      const springK = baseSpringK / elasticityFactor;
-      // Slightly more damping further back for smoother motion
-      const damping = Math.min(baseDamping + (i * 0.025), 0.92);
-
-      // Apply spring force
-      drone.vx += dx * springK * this.dt;
-      drone.vy += dy * springK * this.dt;
-
-      // Apply damping
-      drone.vx *= Math.pow(damping, this.dt);
-      drone.vy *= Math.pow(damping, this.dt);
-
-      // Update position
-      drone.worldX += drone.vx * this.dt;
-      drone.worldY += drone.vy * this.dt;
-
-      // Emit trail particles
-      this.emitDroneTrailParticles(drone);
-    }
-  }
-
-  // Render escort drones (following pets)
-  private renderEscortDrones() {
-    const { ctx, state } = this;
-    const { camera } = state;
-
-    if (this.escortDrones.length === 0 || this.shipBeingSucked) return;
-
-    for (const drone of this.escortDrones) {
-      // Convert world position to screen position
-      const screenX = drone.worldX - camera.x;
-      const screenY = drone.worldY - camera.y;
-
-      // Calculate rotation based on velocity (face direction of movement)
-      let rotation = Math.atan2(drone.vy, drone.vx) + Math.PI / 2;
-      // If barely moving, face same direction as ship
-      if (Math.abs(drone.vx) < 0.5 && Math.abs(drone.vy) < 0.5) {
-        rotation = state.ship.rotation;
-      }
-
-      ctx.save();
-      ctx.translate(screenX, screenY);
-      ctx.rotate(rotation);
-
-      // Glow effect
-      ctx.shadowColor = drone.glowColor;
-      ctx.shadowBlur = 15;
-
-      // Check if we have an image for this drone
-      const droneImage = this.droneImages.get(drone.id);
-
-      if (droneImage) {
-        // Draw drone image
-        const imgSize = drone.size * 3.5;
-        ctx.drawImage(droneImage, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
-
-        // Add glow overlay
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.4;
-        ctx.drawImage(droneImage, -imgSize / 2, -imgSize / 2, imgSize, imgSize);
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-      } else {
-        // Fallback: Drone body - small diamond/arrow shape
-        const s = drone.size;
-        ctx.beginPath();
-        ctx.moveTo(0, -s * 1.2);      // Nose
-        ctx.lineTo(s * 0.7, s * 0.5); // Right wing
-        ctx.lineTo(0, s * 0.2);       // Back center
-        ctx.lineTo(-s * 0.7, s * 0.5);// Left wing
-        ctx.closePath();
-
-        // Fill with gradient
-        const bodyGrad = ctx.createLinearGradient(0, -s, 0, s);
-        bodyGrad.addColorStop(0, drone.color);
-        bodyGrad.addColorStop(1, '#333333');
-        ctx.fillStyle = bodyGrad;
-        ctx.fill();
-
-        // Outline
-        ctx.strokeStyle = drone.color;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // Cockpit light
-        ctx.beginPath();
-        ctx.arc(0, -s * 0.3, s * 0.3, 0, Math.PI * 2);
-        ctx.fillStyle = drone.color;
-        ctx.fill();
-      }
-
-      // Engine glow at back (always show)
-      const s = drone.size;
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.arc(0, s * 0.5, s * 0.35, 0, Math.PI * 2);
-      const engineGrad = ctx.createRadialGradient(0, s * 0.5, 0, 0, s * 0.5, s * 0.5);
-      engineGrad.addColorStop(0, drone.color);
-      engineGrad.addColorStop(0.6, drone.glowColor + '88');
-      engineGrad.addColorStop(1, 'transparent');
-      ctx.fillStyle = engineGrad;
-      ctx.fill();
-
-      ctx.restore();
-    }
-  }
-
-  // Emit trail particles for a drone
-  private emitDroneTrailParticles(drone: EscortDrone) {
-    // Emit based on movement speed
-    const speed = Math.sqrt(drone.vx * drone.vx + drone.vy * drone.vy);
-    if (speed < 0.5) return; // Don't emit if barely moving
-    if (Math.random() > 0.5) return; // 50% chance to emit
-
-    // Trail comes from behind the drone
-    const moveAngle = Math.atan2(drone.vy, drone.vx);
-    const backAngle = moveAngle + Math.PI;
-    const spread = (Math.random() - 0.5) * 0.5;
-    const particleSpeed = Math.random() * 1.5 + 0.5;
-
-    // Use drone colors for trail
-    const colors = [drone.color, drone.glowColor, '#ffffff'];
-
-    this.state.particles.push({
-      x: drone.worldX + Math.cos(backAngle) * 8,
-      y: drone.worldY + Math.sin(backAngle) * 8,
-      vx: Math.cos(backAngle + spread) * particleSpeed - drone.vx * 0.2,
-      vy: Math.sin(backAngle + spread) * particleSpeed - drone.vy * 0.2,
-      life: 18 + Math.random() * 12,
-      maxLife: 30,
-      size: Math.random() * 4 + 2,
-      color: colors[Math.floor(Math.random() * colors.length)],
+        angle: Math.random() * Math.PI * 2,
+        timer: 0,
+        stateFlag: 0,
+        idleWanderTarget: null,
+        alpha: 1,
+      };
     });
   }
 
-  // Set drone image from URL
-  public setDroneImage(droneId: number, imageUrl: string) {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = imageUrl;
-    img.onload = () => {
-      this.droneImages.set(droneId, img);
-      // Update the drone's imageUrl
-      const drone = this.escortDrones.find(d => d.id === droneId);
-      if (drone) {
-        drone.imageUrl = imageUrl;
+  // Get idle wander offset for a companion based on its type
+  // Called only when ship is stationary so each type has a unique idle personality
+  private getCompanionIdleOffset(c: Companion): { ox: number; oy: number } {
+    switch (c.type) {
+      case 'spark': {
+        // Zigzag firefly — picks random offset every 20-40 frames
+        c.timer += this.dt;
+        if (c.timer > 20 + c.stateFlag * 20) {
+          c.timer = 0;
+          c.stateFlag = Math.random();
+          c.idleWanderTarget = { x: (Math.random() - 0.5) * 50, y: (Math.random() - 0.5) * 50 };
+        }
+        const w = c.idleWanderTarget;
+        return w ? { ox: w.x, oy: w.y } : { ox: 0, oy: 0 };
       }
-    };
+      case 'nibbles': {
+        // Frantic tiny circles
+        c.angle += 0.15 * this.dt;
+        return { ox: Math.cos(c.angle) * 18, oy: Math.sin(c.angle) * 18 };
+      }
+      case 'astro_frog': {
+        // Discrete hops with pauses
+        c.timer += this.dt;
+        if (c.timer > 45) {
+          c.timer = 0;
+          c.idleWanderTarget = { x: (Math.random() - 0.5) * 60, y: (Math.random() - 0.5) * 60 };
+        }
+        if (c.timer < 10 && c.idleWanderTarget) return { ox: c.idleWanderTarget.x, oy: c.idleWanderTarget.y };
+        return { ox: 0, oy: 0 };
+      }
+      case 'void_kitten': {
+        // Alpha flickers, stays very close
+        c.alpha = 0.4 + 0.6 * Math.abs(Math.sin(Date.now() * 0.008 + c.wobble * 10));
+        return { ox: Math.sin(c.wobble) * 8, oy: Math.cos(c.wobble * 1.3) * 8 };
+      }
+      case 'jellybloom': {
+        // Lazy sine-wave drift
+        c.wobble += 0.02 * this.dt;
+        return { ox: Math.sin(c.wobble) * 30, oy: Math.cos(c.wobble * 0.7) * 20 };
+      }
+      case 'frost_sprite': {
+        // Hover still, then dart to new position
+        c.timer += this.dt;
+        if (c.timer > 70) {
+          c.timer = 0;
+          c.idleWanderTarget = { x: (Math.random() - 0.5) * 80, y: (Math.random() - 0.5) * 80 };
+        }
+        const fw = c.idleWanderTarget;
+        return fw ? { ox: fw.x, oy: fw.y } : { ox: 0, oy: 0 };
+      }
+      case 'pixel_ghost': {
+        // Random drift, phases in/out
+        c.wobble += 0.015 * this.dt;
+        c.alpha = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(c.wobble * 3));
+        return { ox: Math.sin(c.wobble * 2.1) * 25, oy: Math.cos(c.wobble * 1.9) * 25 };
+      }
+      case 'comet_fox': {
+        // Fast tight orbit
+        c.angle += 0.12 * this.dt;
+        return { ox: Math.cos(c.angle) * 35, oy: Math.sin(c.angle) * 35 };
+      }
+      case 'crystal_bat': {
+        // Swoops out, snaps back
+        c.timer += this.dt;
+        const swoopCycle = c.timer % 80;
+        if (swoopCycle < 30) {
+          const swoopDist = 50 + 40 * (swoopCycle / 30);
+          return { ox: Math.cos(c.angle + c.timer * 0.05) * swoopDist, oy: Math.sin(c.angle + c.timer * 0.05) * swoopDist };
+        }
+        return { ox: 0, oy: 0 };
+      }
+      case 'flame_wisp': {
+        // Expanding spiral, ember particles
+        c.timer += this.dt;
+        const spiralR = 20 + (c.timer % 100) * 0.5;
+        c.angle += 0.08 * this.dt;
+        if (Math.random() < 0.3) {
+          this.state.particles.push({
+            x: c.worldX, y: c.worldY,
+            vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5 - 0.5,
+            life: 15 + Math.random() * 10, maxLife: 25,
+            size: Math.random() * 3 + 1,
+            color: Math.random() > 0.5 ? '#ff4422' : '#ff8844',
+          });
+        }
+        return { ox: Math.cos(c.angle) * spiralR, oy: Math.sin(c.angle) * spiralR };
+      }
+      case 'baby_black_hole': {
+        // Medium orbit
+        c.angle += 0.04 * this.dt;
+        return { ox: Math.cos(c.angle) * 50, oy: Math.sin(c.angle) * 50 };
+      }
+      case 'golden_scarab': {
+        // Slow dignified orbit, gold particles
+        c.angle += 0.025 * this.dt;
+        if (Math.random() < 0.25) {
+          this.state.particles.push({
+            x: c.worldX, y: c.worldY,
+            vx: (Math.random() - 0.5) * 0.8, vy: (Math.random() - 0.5) * 0.8,
+            life: 20 + Math.random() * 15, maxLife: 35,
+            size: Math.random() * 2.5 + 1,
+            color: Math.random() > 0.5 ? '#ffd700' : '#ffaa00',
+          });
+        }
+        return { ox: Math.cos(c.angle) * 45, oy: Math.sin(c.angle) * 45 };
+      }
+      default:
+        return { ox: 0, oy: 0 };
+    }
   }
 
-  // Get current escort drones (for external access)
-  public getEscortDrones(): EscortDrone[] {
-    return this.escortDrones;
+  // Update companion positions (called each frame)
+  // Chain-follow when ship is moving, idle personality when stationary.
+  // Each companion follows the one in front, with increasing elasticity further back.
+  private updateCompanionPositions() {
+    if (this.companions.length === 0 || this.shipBeingSucked) return;
+
+    const { ship } = this.state;
+    const shipSpeed = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy);
+    // 0 = fully idle, 1 = fully chaining
+    const moveBlend = Math.min(shipSpeed / 2.5, 1);
+
+    const total = this.companions.length;
+    for (let i = 0; i < total; i++) {
+      const c = this.companions[i];
+
+      // Update wobble (always ticking for organic feel)
+      c.wobble += (0.03 + i * 0.005) * this.dt;
+
+      // ── Chain target: follow ship (first) or previous companion ──
+      let chainX: number;
+      let chainY: number;
+      if (i === 0) {
+        const backAngle = ship.rotation + Math.PI;
+        const followDist = 50;
+        chainX = ship.x + Math.cos(backAngle) * followDist;
+        chainY = ship.y + Math.sin(backAngle) * followDist;
+      } else {
+        const leader = this.companions[i - 1];
+        const dx = c.worldX - leader.worldX;
+        const dy = c.worldY - leader.worldY;
+        const angleToLeader = Math.atan2(dy, dx);
+        const followDist = 32;
+        chainX = leader.worldX + Math.cos(angleToLeader) * followDist;
+        chainY = leader.worldY + Math.sin(angleToLeader) * followDist;
+      }
+
+      // ── Idle target: ship position + type-specific personality offset ──
+      // Always update idle behaviors (timers, angles) so they stay alive
+      const idleOffset = this.getCompanionIdleOffset(c);
+      const { ox, oy } = idleOffset;
+      // Spread idle companions around ship so they don't stack
+      const idleAngle = (Math.PI * 2 * i) / Math.max(total, 1) + c.wobble * 0.1;
+      const idleBaseDist = 60;
+      const idleX = ship.x + Math.cos(idleAngle) * idleBaseDist + ox;
+      const idleY = ship.y + Math.sin(idleAngle) * idleBaseDist + oy;
+
+      // ── Blend between chain and idle based on ship speed ──
+      const targetX = chainX * moveBlend + idleX * (1 - moveBlend);
+      const targetY = chainY * moveBlend + idleY * (1 - moveBlend);
+
+      // Add small wobble for organic movement
+      const wobbleX = Math.sin(c.wobble) * 2;
+      const wobbleY = Math.cos(c.wobble * 1.3) * 2;
+
+      // Store previous position
+      c.prevWorldX = c.worldX;
+      c.prevWorldY = c.worldY;
+
+      // Distance to target
+      const dx = (targetX + wobbleX) - c.worldX;
+      const dy = (targetY + wobbleY) - c.worldY;
+
+      // Increasing elasticity for companions further back in chain
+      // First companion is snappy, later ones are increasingly laggy/elastic
+      const elasticityFactor = 1 + (i * 0.6); // 1.0, 1.6, 2.2, 2.8, ...
+      const baseSpringK = 0.1;
+      const baseDamping = 0.8;
+
+      const springK = baseSpringK / elasticityFactor;
+      const damping = Math.min(baseDamping + (i * 0.03), 0.92);
+
+      c.vx += dx * springK * this.dt;
+      c.vy += dy * springK * this.dt;
+      c.vx *= Math.pow(damping, this.dt);
+      c.vy *= Math.pow(damping, this.dt);
+
+      c.worldX += c.vx * this.dt;
+      c.worldY += c.vy * this.dt;
+
+      // Emit trail particles based on speed
+      const cSpeed = Math.sqrt(c.vx * c.vx + c.vy * c.vy);
+      if (cSpeed > 0.5 && Math.random() > 0.6) {
+        const def = COMPANION_DEFS.find(d => d.id === c.type);
+        if (def) {
+          const moveAngle = Math.atan2(c.vy, c.vx) + Math.PI;
+          this.state.particles.push({
+            x: c.worldX + Math.cos(moveAngle) * 5,
+            y: c.worldY + Math.sin(moveAngle) * 5,
+            vx: Math.cos(moveAngle) * 0.8 - c.vx * 0.1,
+            vy: Math.sin(moveAngle) * 0.8 - c.vy * 0.1,
+            life: 12 + Math.random() * 8,
+            maxLife: 20,
+            size: Math.random() * 3 + 1,
+            color: def.color,
+          });
+        }
+      }
+    }
   }
 
-  // Calculate drone count for a given ship level
-  private getDroneCountForLevel(shipLevel: number): number {
-    return Math.floor(shipLevel / this.DRONE_UNLOCK_INTERVAL);
+  // Render companions as glowing orbs
+  private renderCompanions() {
+    const { ctx, state } = this;
+    const { camera } = state;
+
+    if (this.companions.length === 0 || this.shipBeingSucked) return;
+
+    for (const c of this.companions) {
+      const def = COMPANION_DEFS.find(d => d.id === c.type);
+      if (!def) continue;
+
+      const screenX = c.worldX - camera.x;
+      const screenY = c.worldY - camera.y;
+
+      // Off-screen check
+      if (screenX < -50 || screenX > this.canvas.width + 50 || screenY < -50 || screenY > this.canvas.height + 50) continue;
+
+      ctx.save();
+      ctx.globalAlpha = c.alpha;
+
+      const size = def.size;
+      const img = this.companionImages.get(c.type);
+
+      // Determine colors (Crystal Bat cycles hue)
+      let glowColor = def.glowColor;
+      if (c.type === 'crystal_bat') {
+        const hue = (Date.now() * 0.1 + c.wobble * 100) % 360;
+        glowColor = `hsl(${hue}, 80%, 50%)`;
+      }
+
+      if (img) {
+        // Render with image sprite
+        const renderSize = size * 4; // Images are larger than the orb radius
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 14;
+        ctx.drawImage(img, screenX - renderSize / 2, screenY - renderSize / 2, renderSize, renderSize);
+      } else {
+        // Fallback: glowing orb
+        let color = def.color;
+        if (c.type === 'crystal_bat') {
+          const hue = (Date.now() * 0.1 + c.wobble * 100) % 360;
+          color = `hsl(${hue}, 90%, 70%)`;
+        }
+
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 12;
+
+        if (c.type === 'baby_black_hole') {
+          const grad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, size);
+          grad.addColorStop(0, '#111122');
+          grad.addColorStop(0.5, '#333355');
+          grad.addColorStop(0.8, 'rgba(255, 255, 255, 0.6)');
+          grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          const grad = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, size);
+          grad.addColorStop(0, '#ffffff');
+          grad.addColorStop(0.3, color);
+          grad.addColorStop(0.7, glowColor + 'aa');
+          grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+    }
   }
 
   private emitThrustParticles(isBoosting: boolean = false) {
@@ -6460,6 +7052,9 @@ export class SpaceGame {
     // Draw Neon Nomad (roaming merchant, behind planets)
     this.renderNeonNomad();
 
+    // Draw The Hatchery (companion merchant, behind planets)
+    this.renderHatchery();
+
     // Draw shooting stars (behind everything, just above stars)
     this.renderShootingStars();
 
@@ -6508,6 +7103,10 @@ export class SpaceGame {
     this.renderRockets();
     this.renderRemoteRockets();
 
+    // Draw nuclear bomb alarm + flight
+    this.renderNukeAlarm();
+    this.renderNuclearBomb();
+
     // Draw nomad boss fight projectiles
     this.renderNomadProjectiles();
 
@@ -6522,8 +7121,8 @@ export class SpaceGame {
       this.drawShip();
     }
 
-    // Draw escort drones (following pets)
-    this.renderEscortDrones();
+    // Draw companions (following pets)
+    this.renderCompanions();
 
     // Draw upgrade satellites/robots orbiting the ship
     this.renderUpgradeSatellites();
@@ -6601,6 +7200,9 @@ export class SpaceGame {
     if (this.konamiActivated) {
       this.renderKonamiEffect();
     }
+
+    // Draw nuclear bomb detonation (ON TOP of everything)
+    this.renderNukeDetonation();
 
     // Draw warp home animation ON TOP of everything (including UI)
     if (this.isWarping) {
@@ -8249,6 +8851,19 @@ export class SpaceGame {
     ctx.fillStyle = '#ff00ff';
     ctx.fill();
 
+    // The Hatchery on minimap (pulsing green dot)
+    const hatchMx = mapX + this.hatchery.x * scale;
+    const hatchMy = mapY + this.hatchery.y * scale;
+    const hatchPulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.004 + 2);
+    ctx.beginPath();
+    ctx.arc(hatchMx, hatchMy, 4 + hatchPulse, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(68, 255, 136, ${0.3 + hatchPulse * 0.3})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(hatchMx, hatchMy, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#44ff88';
+    ctx.fill();
+
     // Label
     ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.font = '9px Space Grotesk';
@@ -8314,7 +8929,7 @@ export class SpaceGame {
         this.otherPlayerImages.delete(id);
         this.otherPlayerImageUrls.delete(id);
         this.otherPlayerUpgrading.delete(id);
-        this.otherPlayerDrones.delete(id);
+        this.otherPlayerCompanions.delete(id);
       }
     }
   }
@@ -10746,6 +11361,163 @@ export class SpaceGame {
       ctx.shadowBlur = 6;
       ctx.fillStyle = '#00ffff';
       ctx.fillText('[ SPACE ]', sx, sy + SpaceGame.NOMAD_RENDER_SIZE / 2 + 20);
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.restore();
+  }
+
+  private updateHatchery() {
+    const hatch = this.hatchery;
+    const { ship } = this.state;
+
+    const t = Date.now() / 1000;
+    const newX = 5000
+      + 3500 * Math.sin(t * 0.0038 + 4.5)
+      + 1600 * Math.sin(t * 0.0089 + 2.1)
+      + 500 * Math.sin(t * 0.0211 + 0.9);
+    const newY = 5000
+      + 3500 * Math.cos(t * 0.0043 + 1.8)
+      + 1600 * Math.cos(t * 0.0103 + 3.7)
+      + 500 * Math.cos(t * 0.0167 + 5.3);
+
+    const vx = 3500 * 0.0038 * Math.cos(t * 0.0038 + 4.5)
+      + 1600 * 0.0089 * Math.cos(t * 0.0089 + 2.1)
+      + 500 * 0.0211 * Math.cos(t * 0.0211 + 0.9);
+    const vy = -3500 * 0.0043 * Math.sin(t * 0.0043 + 1.8)
+      - 1600 * 0.0103 * Math.sin(t * 0.0103 + 3.7)
+      - 500 * 0.0167 * Math.sin(t * 0.0167 + 5.3);
+
+    hatch.x = ((newX % 10000) + 10000) % 10000;
+    hatch.y = ((newY % 10000) + 10000) % 10000;
+
+    const targetRot = Math.atan2(vy, vx);
+    let diff = targetRot - hatch.rotation;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    hatch.rotation += diff * 0.05;
+
+    if (Math.random() < 0.35) {
+      const colors = ['#44ff88', '#22ddaa', '#88ffcc', '#66ffaa', '#aaffdd'];
+      this.hatcherySparkles.push({
+        x: hatch.x + (Math.random() - 0.5) * 50,
+        y: hatch.y + (Math.random() - 0.5) * 50,
+        life: 40 + Math.random() * 30,
+        maxLife: 40 + Math.random() * 30,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 1.5 + Math.random() * 2.5,
+      });
+    }
+    for (let i = this.hatcherySparkles.length - 1; i >= 0; i--) {
+      this.hatcherySparkles[i].life -= this.dt;
+      if (this.hatcherySparkles[i].life <= 0) this.hatcherySparkles.splice(i, 1);
+    }
+
+    if (this.landedOnHatchery) {
+      const halfSize = SpaceGame.HATCHERY_RENDER_SIZE / 2;
+      ship.x = hatch.x;
+      ship.y = hatch.y - halfSize - 25;
+      ship.vx = 0;
+      ship.vy = 0;
+      ship.rotation = -Math.PI / 2;
+      return;
+    }
+
+    const shipDx = ship.x - hatch.x;
+    const shipDy = ship.y - hatch.y;
+    const shipDist = Math.sqrt(shipDx * shipDx + shipDy * shipDy);
+
+    this.nearHatchery = shipDist < SpaceGame.HATCHERY_DOCKING_DISTANCE;
+
+    if (shipDist < 350 && !this.hatcheryApproachFired) {
+      this.hatcheryApproachFired = true;
+      this.onHatcheryApproach?.();
+    } else if (shipDist > 450) {
+      this.hatcheryApproachFired = false;
+    }
+
+    if (this.nearHatchery && this.keys.has(' ') && !this.isLanding && !this.isLanded) {
+      this.keys.delete(' ');
+      const halfSize = SpaceGame.HATCHERY_RENDER_SIZE / 2;
+      const fakePlanet = {
+        id: '__hatchery__', name: 'The Hatchery', x: hatch.x, y: hatch.y,
+        radius: halfSize, color: '#44ff88', glowColor: '#22ddaa',
+        completed: false, type: 'station' as const, size: 'medium' as const,
+      };
+      this.startLandingAnimation(fakePlanet as any);
+    }
+  }
+
+  private renderHatchery() {
+    const { camera } = this.state;
+    const ctx = this.ctx;
+    const hatch = this.hatchery;
+    const sx = hatch.x - camera.x;
+    const sy = hatch.y - camera.y;
+
+    if (sx < -200 || sx > this.canvas.width + 200 || sy < -200 || sy > this.canvas.height + 200) return;
+
+    ctx.save();
+
+    const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.003);
+    const glowRadius = SpaceGame.HATCHERY_RENDER_SIZE * 0.9;
+    const gradient = ctx.createRadialGradient(sx, sy, 5, sx, sy, glowRadius);
+    gradient.addColorStop(0, `rgba(68, 255, 136, ${0.3 * pulse})`);
+    gradient.addColorStop(0.4, `rgba(34, 221, 170, ${0.15 * pulse})`);
+    gradient.addColorStop(0.7, `rgba(136, 68, 255, ${0.08 * pulse})`);
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(sx, sy, glowRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    for (const sparkle of this.hatcherySparkles) {
+      const spx = sparkle.x - camera.x;
+      const spy = sparkle.y - camera.y;
+      const alpha = sparkle.life / sparkle.maxLife;
+      ctx.beginPath();
+      ctx.arc(spx, spy, sparkle.size * alpha, 0, Math.PI * 2);
+      ctx.fillStyle = sparkle.color;
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    const now = Date.now();
+    const beatBPM = 35;
+    const beatPhase = (now / 1000) * (beatBPM / 60) * Math.PI * 2;
+    const bounce = Math.abs(Math.sin(beatPhase)) * 3;
+    const tilt = Math.sin(beatPhase * 0.5) * 0.03;
+    const scaleBreath = 1 + Math.abs(Math.sin(beatPhase)) * 0.025;
+
+    ctx.translate(sx, sy - bounce);
+    ctx.rotate(hatch.rotation + Math.PI / 2 + tilt);
+    if (this.hatcheryImage) {
+      const size = SpaceGame.HATCHERY_RENDER_SIZE * scaleBreath;
+      ctx.drawImage(this.hatcheryImage, -size / 2, -size / 2, size, size);
+    } else {
+      ctx.fillStyle = '#44ff88';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 22, 30, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#22ddaa';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      const eggGrad = ctx.createRadialGradient(0, -5, 0, 0, 0, 25);
+      eggGrad.addColorStop(0, 'rgba(136, 255, 204, 0.5)');
+      eggGrad.addColorStop(1, 'rgba(68, 255, 136, 0)');
+      ctx.fillStyle = eggGrad;
+      ctx.fill();
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    if (this.nearHatchery && !this.landedOnHatchery && !this.isLanding) {
+      ctx.font = 'bold 12px Space Grotesk';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#44ff88';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = '#44ff88';
+      ctx.fillText('[ SPACE ]', sx, sy + SpaceGame.HATCHERY_RENDER_SIZE / 2 + 20);
       ctx.shadowBlur = 0;
     }
 

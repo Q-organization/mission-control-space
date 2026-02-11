@@ -139,6 +139,8 @@ const defaultShipEffects: ShipEffects = {
   plasmaCanonEquipped: false,
   hasRocketLauncher: false,
   rocketLauncherEquipped: false,
+  hasNuclearBomb: false,
+  nuclearBombEquipped: false,
   hasWarpDrive: false,
   hasMissionControlPortal: false,
   ownedHorns: [],
@@ -146,6 +148,8 @@ const defaultShipEffects: ShipEffects = {
   ownedEmotes: [],
   equippedEmote: null,
   healthBonus: 0,
+  ownedCompanions: [],
+  equippedCompanions: [],
 };
 
 export function usePlayerPositions(options: UsePlayerPositionsOptions): UsePlayerPositionsReturn {

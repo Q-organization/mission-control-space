@@ -129,6 +129,21 @@ export interface Rocket {
   damage: number;
   rotation: number;
   targetPlanetId: string | null;
+  targetNomad?: boolean;
+}
+
+export interface NuclearBomb {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotation: number;
+  phase: 'alarm' | 'flight' | 'detonation';
+  phaseTimer: number;
+  waypoints: { x: number; y: number }[];
+  waypointIndex: number;
+  detonationTimer: number;
+  detonationRadius: number;
 }
 
 export interface Ship {
@@ -190,6 +205,8 @@ export interface ShipEffects {
   plasmaCanonEquipped: boolean;
   hasRocketLauncher: boolean;
   rocketLauncherEquipped: boolean;
+  hasNuclearBomb: boolean;
+  nuclearBombEquipped: boolean;
   hasWarpDrive: boolean;
   hasMissionControlPortal: boolean;
   ownedHorns: string[];
@@ -197,6 +214,8 @@ export interface ShipEffects {
   ownedEmotes: string[];
   equippedEmote: string | null;
   healthBonus: number;
+  ownedCompanions: string[];
+  equippedCompanions: string[];
 }
 
 export interface MultiplayerTeam {
