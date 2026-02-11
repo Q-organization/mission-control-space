@@ -674,9 +674,21 @@ export function LandedPlanetModal({
                       alignItems: 'center',
                       gap: 5,
                     }}
-                    onClick={() => {
+                    onClick={async () => {
                       const text = viewingPrompt === 'deep' ? planet.deepAnalysis! : planet.quickPrompt!;
-                      navigator.clipboard.writeText(text);
+                      try {
+                        await navigator.clipboard.writeText(text);
+                      } catch {
+                        // Fallback for non-secure contexts or permission issues
+                        const textarea = document.createElement('textarea');
+                        textarea.value = text;
+                        textarea.style.position = 'fixed';
+                        textarea.style.opacity = '0';
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                      }
                       setCopiedPrompt(viewingPrompt);
                       setTimeout(() => setCopiedPrompt(null), 2000);
                     }}
