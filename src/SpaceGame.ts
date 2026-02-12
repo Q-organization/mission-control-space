@@ -668,6 +668,7 @@ export class SpaceGame {
     this.loadNotionTypeImage('feature', '/notion-enhancement.png');
     this.loadNotionTypeImage('task', '/notion-task.png', true);
     this.loadNotionTypeImage('biz', '/notion-biz.png', true);
+    this.loadNotionTypeImage('biz2', '/notion-biz-2.png', true);
 
     // Load critical priority flame overlay
     const flameImg = new Image();
@@ -7925,8 +7926,17 @@ export class SpaceGame {
     const isBug = taskType === 'bug';
     const isFeature = taskType === 'feature' || taskType === 'enhancement';
 
-    // Get Notion type image if available
-    const notionTypeImage = isNotionPlanet ? this.notionTypeImages.get(taskType) || this.notionTypeImages.get('task') : null;
+    // Get Notion type image if available (biz planets randomly use one of two skins based on planet id)
+    let notionTypeImage: HTMLImageElement | null = null;
+    if (isNotionPlanet) {
+      if (taskType === 'biz') {
+        // Use planet id to deterministically pick a variant (stable per planet)
+        const idSum = planet.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+        notionTypeImage = this.notionTypeImages.get(idSum % 2 === 0 ? 'biz' : 'biz2') || this.notionTypeImages.get('biz') || null;
+      } else {
+        notionTypeImage = this.notionTypeImages.get(taskType) || this.notionTypeImages.get('task') || null;
+      }
+    }
 
     // Pulsing glow for critical priority
     const pulseIntensity = isCritical ? 0.3 + Math.sin(Date.now() * 0.005) * 0.2 : 0;

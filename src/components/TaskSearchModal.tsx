@@ -316,7 +316,11 @@ export function TaskSearchModal({ planets, playerInfo, onSelect, onClose }: Task
               const owner = planet.ownerId;
               const ownerName = owner ? USERS_MAP[owner] || owner : null;
               const ownerColor = owner ? playerInfo[owner]?.color || '#888' : null;
-              const typeIcon = TYPE_ICONS[planet.taskType || 'task'] || TYPE_ICONS.task;
+              let typeIcon = TYPE_ICONS[planet.taskType || 'task'] || TYPE_ICONS.task;
+              if ((planet.taskType || '') === 'biz') {
+                const idSum = planet.id.split('').reduce((s: number, c: string) => s + c.charCodeAt(0), 0);
+                typeIcon = idSum % 2 === 0 ? '/notion-biz.png' : '/notion-biz-2.png';
+              }
               const priorityColor = PRIORITY_COLOR_MAP[parsePriority(planet.priority)] || null;
               const ownerShip = owner ? playerInfo[owner]?.shipImage : null;
 

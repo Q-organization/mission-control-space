@@ -66,7 +66,11 @@ function parseTaskType(raw: string | null | undefined): string {
   return 'task';
 }
 
-function getTaskTypeImage(taskType: string): string {
+function getTaskTypeImage(taskType: string, planetId?: string): string {
+  if (taskType === 'biz' && planetId) {
+    const idSum = planetId.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+    return idSum % 2 === 0 ? '/notion-biz.png' : '/notion-biz-2.png';
+  }
   const found = TASK_TYPES.find(t => t.value === taskType);
   return found?.image || '/notion-task.png';
 }
@@ -124,7 +128,7 @@ export function LandedPlanetModal({
   const priority = parsePriority(planet.priority);
   const taskType = parseTaskType(planet.taskType);
   const priorityInfo = PRIORITIES.find(p => p.value === priority) || PRIORITIES[2];
-  const planetImage = getTaskTypeImage(taskType);
+  const planetImage = getTaskTypeImage(taskType, planet.id);
 
   // Close dropdowns on outside click
   useEffect(() => {
