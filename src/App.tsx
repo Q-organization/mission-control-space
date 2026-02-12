@@ -645,6 +645,11 @@ function App() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
   const [showPointsHistory, setShowPointsHistory] = useState(false);
+  const [showDebrief, setShowDebrief] = useState(false);
+  const [debriefText, setDebriefText] = useState('');
+  const [debriefLoading, setDebriefLoading] = useState(false);
+  const [debriefCopied, setDebriefCopied] = useState(false);
+  const [debriefDayOffset, setDebriefDayOffset] = useState(0);
   const [pointsHistoryTab, setPointsHistoryTab] = useState<'personal' | 'team'>('personal');
   const [pointsHistory, setPointsHistory] = useState<PointTx[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -1033,6 +1038,54 @@ function App() {
       setIsLoadingBreakdown(false);
     }
   }, [team?.id]);
+
+  // Generate daily debrief from completed Notion tasks for a specific day
+  const generateDebrief = useCallback(async (dayOffset: number = 0) => {
+    if (!team?.id || !currentDbPlayerId) return;
+    setDebriefLoading(true);
+    setDebriefCopied(false);
+    try {
+      const now = new Date();
+      const targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOffset);
+      const dayStart = targetDate.toISOString();
+      const dayEnd = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + 1).toISOString();
+
+      const { data } = await supabase.from('point_transactions')
+        .select('task_name, created_at')
+        .eq('team_id', team.id)
+        .eq('player_id', currentDbPlayerId)
+        .like('task_name', 'Completed:%')
+        .gte('created_at', dayStart)
+        .lt('created_at', dayEnd)
+        .order('created_at', { ascending: true });
+
+      const playerName = USERS.find(u => u.id === state.currentUser)?.name || state.currentUser || 'Pilot';
+      const formatDate = (d: Date) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const cleanTask = (name: string) => name.replace(/^Completed:\s*/i, '').trim();
+      const isGameTask = (name: string) => /mission control|nomad|weapon|nuke|companion|hatchery/i.test(name);
+
+      const tasks = (data || []).map(t => cleanTask(t.task_name)).filter(t => !isGameTask(t));
+
+      const doneLabel = dayOffset === 0 ? 'Done today' : dayOffset === 1 ? 'Done yesterday' : `Done on ${formatDate(targetDate)}`;
+
+      let text = `Daily Debrief — ${playerName} — ${formatDate(targetDate)}\n\n`;
+      text += `✅ ${doneLabel}\n`;
+      if (tasks.length > 0) {
+        tasks.forEach(t => { text += `${t}\n`; });
+      } else {
+        text += `(nothing completed)\n`;
+      }
+      text += `\n🔄 In progress\n\n`;
+      text += `⛔ Blocker\nNone.\n\n`;
+      text += `🎯 Focus tomorrow\n`;
+
+      setDebriefText(text);
+    } catch (err) {
+      console.error('Failed to generate debrief:', err);
+    } finally {
+      setDebriefLoading(false);
+    }
+  }, [team?.id, currentDbPlayerId, state.currentUser]);
 
   // Sync notion planets to game (store ref for immediate sync on game init)
   const notionPlanetsRef = useRef(notionGamePlanets);
@@ -5143,11 +5196,107 @@ function App() {
                 >
                   {'\u{1F680}'} Ship Versions
                 </button>
+                <button
+                  onClick={() => { setShowPlayerHub(false); setDebriefDayOffset(0); setShowDebrief(true); generateDebrief(0); }}
+                  style={{
+                    width: '100%', padding: '8px 0', borderRadius: 8, marginTop: 6,
+                    background: 'rgba(255,165,0,0.08)', border: '1px solid rgba(255,165,0,0.2)',
+                    color: 'rgba(255,165,0,0.8)', fontSize: '0.8rem', fontWeight: 600,
+                    cursor: 'pointer', fontFamily: "'Space Grotesk', sans-serif",
+                    transition: 'background 0.2s, color 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,165,0,0.15)'; e.currentTarget.style.color = '#ffa500'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,165,0,0.08)'; e.currentTarget.style.color = 'rgba(255,165,0,0.8)'; }}
+                >
+                  {debriefLoading ? '⏳ Generating...' : '📋 Daily Debrief'}
+                </button>
               </div>
             </div>
           </>
         );
       })()}
+
+      {/* Daily Debrief Modal */}
+      {showDebrief && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+        }} onClick={() => setShowDebrief(false)}>
+          <style>{`.debrief-modal::-webkit-scrollbar { display: none; }`}</style>
+          <div className="debrief-modal" onClick={e => e.stopPropagation()} style={{
+            background: '#12121e', border: '1px solid rgba(255,165,0,0.25)', borderRadius: 16,
+            width: '90%', maxWidth: 520, maxHeight: '85vh', overflowY: 'auto',
+            scrollbarWidth: 'none', msOverflowStyle: 'none',
+            padding: 28, position: 'relative',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontFamily: "'Orbitron', sans-serif", color: '#ffa500' }}>
+                Daily Debrief
+              </h2>
+              <button onClick={() => setShowDebrief(false)} style={{
+                background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '1.2rem', cursor: 'pointer',
+              }}>✕</button>
+            </div>
+            {/* Day picker tabs */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+              {[
+                { offset: 0, label: 'Today' },
+                { offset: 1, label: 'Yesterday' },
+                { offset: 2, label: '2 days ago' },
+                { offset: 3, label: '3 days ago' },
+                { offset: 4, label: '4 days ago' },
+                { offset: 5, label: '5 days ago' },
+                { offset: 6, label: '6 days ago' },
+              ].map(({ offset, label }) => (
+                <button key={offset} onClick={() => { setDebriefDayOffset(offset); generateDebrief(offset); }} style={{
+                  padding: '4px 10px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 600,
+                  fontFamily: "'Space Grotesk', sans-serif", cursor: 'pointer',
+                  border: `1px solid ${debriefDayOffset === offset ? 'rgba(255,165,0,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                  background: debriefDayOffset === offset ? 'rgba(255,165,0,0.15)' : 'rgba(255,255,255,0.04)',
+                  color: debriefDayOffset === offset ? '#ffa500' : 'rgba(255,255,255,0.45)',
+                  transition: 'all 0.15s',
+                }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {debriefLoading ? (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>
+                Loading...
+              </div>
+            ) : (
+              <pre style={{
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                fontFamily: "'Space Grotesk', sans-serif", fontSize: '0.82rem', lineHeight: 1.7,
+                color: 'rgba(255,255,255,0.85)', margin: 0, padding: 16,
+                background: 'rgba(255,255,255,0.03)', borderRadius: 10,
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                {debriefText}
+              </pre>
+            )}
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(debriefText);
+                setDebriefCopied(true);
+                setTimeout(() => setDebriefCopied(false), 2000);
+              }}
+              style={{
+                width: '100%', marginTop: 16, padding: '10px 0', borderRadius: 10,
+                background: debriefCopied ? 'rgba(74,222,128,0.15)' : 'rgba(255,165,0,0.12)',
+                border: `1px solid ${debriefCopied ? 'rgba(74,222,128,0.3)' : 'rgba(255,165,0,0.25)'}`,
+                color: debriefCopied ? '#4ade80' : '#ffa500',
+                fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                fontFamily: "'Space Grotesk', sans-serif",
+                transition: 'all 0.2s',
+              }}
+            >
+              {debriefCopied ? '✓ Copied!' : '📋 Copy to Clipboard'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Ship preview */}
       <div
