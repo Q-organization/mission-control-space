@@ -5278,7 +5278,14 @@ function App() {
             )}
             <button
               onClick={() => {
-                navigator.clipboard.writeText(debriefText);
+                const ta = document.createElement('textarea');
+                ta.value = debriefText;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
                 setDebriefCopied(true);
                 setTimeout(() => setDebriefCopied(false), 2000);
               }}
