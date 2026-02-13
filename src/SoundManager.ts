@@ -26,6 +26,7 @@ const DEFAULT_PREFS: AudioPreferences = {
 };
 
 const SOUNDS_PATH = '/sounds/';
+const SOUND_VERSION = 'v2'; // bump to bust browser cache on sound updates
 
 // Sound definitions - using Kenney.nl Sci-Fi Sounds (CC0)
 const SOUND_CONFIGS: Record<string, SoundConfig> = {
@@ -223,35 +224,35 @@ const SOUND_CONFIGS: Record<string, SoundConfig> = {
 
   // Horns
   horn_air: {
-    src: [`${SOUNDS_PATH}horns/air.mp3`],
+    src: [`${SOUNDS_PATH}horns/air.mp3?${SOUND_VERSION}`],
     volume: 0.6,
   },
   horn_sad: {
-    src: [`${SOUNDS_PATH}horns/sad.mp3`],
+    src: [`${SOUNDS_PATH}horns/sad.mp3?${SOUND_VERSION}`],
     volume: 0.6,
   },
   horn_dolphin: {
-    src: [`${SOUNDS_PATH}horns/dolphin.mp3`],
+    src: [`${SOUNDS_PATH}horns/dolphin.mp3?${SOUND_VERSION}`],
     volume: 0.6,
   },
   horn_wilhelm: {
-    src: [`${SOUNDS_PATH}horns/wilhelm.mp3`],
+    src: [`${SOUNDS_PATH}horns/wilhelm.mp3?${SOUND_VERSION}`],
     volume: 0.6,
   },
   horn_foghorn: {
-    src: [`${SOUNDS_PATH}horns/foghorn.mp3`],
+    src: [`${SOUNDS_PATH}horns/foghorn.mp3?${SOUND_VERSION}`],
     volume: 0.6,
   },
   horn_laser: {
-    src: [`${SOUNDS_PATH}horns/laser.mp3`],
+    src: [`${SOUNDS_PATH}horns/laser.mp3?${SOUND_VERSION}`],
     volume: 0.6,
   },
   horn_duck: {
-    src: [`${SOUNDS_PATH}horns/duck.mp3`],
+    src: [`${SOUNDS_PATH}horns/duck.mp3?${SOUND_VERSION}`],
     volume: 0.6,
   },
   horn_dramatic: {
-    src: [`${SOUNDS_PATH}horns/dramatic.mp3`],
+    src: [`${SOUNDS_PATH}horns/dramatic.mp3?${SOUND_VERSION}`],
     volume: 0.6,
   },
 };
