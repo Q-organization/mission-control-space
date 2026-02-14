@@ -1323,51 +1323,34 @@ function App() {
     saveState(state);
   }, [state]);
 
-  // Sync userShips from teamPlayers (Supabase is the source of truth)
+  // Sync userShips from teamPlayers (Supabase is the source of truth for effects/image)
   useEffect(() => {
     if (teamPlayers.length === 0) return;
 
-    const shipsFromSupabase: Record<string, UserShip> = {};
-    for (const player of teamPlayers) {
-      if (player.shipImage) {
-        shipsFromSupabase[player.username] = {
-          baseImage: '/ship-base.png', // Base ship is always the same
-          currentImage: player.shipImage,
-          upgrades: [], // Upgrade count is tracked via shipLevel
-          effects: player.shipEffects || {
-            glowColor: null,
-            trailType: 'default',
-            sizeBonus: 0,
-            speedBonus: 0,
-            landingSpeedBonus: 0,
-            ownedGlows: [],
-            ownedTrails: [],
-            hasDestroyCanon: false,
-            destroyCanonEquipped: false,
-            hasSpaceRifle: false,
-            spaceRifleEquipped: false,
-            hasPlasmaCanon: false,
-            plasmaCanonEquipped: false,
-            hasRocketLauncher: false,
-            rocketLauncherEquipped: false,
-            hasNuclearBomb: false,
-            nuclearBombEquipped: false,
-            ownedCompanions: [],
-            equippedCompanions: [],
-          },
-        };
-      }
-    }
-
-    // Merge with local state (local state may have pending changes)
     setUserShips(prev => {
-      const merged = { ...shipsFromSupabase };
+      const merged: Record<string, UserShip> = {};
+
+      for (const player of teamPlayers) {
+        if (player.shipImage) {
+          const existing = prev[player.username];
+          merged[player.username] = {
+            baseImage: existing?.baseImage || '/ship-base.png',
+            currentImage: player.shipImage,
+            // Preserve local upgrades array (not available via teamPlayers)
+            upgrades: existing?.upgrades || [],
+            // Effects from Supabase are the source of truth
+            effects: player.shipEffects || existing?.effects || getEffectsWithDefaults(undefined),
+          };
+        }
+      }
+
       // Keep any local ships that aren't in Supabase yet
       for (const [userId, ship] of Object.entries(prev)) {
         if (!merged[userId] && ship.currentImage) {
           merged[userId] = ship;
         }
       }
+
       // Cache to localStorage for instant load next time
       try { localStorage.setItem('mission-control-user-ships-cache', JSON.stringify(merged)); } catch {}
       return merged;
@@ -2323,19 +2306,22 @@ function App() {
   // Select a ship image from history
   const selectShipFromHistory = (imageUrl: string) => {
     const userId = state.currentUser || 'default';
-    const currentShip = getCurrentUserShip();
 
-    // Update local state
-    setUserShips(prev => ({
-      ...prev,
-      [userId]: {
-        ...currentShip,
-        currentImage: imageUrl,
-      }
-    }));
+    // Update local state using functional updater to read latest effects
+    setUserShips(prev => {
+      const currentShip = prev[userId] || getCurrentUserShip();
+      return {
+        ...prev,
+        [userId]: {
+          ...currentShip,
+          currentImage: imageUrl,
+        }
+      };
+    });
 
     // Update the ship in the game canvas
-    gameRef.current?.updateShipImage(imageUrl, currentShip.upgrades.length);
+    const upgradeCount = userShips[state.currentUser || 'default']?.upgrades?.length || 0;
+    gameRef.current?.updateShipImage(imageUrl, upgradeCount);
 
     // Sync to Supabase
     updatePlayerData({
@@ -2351,19 +2337,13 @@ function App() {
     if (mascotHistory.length === 0) return;
 
     const userId = state.currentUser || 'default';
-    const currentShip = getCurrentUserShip();
 
-    // Get the last upgrade entry
-    const lastEntry = mascotHistory[mascotHistory.length - 1];
     const newMascotHistory = mascotHistory.slice(0, -1);
-
-    // Remove the last upgrade ID from userShips
-    const newUpgrades = currentShip.upgrades.slice(0, -1);
 
     // Determine the new image URL (previous in history or base ship)
     const newImageUrl = newMascotHistory.length > 0
       ? newMascotHistory[newMascotHistory.length - 1].imageUrl
-      : (currentShip.baseImage || '/ship-base.png');
+      : '/ship-base.png';
 
     // Refund half the cost
     setPersonalPoints(prev => prev + VISUAL_UPGRADE_SELL_PRICE);
@@ -2373,15 +2353,20 @@ function App() {
     setMascotHistory(newMascotHistory);
     saveMascotHistoryToSupabase(newMascotHistory);
 
-    // Update user ships state
-    setUserShips(prev => ({
-      ...prev,
-      [userId]: {
-        ...currentShip,
-        upgrades: newUpgrades,
-        currentImage: newImageUrl,
-      }
-    }));
+    // Update user ships state - use functional updater to read latest effects
+    let newUpgrades: string[] = [];
+    setUserShips(prev => {
+      const latestShip = prev[userId] || getCurrentUserShip();
+      newUpgrades = latestShip.upgrades.slice(0, -1);
+      return {
+        ...prev,
+        [userId]: {
+          ...latestShip,
+          upgrades: newUpgrades,
+          currentImage: newImageUrl,
+        }
+      };
+    });
 
     // Update the ship in the game canvas
     gameRef.current?.updateShipImage(newImageUrl, newUpgrades.length);
@@ -3422,26 +3407,32 @@ function App() {
         setPersonalPoints(prev => prev - VISUAL_UPGRADE_COST);
         updateRemotePersonalPoints(-VISUAL_UPGRADE_COST, 'Ship visual upgrade');
 
-        // Update user's ship
+        // Update user's ship - use functional updater to read LATEST effects
+        // (currentShip was captured before async work and may have stale effects)
         const userId = state.currentUser || 'default';
         const upgradeId = `visual-${Date.now()}`;
 
-        setUserShips(prev => ({
-          ...prev,
-          [userId]: {
-            ...currentShip,
-            upgrades: [...currentShip.upgrades, upgradeId],
-            currentImage: newImageUrl,
-          }
-        }));
+        let latestUpgrades: string[] = [];
+        setUserShips(prev => {
+          const latestShip = prev[userId] || currentShip;
+          latestUpgrades = [...latestShip.upgrades, upgradeId];
+          return {
+            ...prev,
+            [userId]: {
+              ...latestShip,
+              upgrades: latestUpgrades,
+              currentImage: newImageUrl,
+            }
+          };
+        });
 
         // Update the ship in the game canvas
-        gameRef.current?.updateShipImage(newImageUrl, currentShip.upgrades.length + 1);
+        gameRef.current?.updateShipImage(newImageUrl, latestUpgrades.length);
 
         // Sync ship image to backend for multiplayer
         updatePlayerData({
           ship_current_image: newImageUrl,
-          ship_upgrades: [...currentShip.upgrades, upgradeId],
+          ship_upgrades: latestUpgrades,
         });
 
         // Add to mascot history and save to Supabase
